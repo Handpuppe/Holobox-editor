@@ -10,3 +10,6 @@ if not exist "%CSC%" (
 "%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /out:"HoloboxZorgsimulator.exe" "tools\HoloboxLauncher.cs"
 if errorlevel 1 exit /b 1
 echo Gemaakt: HoloboxZorgsimulator.exe
+"%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /out:"Editor.exe" "tools\HoloboxLauncher.cs"
+if errorlevel 1 exit /b 1
+echo Gemaakt: Editor.exe

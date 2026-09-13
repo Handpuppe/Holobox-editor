@@ -1,69 +1,90 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net.Sockets;
+using System.Net;
 using System.Threading;
 using System.Windows.Forms;
 
 internal static class Program
 {
-    private const int Port = 4173;
-    private const string Url = "http://127.0.0.1:4173";
+    private const string AppBase = "/HoloboxVPKenLogo/";
+    private const int StudentPort = 4173;
+    private const int EditorPort = 4174;
 
     [STAThread]
     private static int Main(string[] args)
     {
         var root = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         Directory.SetCurrentDirectory(root);
-        var windowed = Array.Exists(args, a => string.Equals(a, "windowed", StringComparison.OrdinalIgnoreCase));
+
+        var editor = IsEditorMode(args);
+        var windowed = editor || Array.Exists(args, a => string.Equals(a, "windowed", StringComparison.OrdinalIgnoreCase));
+        var port = editor ? EditorPort : StudentPort;
+        var url = editor
+            ? "http://127.0.0.1:" + port + AppBase + "editor.html"
+            : "http://127.0.0.1:" + port + AppBase;
+        var title = editor ? "Holobox Logopedie-scenariobewerker" : "Holobox Zorgsimulator";
+        var npmPreview = editor ? "run preview:editor" : "run preview";
+        var distFile = Path.Combine(root, "dist", editor ? "editor.html" : "index.html");
 
         var nodeDir = FindNodeDir();
         if (nodeDir == null)
         {
             MessageBox.Show(
                 "Node.js is niet gevonden. Installeer Node.js en start daarna opnieuw.",
-                "Holobox Zorgsimulator",
+                title,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return 1;
         }
 
-        var dist = Path.Combine(root, "dist", "index.html");
-        if (!File.Exists(dist))
+        if (!File.Exists(distFile))
         {
             var build = RunNpm(nodeDir, root, "run build", true);
             if (build != 0)
             {
                 MessageBox.Show(
                     "Bouwen van de app is mislukt. Controleer Node.js en probeer het opnieuw.",
-                    "Holobox Zorgsimulator",
+                    title,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return build;
             }
         }
 
+        if (!File.Exists(distFile))
+        {
+            MessageBox.Show(
+                editor
+                    ? "dist/editor.html ontbreekt na het bouwen."
+                    : "dist/index.html ontbreekt na het bouwen.",
+                title,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return 1;
+        }
+
         Process server = null;
         Process browser = null;
         try
         {
-            server = StartNpm(nodeDir, root, "run preview", false);
-            if (!WaitForPort(Port, 60000))
+            server = StartNpm(nodeDir, root, npmPreview, false);
+            if (!WaitForUrl(url, 60000))
             {
                 MessageBox.Show(
-                    "De lokale server start niet op poort 4173.",
-                    "Holobox Zorgsimulator",
+                    "De lokale server start niet op " + url + ".",
+                    title,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return 1;
             }
 
-            browser = StartBrowser(Url, windowed);
+            browser = StartBrowser(url, windowed, editor);
             if (browser == null)
             {
                 MessageBox.Show(
                     "Microsoft Edge of Google Chrome is niet gevonden.",
-                    "Holobox Zorgsimulator",
+                    title,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return 1;
@@ -75,10 +96,28 @@ internal static class Program
         {
             KillTree(browser);
             KillTree(server);
-            KillListeners(Port);
+            KillListeners(port);
         }
 
         return 0;
+    }
+
+    private static bool IsEditorMode(string[] args)
+    {
+        if (Array.Exists(args, a => string.Equals(a, "editor", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        try
+        {
+            var name = Path.GetFileNameWithoutExtension(Application.ExecutablePath);
+            return name.IndexOf("Editor", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string FindNodeDir()
@@ -144,18 +183,20 @@ internal static class Program
         return Process.Start(psi);
     }
 
-    private static bool WaitForPort(int port, int timeoutMs)
+    private static bool WaitForUrl(string url, int timeoutMs)
     {
         var until = Environment.TickCount + timeoutMs;
         while (Environment.TickCount < until)
         {
             try
             {
-                using (var client = new TcpClient())
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Timeout = 1500;
+                request.AllowAutoRedirect = true;
+                using (var response = (HttpWebResponse)request.GetResponse())
                 {
-                    var result = client.BeginConnect("127.0.0.1", port, null, null);
-                    var ok = result.AsyncWaitHandle.WaitOne(500);
-                    if (ok && client.Connected)
+                    var code = (int)response.StatusCode;
+                    if (code >= 200 && code < 400)
                     {
                         return true;
                     }
@@ -170,9 +211,11 @@ internal static class Program
         return false;
     }
 
-    private static Process StartBrowser(string url, bool windowed)
+    private static Process StartBrowser(string url, bool windowed, bool editor)
     {
-        var profile = Path.Combine(Path.GetTempPath(), "holobox-kiosk-profile");
+        var profile = Path.Combine(
+            Path.GetTempPath(),
+            editor ? "holobox-editor-profile" : "holobox-kiosk-profile");
         var edge86 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft\\Edge\\Application\\msedge.exe");
         var edge64 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft\\Edge\\Application\\msedge.exe");
         var chrome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google\\Chrome\\Application\\chrome.exe");

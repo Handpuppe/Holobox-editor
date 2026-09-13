@@ -48,6 +48,7 @@ function resourcesPlugin(): Plugin {
         if (
           path === '/' ||
           path.startsWith('/index.html') ||
+          path.startsWith('/editor.html') ||
           path.startsWith('/assets/') ||
           path.startsWith('/logopedie')
         ) {
@@ -69,6 +70,8 @@ function resourcesPlugin(): Plugin {
   };
 }
 
+const projectRoot = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
   base: '/HoloboxVPKenLogo/',
   plugins: [react(), resourcesPlugin()],
@@ -78,6 +81,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: join(projectRoot, 'index.html'),
+        editor: join(projectRoot, 'editor.html'),
+      },
     },
   },
   server: {

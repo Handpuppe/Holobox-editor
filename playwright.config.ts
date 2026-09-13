@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const port = 4173;
-const baseURL = `http://127.0.0.1:${port}`;
+const baseURL = `http://127.0.0.1:${port}/HoloboxVPKenLogo/`;
 
 export default defineConfig({
   testDir: './tests/e2e',

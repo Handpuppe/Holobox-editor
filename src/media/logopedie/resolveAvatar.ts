@@ -1,4 +1,5 @@
 import type { ClientEmotion } from '../../domain/types';
+import { withBaseUrl } from '../baseUrl';
 import { listModuleMedia } from '../matching';
 
 export const AVATAR_LAYERS = ['variant', 'neutral', 'basis', 'legacy'] as const;
@@ -58,10 +59,12 @@ export interface AvatarCandidate {
 }
 
 export function publicResourceUrl(relativePath: string): string {
-  return `/resources/${relativePath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')}`;
+  return withBaseUrl(
+    `/resources/${relativePath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')}`,
+  );
 }
 
 export function resourceSrc(relativePath: string): string {

@@ -34,8 +34,8 @@ describe('logopedie avatar variants', () => {
     expect(rest.map((item) => item.variant)).toEqual(['onzeker', 'neutraal', 'basis', 'legacy']);
     expect(rest[0]?.relativePath).toBe(AVATAR_FILES.onzeker);
     expect(rest[2]?.relativePath).toBe(LOGOPEDIE_BASIS_PATH);
-    expect(publicResourceUrl(AVATAR_FILES.luistert)).toBe(
-      '/resources/logopedie/avatar/generated/erik/luistert.png',
+    expect(publicResourceUrl(AVATAR_FILES.luistert)).toMatch(
+      /\/resources\/logopedie\/avatar\/generated\/erik\/luistert\.png$/,
     );
   });
 });

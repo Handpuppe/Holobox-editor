@@ -1,13 +1,21 @@
+import { withBaseUrl } from './baseUrl';
 import { mediaManifest } from './generated/media-manifest';
 import type { MediaManifestItem, MediaSlotConfig, TrainingModule } from './types';
 
+function withPublicBase(item: MediaManifestItem): MediaManifestItem {
+  return { ...item, publicUrl: withBaseUrl(item.publicUrl) };
+}
+
 export function listModuleMedia(moduleId: TrainingModule): MediaManifestItem[] {
-  return mediaManifest.items.filter((item) => item.module === moduleId) as MediaManifestItem[];
+  return mediaManifest.items
+    .filter((item) => item.module === moduleId)
+    .map((item) => withPublicBase(item as MediaManifestItem));
 }
 
 export function findByRelativePath(relativePath: string): MediaManifestItem | undefined {
-  return mediaManifest.items.find((item) => item.relativePath === relativePath) as
+  const item = mediaManifest.items.find((entry) => entry.relativePath === relativePath) as
     MediaManifestItem | undefined;
+  return item ? withPublicBase(item) : undefined;
 }
 
 export function scoreMediaItem(item: MediaManifestItem, keywords: string[]): number {

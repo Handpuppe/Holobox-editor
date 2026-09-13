@@ -61,11 +61,16 @@ function resourcesPlugin(): Plugin {
       if (existsSync(resourcesRoot)) {
         cpSync(resourcesRoot, join('dist', 'resources'), { recursive: true });
       }
+      const indexHtml = join('dist', 'index.html');
+      if (existsSync(indexHtml)) {
+        cpSync(indexHtml, join('dist', '404.html'));
+      }
     },
   };
 }
 
 export default defineConfig({
+  base: '/HoloboxVPKenLogo/',
   plugins: [react(), resourcesPlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version),

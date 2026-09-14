@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "PORT=4174"
-set "URL=http://127.0.0.1:%PORT%/HoloboxVPKenLogo/editor.html"
+set "URL=http://127.0.0.1:%PORT%/Holobox-editor/editor.html"
 
 echo Holobox Logopedie-scenariobewerker
 echo.

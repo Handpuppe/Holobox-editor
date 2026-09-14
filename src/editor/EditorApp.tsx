@@ -24,6 +24,13 @@ const QUALITY_LABELS: Record<OptionQuality, string> = {
 
 const QUALITIES: OptionQuality[] = ['high', 'partial', 'inappropriate'];
 
+function canSaveToThisCopy(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+}
+
 function replaceNode(scenario: Scenario, nodeId: string, next: DecisionNode): Scenario {
   return {
     ...scenario,
@@ -50,6 +57,7 @@ export function EditorApp() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
+  const saveOnThisPc = canSaveToThisCopy();
 
   useEffect(() => {
     let cancelled = false;
@@ -205,22 +213,27 @@ export function EditorApp() {
           >
             Download JSON
           </button>
-          <button
-            type="button"
-            className="btn"
-            data-testid="btn-save-json"
-            onClick={() => void saveToCopy()}
-            disabled={saving}
-          >
-            Opslaan
-          </button>
+          {saveOnThisPc ? (
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-save-json"
+              onClick={() => void saveToCopy()}
+              disabled={saving}
+            >
+              Opslaan
+            </button>
+          ) : null}
         </div>
       </header>
 
+      <p className="editor-notice" data-testid="editor-demo-notice">
+        Dit is een demo-editor, geen les-app. Open JSON en Download JSON werken in de browser.
+        Opslaan naar schijf kan alleen lokaal via Editor.exe.
+      </p>
       <p className="editor-notice">
-        Dit scherm start niet via de student-app. Bij openen wordt logopedie.json geladen als die
-        geldig is, anders de startkopie. Open JSON en Download JSON blijven beschikbaar. Opslaan
-        schrijft alleen naar deze kopie. De avatar is een stilstaande still, zonder zoom.
+        Bij openen wordt logopedie.json geladen als die geldig is, anders de startkopie. De avatar
+        is een stilstaande still, zonder zoom.
       </p>
 
       {loadNotice ? (

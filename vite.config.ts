@@ -23,6 +23,16 @@ const packageJson = JSON.parse(
 
 const MAX_EDITOR_BODY_BYTES = 8_000_000;
 
+const APP_BASE = '/Holobox-editor/';
+const LEGACY_LOCAL_BASE = '/HoloboxVPKenLogo';
+
+function rewriteLegacyBase(req: IncomingMessage): void {
+  const url = req.url ?? '';
+  if (url === LEGACY_LOCAL_BASE || url.startsWith(`${LEGACY_LOCAL_BASE}/`)) {
+    req.url = url.replace(LEGACY_LOCAL_BASE, APP_BASE.slice(0, -1)) || APP_BASE;
+  }
+}
+
 function requestPath(url: string | undefined): string {
   return decodeURIComponent((url ?? '').split('?')[0] ?? '');
 }
@@ -325,11 +335,19 @@ function resourcesPlugin(): Plugin {
   return {
     name: 'holobox-resources',
     configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        rewriteLegacyBase(req);
+        next();
+      });
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(serveResources);
     },
     configurePreviewServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        rewriteLegacyBase(req);
+        next();
+      });
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(serveResources);
@@ -362,7 +380,7 @@ function resourcesPlugin(): Plugin {
 const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-  base: '/HoloboxVPKenLogo/',
+  base: APP_BASE,
   plugins: [react(), resourcesPlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version),

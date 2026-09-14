@@ -30,6 +30,9 @@ describe('EditorApp', () => {
     });
 
     expect(screen.getByTestId('screen-scenario-editor')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-demo-notice')).toHaveTextContent(
+      'Dit is een demo-editor, geen les-app.',
+    );
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     expect(screen.getByTestId('editor-issues-ok')).toHaveTextContent('Geen validatiefouten.');
     expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();

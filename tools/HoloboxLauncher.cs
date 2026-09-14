@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 internal static class Program
 {
-    private const string AppBase = "/HoloboxVPKenLogo/";
+    private const string AppBase = "/Holobox-editor/";
     private const int StudentPort = 4173;
     private const int EditorPort = 4174;
 

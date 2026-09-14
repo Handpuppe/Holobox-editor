@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "PORT=4173"
-set "URL=http://127.0.0.1:%PORT%/HoloboxVPKenLogo/"
+set "URL=http://127.0.0.1:%PORT%/Holobox-editor/"
 set "MODE=%~1"
 if /I "%MODE%"=="" set "MODE=kiosk"
 

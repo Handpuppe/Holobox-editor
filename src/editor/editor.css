@@ -43,8 +43,23 @@ html.editor-page #root {
 }
 
 .editor-meta,
+.editor-loaded,
 .editor-notice,
 .muted {
+  color: #3e4c59;
+}
+
+.editor-loaded {
+  margin: 8px 0 0;
+  font-size: 16px;
+}
+
+.editor-load-notice {
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid #cbd2d9;
+  border-radius: 12px;
+  background: #f4f7f8;
   color: #3e4c59;
 }
 
@@ -65,6 +80,24 @@ html.editor-page #root {
 .editor-issues.has-issues {
   border-color: #b45309;
   background: #fff7ed;
+}
+
+.editor-open-error {
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid #b42318;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.editor-save-ok {
+  margin: 16px 0 0;
+  padding: 16px;
+  border: 1px solid #1b7a4e;
+  border-radius: 12px;
+  background: #ecfdf3;
+  color: #14532d;
 }
 
 .editor-layout {
@@ -173,8 +206,81 @@ html.editor-page #root {
   transform: none;
 }
 
+.editor-media {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #cbd2d9;
+}
+
+.editor-media-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor-media-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+.editor-media-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.editor-media-list button {
+  width: 100%;
+  margin-bottom: 8px;
+  text-align: left;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #cbd2d9;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+  word-break: break-all;
+}
+
+.editor-media-list button.is-active {
+  border-color: #0b6e7a;
+  background: #e8f4f5;
+}
+
+.editor-media-preview {
+  width: 100%;
+  height: 280px;
+  background: #ffffff;
+  overflow: hidden;
+  border: 1px solid #cbd2d9;
+  border-radius: 12px;
+}
+
+.editor-media-preview-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  transform: none;
+}
+
+.editor-media-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
 @media (max-width: 1100px) {
-  .editor-layout {
+  .editor-layout,
+  .editor-media-layout {
     grid-template-columns: 1fr;
   }
 }

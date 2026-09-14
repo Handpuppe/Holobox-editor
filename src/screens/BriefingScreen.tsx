@@ -1,13 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
-import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { useAppState } from '../state/AppState';
 
 export function BriefingScreen() {
   const navigate = useNavigate();
-  const { session, startNewSession } = useAppState();
-  const scenario = aphasiaIntakeScenario;
+  const { session, startNewSession, scenario } = useAppState();
 
   return (
     <Screen

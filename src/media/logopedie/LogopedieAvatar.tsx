@@ -8,9 +8,10 @@ interface LogopedieAvatarProps {
   emotion: ClientEmotion;
   heightPx: number;
   name: string;
+  srcOverride?: string | null;
 }
 
-export function LogopedieAvatar({ emotion, heightPx, name }: LogopedieAvatarProps) {
+export function LogopedieAvatar({ emotion, heightPx, name, srcOverride }: LogopedieAvatarProps) {
   const [failStep, setFailStep] = useState(0);
   const [trackedEmotion, setTrackedEmotion] = useState(emotion);
   const label = `${name} (${copy.clientFictional})`;
@@ -49,9 +50,14 @@ export function LogopedieAvatar({ emotion, heightPx, name }: LogopedieAvatarProp
       <img
         className="logopedie-avatar-img"
         data-testid="logopedie-avatar-image"
-        src={resourceSrc(current.relativePath)}
+        src={srcOverride ?? resourceSrc(current.relativePath)}
         alt={`${label}. Uitdrukking: ${expression}.`}
-        onError={() => setFailStep((step) => step + 1)}
+        onError={() => {
+          if (srcOverride) {
+            return;
+          }
+          setFailStep((step) => step + 1);
+        }}
       />
       <div className="logopedie-floor-shadow" aria-hidden="true" />
     </div>

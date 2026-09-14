@@ -11,3 +11,6 @@ blob-report
 Thumbs.db
 .vscode
 .idea
+resources/scenarios/logopedie.json
+resources/scenarios/logopedie.json.bak
+resources/**/*.bak

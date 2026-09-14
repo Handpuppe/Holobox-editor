@@ -3,7 +3,6 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { Dialog } from '../components/Dialog';
 import { SideAppMenu } from '../components/SideAppMenu';
 import { copy } from '../content/nl';
-import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { CONCLUSION_NODE_ID } from '../domain/types';
 import { PatientStage } from '../media/PatientStage';
 import { defaultDisplayConfig } from '../media/scale';
@@ -24,6 +23,7 @@ export function SimulationScreen() {
     saveNotes,
     teacher,
     audio,
+    scenario,
   } = useAppState();
   const [notesOpen, setNotesOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -31,8 +31,8 @@ export function SimulationScreen() {
   const [repeatCount, setRepeatCount] = useState(0);
 
   const node = useMemo(
-    () => aphasiaIntakeScenario.nodes.find((item) => item.id === session?.currentNodeId),
-    [session?.currentNodeId],
+    () => scenario.nodes.find((item) => item.id === session?.currentNodeId),
+    [scenario.nodes, session?.currentNodeId],
   );
 
   useEffect(() => {
@@ -62,10 +62,10 @@ export function SimulationScreen() {
 
   const progressIndex = Math.max(
     0,
-    aphasiaIntakeScenario.nodes.findIndex((item) => item.id === session.currentNodeId),
+    scenario.nodes.findIndex((item) => item.id === session.currentNodeId),
   );
   const progress =
-    ((progressIndex + (session.transitioning ? 1 : 0)) / aphasiaIntakeScenario.nodes.length) * 100;
+    ((progressIndex + (session.transitioning ? 1 : 0)) / scenario.nodes.length) * 100;
   const optionsDisabled = session.transitioning || session.status === 'paused';
 
   const display = {
@@ -77,11 +77,11 @@ export function SimulationScreen() {
   return (
     <div className="sim-layout" data-testid="screen-simulation">
       <h1 id="screen-title" className="visually-hidden" tabIndex={-1}>
-        Intake met {aphasiaIntakeScenario.client.name}
+        Intake met {scenario.client.name}
       </h1>
       <PatientStage
         moduleId="logopedie"
-        name={aphasiaIntakeScenario.client.name}
+        name={scenario.client.name}
         fictionalLabel={copy.clientFictional}
         state={session.clientEmotion === 'frustrated' ? 'gefrustreerd' : 'luisteren'}
         emotion={session.clientEmotion}
@@ -107,11 +107,11 @@ export function SimulationScreen() {
             />
           </div>
           <p className="muted">
-            {String(progressIndex + 1)}/{String(aphasiaIntakeScenario.nodes.length)}
+            {String(progressIndex + 1)}/{String(scenario.nodes.length)}
           </p>
         </div>
         <p className="patient-identity">
-          {aphasiaIntakeScenario.client.name} <span className="badge">{copy.clientFictional}</span>
+          {scenario.client.name} <span className="badge">{copy.clientFictional}</span>
         </p>
         <p className="panel-question">Wat zeg je nu?</p>
         <p data-testid="client-response">{session.lastClientResponse.text}</p>

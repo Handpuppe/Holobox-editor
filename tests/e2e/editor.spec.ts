@@ -1,7 +1,33 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+function logopedieJsonFiles(): string[] {
+  return [
+    join(process.cwd(), 'resources', 'scenarios', 'logopedie.json'),
+    join(process.cwd(), 'resources', 'scenarios', 'logopedie.json.bak'),
+    join(process.cwd(), 'dist', 'resources', 'scenarios', 'logopedie.json'),
+    join(process.cwd(), 'dist', 'resources', 'scenarios', 'logopedie.json.bak'),
+  ];
+}
+
+function cleanupLogopedieJson(): void {
+  for (const file of logopedieJsonFiles()) {
+    if (existsSync(file)) {
+      unlinkSync(file);
+    }
+  }
+}
 
 test.describe('logopedie scenario editor', () => {
+  test.beforeEach(() => {
+    cleanupLogopedieJson();
+  });
+  test.afterEach(() => {
+    cleanupLogopedieJson();
+  });
+
   test('opens beside the simulator and downloads JSON without changing /logopedie', async ({
     page,
   }) => {
@@ -37,5 +63,217 @@ test.describe('logopedie scenario editor', () => {
       'Hallo... u bent... eh... de... logopedie? Ja.',
     );
     await expect(page.getByText('Vraag gewijzigd in de editor.')).toHaveCount(0);
+  });
+
+  test('opens valid JSON, rejects invalid JSON, and restores the start copy', async ({ page }) => {
+    await page.goto('editor.html');
+    await expect(page.getByTestId('screen-scenario-editor')).toBeVisible();
+    const originalPrompt = await page.getByTestId('prompt-text').inputValue();
+
+    await page.getByTestId('prompt-text').fill('Vraag voor roundtrip-JSON.');
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('btn-download-json').click();
+    const download = await downloadPromise;
+    const savedPath = await download.path();
+    expect(savedPath).toBeTruthy();
+
+    await page.getByTestId('btn-reset-seed').click();
+    await expect(page.getByTestId('prompt-text')).toHaveValue(originalPrompt);
+
+    await page.getByTestId('input-open-json').setInputFiles(savedPath ?? '');
+    await expect(page.getByTestId('prompt-text')).toHaveValue('Vraag voor roundtrip-JSON.');
+    await expect(page.getByTestId('editor-open-error')).toHaveCount(0);
+
+    await page.getByTestId('input-open-json').setInputFiles({
+      name: 'ongeldig.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('{niet-json'),
+    });
+    await expect(page.getByTestId('editor-open-error')).toContainText(
+      'Dit bestand is geen geldige JSON.',
+    );
+    await expect(page.getByTestId('prompt-text')).toHaveValue('Vraag voor roundtrip-JSON.');
+
+    await page.getByTestId('btn-reset-seed').click();
+    await expect(page.getByTestId('prompt-text')).toHaveValue(originalPrompt);
+    await expect(page.getByTestId('editor-open-error')).toHaveCount(0);
+  });
+
+  test('saves JSON for this copy, then falls back without a white screen', async ({ page }) => {
+    const scenariosDir = join(process.cwd(), 'resources', 'scenarios');
+    const jsonPath = join(scenariosDir, 'logopedie.json');
+    const bakPath = join(scenariosDir, 'logopedie.json.bak');
+    const distJsonPath = join(process.cwd(), 'dist', 'resources', 'scenarios', 'logopedie.json');
+    const distBakPath = join(process.cwd(), 'dist', 'resources', 'scenarios', 'logopedie.json.bak');
+    const originalPrompt = 'Hallo... u bent... eh... de... logopedie? Ja.';
+    const editedPrompt = 'Vraag opgeslagen voor de kopie-simulator.';
+
+    const cleanup = () => {
+      for (const file of [jsonPath, bakPath, distJsonPath, distBakPath]) {
+        if (existsSync(file)) {
+          unlinkSync(file);
+        }
+      }
+    };
+    cleanup();
+
+    try {
+      await page.goto('editor.html');
+      await expect(page.getByTestId('screen-scenario-editor')).toBeVisible();
+      await page.getByTestId('prompt-text').fill(editedPrompt);
+      await page.getByTestId('btn-save-json').click();
+      await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+      expect(existsSync(jsonPath)).toBe(true);
+      const saved = JSON.parse(readFileSync(jsonPath, 'utf8')) as {
+        scenario: { nodes: Array<{ prompt: { text: string } }> };
+      };
+      expect(saved.scenario.nodes[0]?.prompt.text).toBe(editedPrompt);
+      const served = await page.request.get('resources/scenarios/logopedie.json');
+      expect(served.ok()).toBe(true);
+      const servedBody = (await served.json()) as {
+        scenario: { nodes: Array<{ prompt: { text: string } }> };
+      };
+      expect(servedBody.scenario.nodes[0]?.prompt.text).toBe(editedPrompt);
+
+      await page.goto('/');
+      await expect(page.getByTestId('screen-home')).toBeVisible();
+      await expect(page.getByTestId('screen-error')).toHaveCount(0);
+      await page.getByTestId('btn-module-logopedie').click();
+      await page.getByTestId('btn-start-simulation').click();
+      await page.getByTestId('btn-start-intake').click();
+      await expect(page.getByTestId('client-response')).toHaveText(editedPrompt);
+      await page.evaluate(() => window.localStorage.clear());
+
+      mkdirSync(scenariosDir, { recursive: true });
+      writeFileSync(jsonPath, '{niet-geldig', 'utf8');
+      await page.goto('/');
+      await expect(page.getByTestId('screen-home')).toBeVisible();
+      await expect(page.getByTestId('screen-error')).toHaveCount(0);
+      await page.getByTestId('btn-module-nursing').click();
+      await expect(page.getByTestId('screen-nursing-home')).toBeVisible();
+      await page.goto('/');
+      await page.getByTestId('btn-module-logopedie').click();
+      await page.getByTestId('btn-start-simulation').click();
+      await page.getByTestId('btn-start-intake').click();
+      await expect(page.getByTestId('client-response')).toHaveText(originalPrompt);
+
+      unlinkSync(jsonPath);
+      if (existsSync(distJsonPath)) {
+        unlinkSync(distJsonPath);
+      }
+      await page.goto('/');
+      await expect(page.getByTestId('screen-home')).toBeVisible();
+      await expect(page.getByTestId('screen-error')).toHaveCount(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test('loads the extra sentence from logopedie.json when the editor opens', async ({ page }) => {
+    const extra = 'Extra zin uit logopedie.json.';
+    const seedPrompt = 'Hallo... u bent... eh... de... logopedie? Ja.';
+    await page.goto('editor.html');
+    await expect(page.getByTestId('screen-scenario-editor')).toBeVisible();
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText('Geladen: startkopie');
+    await page.getByTestId('prompt-text').fill(extra);
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByTestId('prompt-text')).toHaveValue(extra);
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText(
+      'Geladen: logopedie.json',
+    );
+    await expect(page.getByTestId('btn-open-json')).toBeVisible();
+    await expect(page.getByTestId('btn-download-json')).toBeVisible();
+
+    await page.getByTestId('btn-reset-seed').click();
+    await expect(page.getByTestId('prompt-text')).toHaveValue(seedPrompt);
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText('Geladen: startkopie');
+
+    writeFileSync(join(process.cwd(), 'resources', 'scenarios', 'logopedie.json'), '{niet-geldig');
+    await page.reload();
+    await expect(page.getByTestId('screen-scenario-editor')).toBeVisible();
+    await expect(page.getByTestId('prompt-text')).toHaveValue(seedPrompt);
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText('Geladen: startkopie');
+    await expect(page.getByTestId('editor-load-notice')).toContainText('ongeldig');
+    await expect(page.getByTestId('screen-error')).toHaveCount(0);
+  });
+
+  test('replaces a logopedie still, previews it, and shows it in this copy after save', async ({
+    page,
+  }) => {
+    const relative = join('logopedie', 'avatar', 'generated', 'erik', 'gefrustreerd.png');
+    const original = join(process.cwd(), 'resources', relative);
+    const bak = `${original}.bak`;
+    const distCopy = join(process.cwd(), 'dist', 'resources', relative);
+    const nursingVideo = join(process.cwd(), 'resources', 'verpleegkunde', 'Staat is pijn.mp4');
+    const nursingSize = statSync(nursingVideo).size;
+    const originalBytes = readFileSync(original);
+    const tinyPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+
+    const restore = () => {
+      writeFileSync(original, originalBytes);
+      if (existsSync(distCopy)) {
+        writeFileSync(distCopy, originalBytes);
+      }
+      if (existsSync(bak)) {
+        unlinkSync(bak);
+      }
+      spawnSync(process.execPath, [join(process.cwd(), 'scripts', 'generate-media-manifest.mjs')], {
+        cwd: process.cwd(),
+        stdio: 'ignore',
+      });
+      for (const leftover of [
+        join(process.cwd(), 'resources', 'scenarios', 'logopedie.json'),
+        join(process.cwd(), 'resources', 'scenarios', 'logopedie.json.bak'),
+        join(process.cwd(), 'dist', 'resources', 'scenarios', 'logopedie.json'),
+      ]) {
+        if (existsSync(leftover)) {
+          unlinkSync(leftover);
+        }
+      }
+    };
+
+    try {
+      await page.goto('editor.html');
+      await expect(page.getByTestId('editor-media')).toBeVisible();
+      await page.getByTestId('media-row-logopedie_avatar_generated_erik_gefrustreerd.png').click();
+      await page.getByTestId('btn-media-replace').click();
+      await page.getByTestId('input-media-replace').setInputFiles({
+        name: 'gefrustreerd.png',
+        mimeType: 'image/png',
+        buffer: tinyPng,
+      });
+      await expect(page.getByTestId('editor-media-preview-image')).toBeVisible();
+      await expect(page.getByTestId('editor-preview-stage')).not.toHaveCSS('transform', /scale/);
+      await page.getByTestId('btn-save-json').click();
+      await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+      expect(statSync(original).size).toBe(tinyPng.length);
+      expect(existsSync(bak)).toBe(true);
+
+      const served = await page.request.get(
+        'resources/logopedie/avatar/generated/erik/gefrustreerd.png',
+      );
+      expect(served.ok()).toBe(true);
+      expect((await served.body()).length).toBe(tinyPng.length);
+
+      await page.goto('/');
+      await expect(page.getByTestId('screen-home')).toBeVisible();
+      await page.getByTestId('btn-module-logopedie').click();
+      await page.getByTestId('btn-start-simulation').click();
+      await page.getByTestId('btn-start-intake').click();
+      await expect(page.getByTestId('screen-simulation')).toBeVisible();
+      const simImage = await page.request.get(
+        'resources/logopedie/avatar/generated/erik/gefrustreerd.png',
+      );
+      expect((await simImage.body()).length).toBe(tinyPng.length);
+      expect(statSync(nursingVideo).size).toBe(nursingSize);
+    } finally {
+      restore();
+    }
   });
 });

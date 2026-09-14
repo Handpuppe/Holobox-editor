@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
-import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { buildFeedback } from '../domain/feedback';
 import { calculateScores } from '../domain/scoring';
 import { activeDurationMs, formatDuration } from '../domain/session';
@@ -31,6 +30,7 @@ export function ResultsScreen() {
     startNursing,
     discardNursing,
     storageAvailable,
+    scenario,
   } = useAppState();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -43,7 +43,7 @@ export function ResultsScreen() {
     if (!session || session.status !== 'completed' || !session.conclusion) {
       return null;
     }
-    const score = calculateScores(session.history, aphasiaIntakeScenario);
+    const score = calculateScores(session.history, scenario);
     return {
       id: session.id,
       schemaVersion: session.schemaVersion,
@@ -57,7 +57,7 @@ export function ResultsScreen() {
       history: session.history,
       notes: session.notes,
       conclusion: session.conclusion,
-      feedback: buildFeedback(session.history, aphasiaIntakeScenario, score),
+      feedback: buildFeedback(session.history, scenario, score),
       flags: session.flags,
       module: 'logopedie',
       criticalErrors: session.history
@@ -65,7 +65,7 @@ export function ResultsScreen() {
         .map((event) => event.delayedFeedback),
       completedParts: session.history.map((event) => event.nodeId),
     };
-  }, [saved, session]);
+  }, [saved, scenario, session]);
 
   if (!derived) {
     return <Navigate to="/" replace />;

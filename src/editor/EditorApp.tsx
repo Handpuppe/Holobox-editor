@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
+import { avatarSourceChain } from '../media/logopedie/resolveAvatar';
 import {
   CONCLUSION_NODE_ID,
   type DecisionNode,
@@ -9,8 +10,11 @@ import {
 } from '../domain/types';
 import { validateScenario } from '../domain/scenarioValidation';
 import { cloneScenario } from './cloneScenario';
-import { downloadEnvelope } from './envelope';
+import { EditorMediaPanel } from './EditorMediaPanel';
+import { downloadEnvelope, parseLogopedieEnvelope, saveEnvelopeToCopy } from './envelope';
 import { EDITOR_FACES, faceLabel } from './faces';
+import { editorSourceLabel, loadEditorStartupScenario } from './loadSavedScenario';
+import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
   high: 'Goed (high)',
@@ -34,20 +38,120 @@ function replaceOption(node: DecisionNode, optionIndex: number, next: StudentOpt
 }
 
 export function EditorApp() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dirtyRef = useRef(false);
   const [scenario, setScenario] = useState<Scenario>(() => cloneScenario());
   const [selectedNodeId, setSelectedNodeId] = useState(scenario.startNodeId);
   const [previewOptionIndex, setPreviewOptionIndex] = useState(0);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [loadNotice, setLoadNotice] = useState<string | null>(null);
+  const [loadedLabel, setLoadedLabel] = useState(() => editorSourceLabel('seed'));
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadEditorStartupScenario().then((result) => {
+      if (cancelled || dirtyRef.current) {
+        return;
+      }
+      setScenario(result.scenario);
+      setSelectedNodeId(result.scenario.startNodeId);
+      setPreviewOptionIndex(0);
+      setLoadedLabel(result.label);
+      setLoadNotice(result.notice);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function markDirty() {
+    dirtyRef.current = true;
+  }
+
+  function resetToSeed() {
+    markDirty();
+    const seeded = cloneScenario();
+    setScenario(seeded);
+    setSelectedNodeId(seeded.startNodeId);
+    setPreviewOptionIndex(0);
+    setOpenError(null);
+    setLoadNotice(null);
+    setLoadedLabel(editorSourceLabel('seed'));
+    setSaveMessage(null);
+    setSaveError(null);
+    setStagedMedia([]);
+  }
+
+  async function openJsonFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    try {
+      const parsed = parseLogopedieEnvelope(await file.text());
+      if (!parsed.ok) {
+        setOpenError(parsed.error);
+        return;
+      }
+      markDirty();
+      setScenario(parsed.scenario);
+      setSelectedNodeId(parsed.scenario.startNodeId);
+      setPreviewOptionIndex(0);
+      setOpenError(null);
+      setLoadNotice(null);
+      setLoadedLabel(editorSourceLabel('json', file.name));
+    } catch {
+      setOpenError('Het bestand kon niet worden gelezen.');
+    }
+  }
+
+  async function saveToCopy() {
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    const result = await saveEnvelopeToCopy(scenario);
+    if (!result.ok) {
+      setSaving(false);
+      setSaveError(result.error);
+      return;
+    }
+    try {
+      for (const op of stagedMedia) {
+        await saveLogopedieMediaOp(op);
+      }
+      setStagedMedia([]);
+      setLoadedLabel(editorSourceLabel('json'));
+      setLoadNotice(null);
+      setSaveMessage(
+        'Opgeslagen in deze kopie. Start de simulator opnieuw om de wijziging te zien.',
+      );
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Media opslaan is mislukt.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const issues = useMemo(() => validateScenario(scenario), [scenario]);
   const node = scenario.nodes.find((item) => item.id === selectedNodeId) ?? scenario.nodes[0];
   const previewOption = node?.options[previewOptionIndex] ?? node?.options[0];
   const previewEmotion = previewOption?.emotion ?? node?.promptEmotion ?? 'neutral';
+  const previewAvatarPath = avatarSourceChain(previewEmotion)[0]?.relativePath ?? null;
+  const stagedAvatar = stagedMedia.find(
+    (op) => op.type !== 'delete' && op.relativePath === previewAvatarPath,
+  );
+  const avatarOverride =
+    stagedAvatar && stagedAvatar.type !== 'delete' ? stagedAvatar.previewUrl : null;
   const nextTargets = [
     ...scenario.nodes.map((item) => ({ id: item.id, label: `${item.phaseLabel} (${item.id})` })),
     { id: CONCLUSION_NODE_ID, label: 'Conclusie' },
   ];
 
   function updateSelected(next: DecisionNode) {
+    markDirty();
     setScenario((current) => replaceNode(current, next.id, next));
   }
 
@@ -60,21 +164,39 @@ export function EditorApp() {
           <p className="editor-meta">
             {scenario.title} · {scenario.id} · v{scenario.version}
           </p>
+          <p className="editor-loaded" data-testid="editor-loaded-source">
+            {loadedLabel}
+          </p>
         </div>
         <div className="editor-actions">
           <button
             type="button"
             className="btn btn-secondary"
             data-testid="btn-reset-seed"
-            onClick={() => {
-              const seeded = cloneScenario();
-              setScenario(seeded);
-              setSelectedNodeId(seeded.startNodeId);
-              setPreviewOptionIndex(0);
-            }}
+            onClick={resetToSeed}
           >
             Herstel startkopie
           </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            data-testid="btn-open-json"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Open JSON
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="visually-hidden"
+            data-testid="input-open-json"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              void openJsonFile(file);
+            }}
+          />
           <button
             type="button"
             className="btn"
@@ -83,13 +205,44 @@ export function EditorApp() {
           >
             Download JSON
           </button>
+          <button
+            type="button"
+            className="btn"
+            data-testid="btn-save-json"
+            onClick={() => void saveToCopy()}
+            disabled={saving}
+          >
+            Opslaan
+          </button>
         </div>
       </header>
 
       <p className="editor-notice">
-        Dit scherm start niet via de student-app. De JSON-download wordt niet ingeladen in de
-        simulatie. De avatar is een stilstaande still, zonder zoom.
+        Dit scherm start niet via de student-app. Bij openen wordt logopedie.json geladen als die
+        geldig is, anders de startkopie. Open JSON en Download JSON blijven beschikbaar. Opslaan
+        schrijft alleen naar deze kopie. De avatar is een stilstaande still, zonder zoom.
       </p>
+
+      {loadNotice ? (
+        <p className="editor-load-notice" data-testid="editor-load-notice" role="status">
+          {loadNotice}
+        </p>
+      ) : null}
+      {openError ? (
+        <p className="editor-open-error" data-testid="editor-open-error" role="alert">
+          Kan JSON niet openen: {openError}
+        </p>
+      ) : null}
+      {saveError ? (
+        <p className="editor-open-error" data-testid="editor-save-error" role="alert">
+          {saveError}
+        </p>
+      ) : null}
+      {saveMessage ? (
+        <p className="editor-save-ok" data-testid="editor-save-ok" role="status">
+          {saveMessage}
+        </p>
+      ) : null}
 
       <section
         className={`editor-issues${issues.length > 0 ? ' has-issues' : ''}`}
@@ -296,11 +449,27 @@ export function EditorApp() {
             {faceLabel(previewEmotion)}
           </p>
           <div className="editor-preview-stage" data-testid="editor-preview-stage">
-            <LogopedieAvatar emotion={previewEmotion} heightPx={420} name={scenario.client.name} />
+            <LogopedieAvatar
+              emotion={previewEmotion}
+              heightPx={420}
+              name={scenario.client.name}
+              srcOverride={avatarOverride}
+            />
           </div>
           <p className="muted">{previewOption?.clientResponse.text}</p>
         </aside>
       </div>
+
+      <EditorMediaPanel
+        staged={stagedMedia}
+        previewPath={previewAvatarPath}
+        onStage={(op) => {
+          setStagedMedia((current) => {
+            const without = current.filter((item) => item.relativePath !== op.relativePath);
+            return [...without, op];
+          });
+        }}
+      />
     </div>
   );
 }

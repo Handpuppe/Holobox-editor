@@ -47,6 +47,8 @@ describe('application flow', () => {
     const user = userEvent.setup();
     renderApp();
     expect(screen.getByTestId('screen-home')).toBeInTheDocument();
+    expect(screen.getByTestId('app-version')).toBeInTheDocument();
+    expect(screen.getByTestId('app-credit')).toHaveTextContent('Made by Rutger van Horssen');
     await startIntake(user);
     expect(screen.getByTestId('virtual-client')).toBeInTheDocument();
     const avatar = screen.getByTestId('logopedie-avatar');

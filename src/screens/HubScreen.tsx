@@ -84,6 +84,9 @@ export function HubScreen() {
       <p className="version-line" data-testid="app-version">
         {copy.versionLabel} {APP_VERSION}
       </p>
+      <p className="version-line" data-testid="app-credit">
+        Made by Rutger van Horssen
+      </p>
     </Screen>
   );
 }

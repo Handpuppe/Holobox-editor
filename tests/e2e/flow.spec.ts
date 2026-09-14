@@ -163,7 +163,7 @@ test.describe('core simulation routes', () => {
   });
 
   test('open an unknown route and recover to a valid screen', async ({ page }) => {
-    await page.goto('/bestaat-niet');
+    await page.goto('bestaat-niet');
     await expect(page.getByTestId('screen-error')).toBeVisible();
     await page.getByTestId('btn-error-home').click();
     await expect(page.getByTestId('screen-home')).toBeVisible();

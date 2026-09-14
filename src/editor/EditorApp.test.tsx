@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { renderApp } from '../test/renderApp';
 import { EditorApp } from './EditorApp';
-import { LOGOPEDIE_ENVELOPE_FILENAME } from './envelope';
+import { envelopeJson, LOGOPEDIE_ENVELOPE_FILENAME } from './envelope';
+import { cloneScenario } from './cloneScenario';
 
 describe('EditorApp', () => {
   it('edits a question on a clone, shows validation issues, and downloads JSON', async () => {
@@ -22,10 +23,17 @@ describe('EditorApp', () => {
       .mockImplementation(() => undefined);
 
     render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-load-notice')).toHaveTextContent(
+        'Geen opgeslagen logopedie.json gevonden.',
+      );
+    });
 
     expect(screen.getByTestId('screen-scenario-editor')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     expect(screen.getByTestId('editor-issues-ok')).toHaveTextContent('Geen validatiefouten.');
     expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-media')).toBeInTheDocument();
     expect(screen.getByTestId('editor-preview-stage')).not.toHaveStyle({
       transform: 'scale(1.5)',
     });
@@ -75,5 +83,167 @@ describe('EditorApp', () => {
     renderApp(['/logopedie']);
     expect(screen.queryByTestId('screen-scenario-editor')).not.toBeInTheDocument();
     expect(screen.getByTestId('screen-logopedie-home')).toBeInTheDocument();
+  });
+
+  it('opens a valid logopedie JSON envelope and can download it again', async () => {
+    const user = userEvent.setup();
+    const draft = cloneScenario();
+    draft.nodes[0]!.prompt.text = 'Vraag uit geopend JSON-bestand.';
+    const file = new File([envelopeJson(draft)], 'logopedie.json', { type: 'application/json' });
+    let captured: unknown;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((value) => {
+      captured = value;
+      return 'blob:editor-open';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-loaded-source')).toBeInTheDocument();
+    });
+    await user.upload(screen.getByTestId('input-open-json'), file);
+
+    expect(await screen.findByTestId('prompt-text')).toHaveValue('Vraag uit geopend JSON-bestand.');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: logopedie.json');
+    expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('btn-download-json'));
+    expect(captured).toBeInstanceOf(Blob);
+    const json = JSON.parse(await (captured as Blob).text()) as {
+      module: string;
+      scenario: { nodes: Array<{ prompt: { text: string } }> };
+    };
+    expect(json.module).toBe('logopedie');
+    expect(json.scenario.nodes[0]?.prompt.text).toBe('Vraag uit geopend JSON-bestand.');
+  });
+
+  it('shows a clear error for invalid JSON and keeps the current draft', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-loaded-source')).toBeInTheDocument();
+    });
+    const original = (screen.getByTestId('prompt-text') as HTMLTextAreaElement).value;
+    fireEvent.change(screen.getByTestId('prompt-text'), {
+      target: { value: 'Nog in de editor, niet overschrijven.' },
+    });
+
+    const file = new File(['{dit is geen json'], 'kapot.json', { type: 'application/json' });
+    await user.upload(screen.getByTestId('input-open-json'), file);
+
+    expect(await screen.findByTestId('editor-open-error')).toHaveTextContent(
+      'Dit bestand is geen geldige JSON.',
+    );
+    expect(screen.getByTestId('prompt-text')).toHaveValue('Nog in de editor, niet overschrijven.');
+    expect(original).not.toBe('Nog in de editor, niet overschrijven.');
+  });
+
+  it('saves the current draft to this copy via the editor API', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    });
+    fireEvent.change(screen.getByTestId('prompt-text'), {
+      target: { value: 'Vraag opgeslagen in deze kopie.' },
+    });
+    await user.click(screen.getByTestId('btn-save-json'));
+    expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+      'Opgeslagen in deze kopie',
+    );
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: logopedie.json');
+    const post = fetchMock.mock.calls.find((call) => call[1]?.method === 'POST');
+    const body = JSON.parse(String(post?.[1]?.body)) as {
+      schemaVersion: number;
+      module: string;
+      scenario: { nodes: Array<{ prompt: { text: string } }> };
+    };
+    expect(body.schemaVersion).toBe(1);
+    expect(body.module).toBe('logopedie');
+    expect(body.scenario.nodes[0]?.prompt.text).toBe('Vraag opgeslagen in deze kopie.');
+  });
+
+  it('loads saved logopedie.json on startup without Open JSON', async () => {
+    const draft = cloneScenario();
+    draft.nodes[0]!.prompt.text = 'Extra zin uit logopedie.json.';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        if ((init?.method ?? 'GET') === 'GET' || init?.method == null) {
+          return new Response(envelopeJson(draft), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }),
+    );
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('prompt-text')).toHaveValue('Extra zin uit logopedie.json.');
+    });
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: logopedie.json');
+    expect(screen.queryByTestId('editor-load-notice')).not.toBeInTheDocument();
+    expect(screen.getByTestId('btn-open-json')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-download-json')).toBeInTheDocument();
+  });
+
+  it('falls back to the start copy when saved JSON is invalid or missing', async () => {
+    const original = aphasiaIntakeScenario.nodes[0]?.prompt.text ?? '';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{niet-json', { status: 200 })),
+    );
+    const first = render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-load-notice')).toHaveTextContent('ongeldig');
+    });
+    expect(screen.getByTestId('prompt-text')).toHaveValue(original);
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    first.unmount();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('missing', { status: 404 })),
+    );
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-load-notice')).toHaveTextContent(
+        'Geen opgeslagen logopedie.json gevonden.',
+      );
+    });
+    expect(screen.getByTestId('prompt-text')).toHaveValue(original);
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+  });
+
+  it('restores the start copy after opening JSON', async () => {
+    const user = userEvent.setup();
+    const draft = cloneScenario();
+    draft.nodes[0]!.prompt.text = 'Tijdelijk geopend.';
+    const file = new File([envelopeJson(draft)], 'logopedie.json', { type: 'application/json' });
+    const original = aphasiaIntakeScenario.nodes[0]?.prompt.text ?? '';
+
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-loaded-source')).toBeInTheDocument();
+    });
+    await user.upload(screen.getByTestId('input-open-json'), file);
+    expect(await screen.findByTestId('prompt-text')).toHaveValue('Tijdelijk geopend.');
+
+    await user.click(screen.getByTestId('btn-reset-seed'));
+    expect(screen.getByTestId('prompt-text')).toHaveValue(original);
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
   });
 });

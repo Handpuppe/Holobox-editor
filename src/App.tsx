@@ -20,7 +20,7 @@ import { TeacherScreen } from './screens/TeacherScreen';
 import { useAppState } from './state/AppState';
 
 export function App() {
-  const { scenarioValid, scenarioIssues } = useAppState();
+  const { scenarioValid, scenarioIssues, overlayReady } = useAppState();
 
   return (
     <HoloboxShell>
@@ -29,6 +29,8 @@ export function App() {
       </a>
       {!scenarioValid ? (
         <ErrorScreen message="De scenario-configuratie is ongeldig." issues={scenarioIssues} />
+      ) : !overlayReady ? (
+        <LoadingScreen />
       ) : (
         <Routes>
           <Route path="/" element={<HubScreen />} />

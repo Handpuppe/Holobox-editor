@@ -572,6 +572,36 @@ a {
   overflow: hidden;
 }
 
+.sim-layout-logopedie {
+  display: block;
+  position: relative;
+}
+
+.sim-layout-logopedie .patient-area {
+  position: absolute;
+  inset: 0;
+  width: 1080px;
+  max-width: 1080px;
+  height: 1920px;
+}
+
+.sim-layout-logopedie .question-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+}
+
+.sim-layout-logopedie .patient-figure.has-logopedie-photo,
+.sim-layout-logopedie .logopedie-avatar-img {
+  max-width: 1080px;
+}
+
+.sim-layout-logopedie .patient-figure.has-logopedie-photo {
+  /* Half of the 216px panel: keep 1080×1920 size, center in the 864px slot. */
+  left: -108px;
+}
+
 .patient-area {
   position: relative;
   width: 864px;

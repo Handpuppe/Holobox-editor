@@ -75,7 +75,7 @@ export function SimulationScreen() {
   };
 
   return (
-    <div className="sim-layout" data-testid="screen-simulation">
+    <div className="sim-layout sim-layout-logopedie" data-testid="screen-simulation">
       <h1 id="screen-title" className="visually-hidden" tabIndex={-1}>
         Intake met {scenario.client.name}
       </h1>

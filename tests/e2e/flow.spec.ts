@@ -111,6 +111,19 @@ test.describe('core simulation routes', () => {
     await expect(page.getByRole('alert').first()).toBeVisible();
   });
 
+  test('goes from the logopedie conclusion to the hub in one click', async ({ page }) => {
+    await startIntake(page);
+    await page.getByTestId('btn-end').click();
+    await page.getByTestId('btn-confirm-end').click();
+    await expect(page.getByTestId('screen-conclusion')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Hoofdmenu' })).toBeVisible();
+    await page.getByTestId('btn-conclusion-home').click();
+    await expect(page.getByTestId('screen-home')).toBeVisible();
+    await expect(page.getByTestId('btn-module-logopedie')).toBeVisible();
+    await expect(page.getByTestId('btn-module-nursing')).toBeVisible();
+    await expect(page).toHaveURL(/\/Holobox-editor\/?$/);
+  });
+
   test('complete the critical flow using the keyboard only', async ({ page }) => {
     await page.goto('/');
     await page.getByTestId('btn-module-logopedie').focus();

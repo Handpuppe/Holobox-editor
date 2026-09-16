@@ -34,14 +34,24 @@ export function ConclusionScreen() {
       title="Voorlopige klinische conclusie"
       testId="screen-conclusion"
       footer={
-        <button
-          type="submit"
-          form="conclusion-form"
-          className="btn"
-          data-testid="btn-submit-conclusion"
-        >
-          {copy.submitConclusion}
-        </button>
+        <>
+          <button
+            type="submit"
+            form="conclusion-form"
+            className="btn"
+            data-testid="btn-submit-conclusion"
+          >
+            {copy.submitConclusion}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            data-testid="btn-conclusion-home"
+            onClick={() => void navigate('/')}
+          >
+            Hoofdmenu
+          </button>
+        </>
       }
     >
       <p className="lead">

@@ -189,6 +189,20 @@ describe('application flow', () => {
     expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
   });
 
+  it('goes from the logopedie conclusion to the hub in one click', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await startIntake(user);
+    await user.click(screen.getByTestId('btn-end'));
+    await user.click(screen.getByTestId('btn-confirm-end'));
+    expect(await screen.findByTestId('screen-conclusion')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hoofdmenu' })).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-conclusion-home'));
+    expect(screen.getByTestId('screen-home')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-module-logopedie')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-module-nursing')).toBeInTheDocument();
+  });
+
   it('supports keyboard navigation on the home screen', async () => {
     const user = userEvent.setup();
     renderApp();

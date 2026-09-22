@@ -210,6 +210,49 @@ a {
   gap: 24px;
 }
 
+.scenario-tile-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scenario-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--touch);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-card);
+  cursor: pointer;
+  transform: none;
+}
+
+.scenario-tile:hover,
+.scenario-tile:active {
+  border-color: var(--color-accent);
+}
+
+.scenario-tile-module {
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.scenario-tile-title {
+  font-size: var(--text-h2);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.scenario-tile-summary {
+  color: var(--color-text-muted);
+}
+
 .card {
   background: #ffffff;
   border: 1px solid var(--color-border);

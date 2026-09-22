@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -152,6 +153,10 @@ interface AppContextValue {
   saveNursingResult: () => SavedResult | null;
   saveTeacher: (settings: TeacherSettings) => void;
   saveAudio: (audio: AudioPreferences) => void;
+  selectLogopedieScenario: (next: Scenario) => void;
+  selectDefaultLogopedie: () => void;
+  selectNursingScenario: (next: NursingScenario) => void;
+  selectDefaultNursing: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -182,6 +187,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const initialRead = useMemo(() => storage.read(), [storage]);
   const [scenario, setScenario] = useState<Scenario>(aphasiaIntakeScenario);
   const [nursingScenario, setNursingScenario] = useState<NursingScenario>(builtInNursingScenario);
+  const defaultLogopedieRef = useRef(aphasiaIntakeScenario);
+  const defaultNursingRef = useRef(builtInNursingScenario);
   const [overlayReady, setOverlayReady] = useState(() => import.meta.env.MODE === 'test');
   const [store, setStore] = useState<StorageSchema>(initialRead.data);
   const [audioBlocked, setAudioBlocked] = useState(false);
@@ -215,12 +222,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return;
         }
+        defaultLogopedieRef.current = loadedLogopedie.scenario;
+        defaultNursingRef.current = loadedNursing.scenario;
         setScenario(loadedLogopedie.scenario);
         setNursingScenario(loadedNursing.scenario);
         setOverlayReady(true);
       })
       .catch(() => {
         if (!cancelled) {
+          defaultLogopedieRef.current = aphasiaIntakeScenario;
+          defaultNursingRef.current = builtInNursingScenario;
           setScenario(aphasiaIntakeScenario);
           setNursingScenario(builtInNursingScenario);
           setOverlayReady(true);
@@ -350,6 +361,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       saveAudio: (audio: AudioPreferences) => {
         storage.saveAudio(audio);
         setStore(storage.read().data);
+      },
+      selectLogopedieScenario: (next: Scenario) => {
+        setScenario(next);
+      },
+      selectDefaultLogopedie: () => {
+        setScenario(defaultLogopedieRef.current);
+      },
+      selectNursingScenario: (next: NursingScenario) => {
+        setNursingScenario(next);
+      },
+      selectDefaultNursing: () => {
+        setNursingScenario(defaultNursingRef.current);
       },
     }),
     [

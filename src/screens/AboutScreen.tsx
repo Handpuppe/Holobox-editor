@@ -1,20 +1,11 @@
-import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
 import { APP_VERSION, RUBRIC_VERSION, SCENARIO_VERSION } from '../domain/types';
 
 export function AboutScreen() {
-  const navigate = useNavigate();
   return (
-    <Screen
-      title={copy.aboutTraining}
-      testId="screen-about"
-      footer={
-        <button type="button" className="btn" onClick={() => void navigate('/')}>
-          {copy.home}
-        </button>
-      }
-    >
+    <Screen title={copy.aboutTraining} testId="screen-about" footer={<BackButton />}>
       <p className="lead">{copy.appName}</p>
       <p className="notice">
         {copy.fictionalNotice} {copy.educationalNotice}

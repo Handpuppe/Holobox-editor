@@ -23,10 +23,13 @@ function mockReducedMotion() {
 
 async function startIntake(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByTestId('btn-module-logopedie'));
+  expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
+  await user.click(screen.getByTestId('btn-scenario-tile-default'));
   await user.click(screen.getByTestId('btn-start-simulation'));
   expect(screen.getByTestId('screen-briefing')).toBeInTheDocument();
   await user.click(screen.getByTestId('btn-start-intake'));
   expect(screen.getByTestId('screen-simulation')).toBeInTheDocument();
+  expect(screen.queryByTestId('btn-back')).not.toBeInTheDocument();
 }
 
 async function choose(user: ReturnType<typeof userEvent.setup>, optionId: string) {
@@ -41,6 +44,35 @@ describe('application flow', () => {
   beforeEach(() => {
     mockReducedMotion();
     window.localStorage.clear();
+  });
+
+  it('opens a logopedie catalog then the default tile', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByTestId('btn-module-logopedie'));
+    expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-scenario-tile-default')).toHaveTextContent('logopedie');
+    await user.click(screen.getByTestId('btn-back'));
+    expect(screen.getByTestId('screen-home')).toBeInTheDocument();
+  });
+
+  it('opens a nursing catalog then the default tile into the simulation', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByTestId('btn-module-nursing'));
+    expect(screen.getByTestId('screen-nursing-catalog')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-scenario-tile-default'));
+    expect(screen.getByTestId('screen-nursing-home')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-back'));
+    expect(screen.getByTestId('screen-nursing-catalog')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-scenario-tile-default'));
+    expect(screen.getByTestId('screen-nursing-home')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-start-nursing'));
+    expect(screen.getByTestId('screen-nursing-briefing')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-back')).toHaveTextContent('Terug');
+    await user.click(screen.getByTestId('btn-start-nursing-sim'));
+    expect(screen.getByTestId('screen-nursing-simulation')).toBeInTheDocument();
+    expect(screen.queryByTestId('btn-back')).not.toBeInTheDocument();
   });
 
   it('starts a simulation from the home screen', async () => {
@@ -106,7 +138,7 @@ describe('application flow', () => {
     await startIntake(user);
     await choose(user, 'd1-high');
     first.unmount();
-    renderApp(['/logopedie']);
+    renderApp(['/logopedie/home']);
     expect(screen.getByTestId('dialog-resume')).toBeInTheDocument();
     await user.click(screen.getByTestId('btn-resume-session'));
     expect(screen.getByTestId('screen-simulation')).toBeInTheDocument();

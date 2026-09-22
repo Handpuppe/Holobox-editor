@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
 import { Dialog } from '../components/Dialog';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
@@ -13,15 +14,7 @@ export function PreviousResultsScreen() {
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   return (
-    <Screen
-      title={copy.previousResults}
-      testId="screen-history"
-      footer={
-        <button type="button" className="btn" onClick={() => void navigate('/')}>
-          {copy.home}
-        </button>
-      }
-    >
+    <Screen title={copy.previousResults} testId="screen-history" footer={<BackButton />}>
       {store.results.length === 0 ? (
         <p className="notice" data-testid="empty-history">
           {copy.emptyHistory}

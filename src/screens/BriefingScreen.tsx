@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
 import { useAppState } from '../state/AppState';
@@ -26,13 +27,7 @@ export function BriefingScreen() {
           >
             {copy.startIntake}
           </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => void navigate('/logopedie')}
-          >
-            {copy.back}
-          </button>
+          <BackButton fallback="/logopedie/home" />
         </>
       }
     >

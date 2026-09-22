@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
-import { copy } from '../content/nl';
 import { listModuleMedia } from '../media/matching';
 import { mediaSlots } from '../media/scenarioMedia';
 import { defaultTeacherSettings } from '../media/teacherDefaults';
@@ -38,9 +38,7 @@ export function TeacherScreen() {
           >
             Standaard herstellen
           </button>
-          <button type="button" className="btn btn-secondary" onClick={() => void navigate('/')}>
-            {copy.home}
-          </button>
+          <BackButton />
         </>
       }
     >

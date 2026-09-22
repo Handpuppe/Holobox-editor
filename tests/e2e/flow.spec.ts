@@ -111,6 +111,19 @@ test.describe('core simulation routes', () => {
     await expect(page.getByRole('alert').first()).toBeVisible();
   });
 
+  test('catalog Terug returns to the hub before simulation', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('btn-module-logopedie').click();
+    await expect(page.getByTestId('screen-logopedie-catalog')).toBeVisible();
+    await expect(page.getByTestId('btn-back')).toHaveText('Terug');
+    await page.getByTestId('btn-back').click();
+    await expect(page.getByTestId('screen-home')).toBeVisible();
+    await page.getByTestId('btn-module-nursing').click();
+    await expect(page.getByTestId('screen-nursing-catalog')).toBeVisible();
+    await page.getByTestId('btn-back').click();
+    await expect(page.getByTestId('screen-home')).toBeVisible();
+  });
+
   test('goes from the logopedie conclusion to the hub in one click', async ({ page }) => {
     await startIntake(page);
     await page.getByTestId('btn-end').click();
@@ -127,6 +140,8 @@ test.describe('core simulation routes', () => {
   test('complete the critical flow using the keyboard only', async ({ page }) => {
     await page.goto('/');
     await page.getByTestId('btn-module-logopedie').focus();
+    await page.keyboard.press('Enter');
+    await page.getByTestId('btn-scenario-tile-default').focus();
     await page.keyboard.press('Enter');
     await page.getByTestId('btn-start-simulation').focus();
     await page.keyboard.press('Enter');
@@ -154,6 +169,7 @@ test.describe('core simulation routes', () => {
     await expect(page.getByTestId('screen-home')).toBeVisible();
     await expect(page.getByTestId('storage-notice')).toBeVisible();
     await page.getByTestId('btn-module-logopedie').click();
+    await page.getByTestId('btn-scenario-tile-default').click();
     await page.getByTestId('btn-start-simulation').click();
     await expect(page.getByTestId('screen-briefing')).toBeVisible();
   });
@@ -161,6 +177,7 @@ test.describe('core simulation routes', () => {
   test('nursing ABCDE/SBAR ideal route stays within the 80/20 layout', async ({ page }) => {
     await page.goto('/');
     await page.getByTestId('btn-module-nursing').click();
+    await page.getByTestId('btn-scenario-tile-default').click();
     await page.getByTestId('btn-start-nursing').click();
     await page.getByTestId('btn-start-nursing-sim').click();
     await expect(page.getByTestId('screen-nursing-simulation')).toBeVisible();

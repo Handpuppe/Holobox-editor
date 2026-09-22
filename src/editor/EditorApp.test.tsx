@@ -6,6 +6,7 @@ import { renderApp } from '../test/renderApp';
 import { EditorApp } from './EditorApp';
 import { envelopeJson, LOGOPEDIE_ENVELOPE_FILENAME } from './envelope';
 import { cloneScenario } from './cloneScenario';
+import { buildEditorPackageZip } from './scenarioPackage';
 
 describe('EditorApp', () => {
   it('edits a question on a clone, shows validation issues, and downloads JSON', async () => {
@@ -85,7 +86,7 @@ describe('EditorApp', () => {
   it('is not part of the student simulation routes', () => {
     renderApp(['/logopedie']);
     expect(screen.queryByTestId('screen-scenario-editor')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-logopedie-home')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
   });
 
   it('opens a valid logopedie JSON envelope and can download it again', async () => {
@@ -435,5 +436,95 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('dialog-save-blocked')).toBeInTheDocument();
     expect(screen.getByTestId('dialog-save-blocked-list')).toHaveTextContent('zonder video');
     expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false);
+  });
+
+  it('exports the current logopedie draft to this copy', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST' && String(url).includes('export-package')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            folder: 'exports/logopedie-test',
+            zip: 'exports/logopedie-test.zip',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-export-package')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByTestId('prompt-text'), {
+      target: { value: 'Tekst voor export-pakket.' },
+    });
+    await user.click(screen.getByTestId('btn-export-package'));
+    expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+      'exports/logopedie-test.zip',
+    );
+    const post = fetchMock.mock.calls.find((call) => String(call[0]).includes('export-package'));
+    const body = JSON.parse(String(post?.[1]?.body)) as {
+      module: string;
+      envelopeText: string;
+    };
+    expect(body.module).toBe('logopedie');
+    expect(body.envelopeText).toContain('Tekst voor export-pakket.');
+    expect(screen.getByTestId('btn-download-json')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-open-json')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-save-json')).toBeInTheDocument();
+  });
+
+  it('imports a valid logopedie package and blocks an incomplete one', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const draft = cloneScenario();
+    draft.nodes[0]!.prompt.text = 'Tekst uit geïmporteerd pakket.';
+    const zip = buildEditorPackageZip('logopedie', envelopeJson(draft), [
+      {
+        relativePath: 'logopedie/avatar/generated/erik/neutraal.png',
+        data: new Uint8Array([1, 2]),
+      },
+    ]);
+    const zipBytes = Uint8Array.from(zip);
+    const file = new File([zipBytes], 'logopedie-pakket.zip', {
+      type: 'application/zip',
+    });
+
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('input-import-package')).toBeInTheDocument();
+    });
+    await user.upload(screen.getByTestId('input-import-package'), file);
+    expect(await screen.findByTestId('prompt-text')).toHaveValue('Tekst uit geïmporteerd pakket.');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+      'Geladen: logopedie-pakket.zip',
+    );
+    expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+    const mediaPost = fetchMock.mock.calls.find((call) => String(call[0]).includes('import-media'));
+    expect(mediaPost).toBeTruthy();
+
+    const broken = cloneScenario();
+    broken.nodes[0]!.prompt.text = '';
+    const brokenZip = buildEditorPackageZip('logopedie', envelopeJson(broken), []);
+    await user.upload(
+      screen.getByTestId('input-import-package'),
+      new File([Uint8Array.from(brokenZip)], 'kapot.zip', { type: 'application/zip' }),
+    );
+    expect(await screen.findByTestId('dialog-save-blocked')).toHaveTextContent(
+      'Importeren geblokkeerd',
+    );
+    expect(screen.getByTestId('prompt-text')).toHaveValue('Tekst uit geïmporteerd pakket.');
   });
 });

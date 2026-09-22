@@ -12,10 +12,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+import { unzipStore, zipStore, type ZipEntry } from './src/editor/zipStore';
 
 const packageJson = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
@@ -23,6 +24,7 @@ const packageJson = JSON.parse(
 
 const MAX_EDITOR_BODY_BYTES = 8_000_000;
 const MAX_EDITOR_MEDIA_BYTES = 16_000_000;
+const MAX_EDITOR_PACKAGE_BYTES = 64_000_000;
 
 const APP_BASE = '/Holobox-editor/';
 const LEGACY_LOCAL_BASE = '/HoloboxVPKenLogo';
@@ -62,6 +64,31 @@ function isNursingEditorMediaPath(url: string | undefined): boolean {
   return (
     path === '/editor-api/verpleegkunde-media' || path.includes('/editor-api/verpleegkunde-media')
   );
+}
+
+function isEditorExportPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/export-package' || path.includes('/editor-api/export-package');
+}
+
+function isEditorExportFilePath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/export-file' || path.includes('/editor-api/export-file');
+}
+
+function isEditorImportMediaPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/import-media' || path.includes('/editor-api/import-media');
+}
+
+function isScenarioTilesPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/app-api/scenario-tiles' || path.includes('/app-api/scenario-tiles');
+}
+
+function isScenarioEnvelopePath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/app-api/scenario-envelope' || path.includes('/app-api/scenario-envelope');
 }
 
 const LOGOPEDIE_IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif']);
@@ -476,6 +503,444 @@ function editorNursingMediaMiddleware(resourcesRoot: string, projectRoot: string
   };
 }
 
+function stampPackageName(moduleId: string): string {
+  return `${moduleId}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+}
+
+function collectZipEntries(dir: string, root = dir): ZipEntry[] {
+  if (!existsSync(dir)) {
+    return [];
+  }
+  const entries: ZipEntry[] = [];
+  for (const item of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, item.name);
+    if (item.isDirectory()) {
+      entries.push(...collectZipEntries(full, root));
+      continue;
+    }
+    if (item.name.endsWith('.bak')) {
+      continue;
+    }
+    entries.push({
+      name: relative(root, full).split(sep).join('/'),
+      data: new Uint8Array(readFileSync(full)),
+    });
+  }
+  return entries;
+}
+
+function copyModuleMedia(
+  resourcesRoot: string,
+  moduleId: 'logopedie' | 'verpleegkunde',
+  target: string,
+): void {
+  const source = join(resourcesRoot, moduleId);
+  if (!existsSync(source)) {
+    mkdirSync(target, { recursive: true });
+    return;
+  }
+  mkdirSync(target, { recursive: true });
+  cpSync(source, target, {
+    recursive: true,
+    filter: (src) => !src.endsWith('.bak'),
+  });
+}
+
+function editorPackageMiddleware(resourcesRoot: string, projectRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (isEditorExportFilePath(req.url)) {
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { ok: false, error: 'Alleen GET is toegestaan.' });
+        return;
+      }
+      const url = new URL(req.url ?? '', 'http://127.0.0.1');
+      const rel = (url.searchParams.get('path') ?? '').replaceAll('\\', '/').replace(/^\/+/, '');
+      if (
+        !rel.startsWith('exports/') ||
+        rel.includes('..') ||
+        !rel.toLowerCase().endsWith('.zip')
+      ) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'Alleen zip-bestanden in exports/ zijn toegestaan.',
+        });
+        return;
+      }
+      const abs = resolve(projectRoot, rel);
+      const root = resolve(projectRoot, 'exports');
+      if (abs === root || !abs.startsWith(root + sep) || !existsSync(abs)) {
+        sendJson(res, 404, { ok: false, error: 'Exportbestand niet gevonden.' });
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${basename(abs)}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      createReadStream(abs).pipe(res);
+      return;
+    }
+    if (isEditorExportPath(req.url)) {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+        return;
+      }
+      void readRequestBody(req, MAX_EDITOR_PACKAGE_BYTES)
+        .then((body) => {
+          let data: {
+            module?: unknown;
+            envelopeText?: unknown;
+            extraMedia?: Array<{ relativePath?: unknown; contentBase64?: unknown }>;
+          };
+          try {
+            data = JSON.parse(body) as typeof data;
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'Export-JSON is ongeldig.' });
+            return;
+          }
+          const moduleId =
+            data.module === 'logopedie' || data.module === 'verpleegkunde' ? data.module : null;
+          if (!moduleId || typeof data.envelopeText !== 'string') {
+            return sendJson(res, 400, {
+              ok: false,
+              error: 'module en envelopeText zijn verplicht.',
+            });
+          }
+          let envelope: { module?: unknown };
+          try {
+            envelope = JSON.parse(data.envelopeText) as { module?: unknown };
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'envelopeText is geen geldige JSON.' });
+            return;
+          }
+          if (envelope.module !== moduleId) {
+            sendJson(res, 400, { ok: false, error: 'De envelope hoort niet bij deze module.' });
+            return;
+          }
+          const name = stampPackageName(moduleId);
+          const outDir = join(projectRoot, 'exports', name);
+          mkdirSync(join(outDir, 'media', moduleId), { recursive: true });
+          writeFileSync(
+            join(outDir, 'holobox-package.json'),
+            `${JSON.stringify(
+              {
+                schemaVersion: 1,
+                kind: 'holobox-editor-package',
+                module: moduleId,
+                exportedAt: new Date().toISOString(),
+              },
+              null,
+              2,
+            )}\n`,
+            'utf8',
+          );
+          writeFileSync(
+            join(outDir, `${moduleId}.json`),
+            data.envelopeText.endsWith('\n') ? data.envelopeText : `${data.envelopeText}\n`,
+            'utf8',
+          );
+          copyModuleMedia(resourcesRoot, moduleId, join(outDir, 'media', moduleId));
+          for (const item of data.extraMedia ?? []) {
+            const rel =
+              moduleId === 'logopedie'
+                ? safeLogopedieRel(String(item.relativePath ?? ''), resourcesRoot)
+                : safeNursingRel(String(item.relativePath ?? ''), resourcesRoot);
+            if (!rel || typeof item.contentBase64 !== 'string') {
+              sendJson(res, 400, {
+                ok: false,
+                error: 'Extra media in het pakket liggen buiten de modulemap.',
+              });
+              return;
+            }
+            const dest = join(outDir, 'media', rel);
+            mkdirSync(dirname(dest), { recursive: true });
+            writeFileSync(dest, Buffer.from(item.contentBase64, 'base64'));
+          }
+          const zipPath = join(projectRoot, 'exports', `${name}.zip`);
+          writeFileSync(zipPath, Buffer.from(zipStore(collectZipEntries(outDir))));
+          sendJson(res, 200, {
+            ok: true,
+            folder: `exports/${name}`,
+            zip: `exports/${name}.zip`,
+          });
+        })
+        .catch((error: unknown) => {
+          if (error instanceof Error && error.message === 'too-large') {
+            sendJson(res, 413, { ok: false, error: 'Het exportpakket is te groot.' });
+            return;
+          }
+          sendJson(res, 500, { ok: false, error: 'Exporteren is mislukt.' });
+        });
+      return;
+    }
+    if (!isEditorImportMediaPath(req.url)) {
+      next();
+      return;
+    }
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+      return;
+    }
+    void readRequestBody(req, MAX_EDITOR_PACKAGE_BYTES)
+      .then((body) => {
+        let data: {
+          module?: unknown;
+          files?: Array<{ relativePath?: unknown; contentBase64?: unknown }>;
+        };
+        try {
+          data = JSON.parse(body) as typeof data;
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'Import-JSON is ongeldig.' });
+          return;
+        }
+        const moduleId =
+          data.module === 'logopedie' || data.module === 'verpleegkunde' ? data.module : null;
+        if (!moduleId || !Array.isArray(data.files)) {
+          sendJson(res, 400, { ok: false, error: 'module en files zijn verplicht.' });
+          return;
+        }
+        const written: string[] = [];
+        for (const item of data.files) {
+          const rel =
+            moduleId === 'logopedie'
+              ? safeLogopedieRel(String(item.relativePath ?? ''), resourcesRoot)
+              : safeNursingRel(String(item.relativePath ?? ''), resourcesRoot);
+          if (!rel || typeof item.contentBase64 !== 'string' || item.contentBase64.length === 0) {
+            sendJson(res, 400, {
+              ok: false,
+              error: 'Een mediabestand in het pakket is ongeldig of ligt buiten de modulemap.',
+            });
+            return;
+          }
+          const target = join(resourcesRoot, rel);
+          if (existsSync(target)) {
+            copyFileSync(target, `${target}.bak`);
+          }
+          mkdirSync(dirname(target), { recursive: true });
+          writeFileSync(target, Buffer.from(item.contentBase64, 'base64'));
+          const distCopy = join(projectRoot, 'dist', 'resources', rel);
+          if (existsSync(join(projectRoot, 'dist'))) {
+            mkdirSync(dirname(distCopy), { recursive: true });
+            writeFileSync(distCopy, Buffer.from(item.contentBase64, 'base64'));
+          }
+          written.push(rel);
+        }
+        regenerateMediaManifest(projectRoot);
+        sendJson(res, 200, { ok: true, files: written });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'Het importpakket is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'Importeren van media is mislukt.' });
+      });
+  };
+}
+
+function envelopeSummary(
+  text: string,
+  moduleId: 'logopedie' | 'verpleegkunde',
+): { title: string; summary: string } | null {
+  try {
+    const data = JSON.parse(text) as {
+      module?: unknown;
+      scenario?: { title?: unknown; client?: { name?: unknown } };
+      meta?: { title?: unknown };
+      patient?: { name?: unknown; background?: unknown };
+    };
+    if (data.module !== moduleId) {
+      return null;
+    }
+    if (moduleId === 'logopedie') {
+      const title =
+        typeof data.scenario?.title === 'string' ? data.scenario.title : 'Logopedie-scenario';
+      const name =
+        typeof data.scenario?.client?.name === 'string'
+          ? data.scenario.client.name
+          : 'fictieve cliënt';
+      return { title, summary: `Opgeslagen casus met ${name}.` };
+    }
+    const title = typeof data.meta?.title === 'string' ? data.meta.title : 'Verpleegkunde-scenario';
+    const name = typeof data.patient?.name === 'string' ? data.patient.name : 'fictieve patiënt';
+    return { title, summary: `Opgeslagen casus met ${name}.` };
+  } catch {
+    return null;
+  }
+}
+
+function envelopeFromZip(zipPath: string, moduleId: 'logopedie' | 'verpleegkunde'): string | null {
+  try {
+    const entries = unzipStore(new Uint8Array(readFileSync(zipPath)));
+    const wanted = `${moduleId}.json`;
+    const entry = entries.find((item) => item.name.replaceAll('\\', '/') === wanted);
+    return entry ? new TextDecoder().decode(entry.data) : null;
+  } catch {
+    return null;
+  }
+}
+
+function listExtraScenarioTiles(
+  moduleId: 'logopedie' | 'verpleegkunde',
+  resourcesRoot: string,
+  projectRoot: string,
+): Array<{ id: string; title: string; summary: string; module: string; source: 'file' }> {
+  const tiles: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    module: string;
+    source: 'file';
+  }> = [];
+  const skip = `${moduleId}.json`;
+  const scenariosDir = join(resourcesRoot, 'scenarios');
+  if (existsSync(scenariosDir)) {
+    for (const name of readdirSync(scenariosDir)) {
+      if (!name.endsWith('.json') || name.endsWith('.bak') || name === skip) {
+        continue;
+      }
+      try {
+        const text = readFileSync(join(scenariosDir, name), 'utf8');
+        const info = envelopeSummary(text, moduleId);
+        if (info) {
+          tiles.push({
+            id: `scenarios/${name}`,
+            title: info.title,
+            summary: info.summary,
+            module: moduleId,
+            source: 'file',
+          });
+        }
+      } catch {
+        // skip unreadable files
+      }
+    }
+  }
+  const exportsDir = join(projectRoot, 'exports');
+  if (!existsSync(exportsDir)) {
+    return tiles;
+  }
+  for (const name of readdirSync(exportsDir)) {
+    const full = join(exportsDir, name);
+    try {
+      if (name.endsWith('.zip')) {
+        const text = envelopeFromZip(full, moduleId);
+        const info = text ? envelopeSummary(text, moduleId) : null;
+        if (info) {
+          tiles.push({
+            id: `exports/${name}`,
+            title: info.title,
+            summary: info.summary,
+            module: moduleId,
+            source: 'file',
+          });
+        }
+        continue;
+      }
+      if (!statSync(full).isDirectory()) {
+        continue;
+      }
+      const jsonPath = join(full, `${moduleId}.json`);
+      if (!existsSync(jsonPath)) {
+        continue;
+      }
+      const info = envelopeSummary(readFileSync(jsonPath, 'utf8'), moduleId);
+      if (info) {
+        tiles.push({
+          id: `exports/${name}/${moduleId}.json`,
+          title: info.title,
+          summary: info.summary,
+          module: moduleId,
+          source: 'file',
+        });
+      }
+    } catch {
+      // skip broken exports
+    }
+  }
+  return tiles;
+}
+
+function resolveCatalogFile(
+  id: string,
+  resourcesRoot: string,
+  projectRoot: string,
+): { type: 'json'; path: string } | { type: 'zip'; path: string } | null {
+  const normalized = id.replaceAll('\\', '/').replace(/^\/+/, '');
+  if (normalized.includes('..')) {
+    return null;
+  }
+  if (normalized.startsWith('scenarios/') && normalized.endsWith('.json')) {
+    const abs = resolve(resourcesRoot, normalized);
+    const root = resolve(resourcesRoot, 'scenarios');
+    if (abs === root || !abs.startsWith(root + sep) || !existsSync(abs)) {
+      return null;
+    }
+    return { type: 'json', path: abs };
+  }
+  if (normalized.startsWith('exports/') && normalized.endsWith('.zip')) {
+    const abs = resolve(projectRoot, normalized);
+    const root = resolve(projectRoot, 'exports');
+    if (abs === root || !abs.startsWith(root + sep) || !existsSync(abs)) {
+      return null;
+    }
+    return { type: 'zip', path: abs };
+  }
+  if (normalized.startsWith('exports/') && normalized.endsWith('.json')) {
+    const abs = resolve(projectRoot, normalized);
+    const root = resolve(projectRoot, 'exports');
+    if (abs === root || !abs.startsWith(root + sep) || !existsSync(abs)) {
+      return null;
+    }
+    return { type: 'json', path: abs };
+  }
+  return null;
+}
+
+function scenarioCatalogMiddleware(resourcesRoot: string, projectRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (isScenarioTilesPath(req.url)) {
+      const url = new URL(req.url ?? '', 'http://127.0.0.1');
+      const moduleId = url.searchParams.get('module');
+      if (moduleId !== 'logopedie' && moduleId !== 'verpleegkunde') {
+        sendJson(res, 400, { ok: false, tiles: [] });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        tiles: listExtraScenarioTiles(moduleId, resourcesRoot, projectRoot),
+      });
+      return;
+    }
+    if (!isScenarioEnvelopePath(req.url)) {
+      next();
+      return;
+    }
+    const url = new URL(req.url ?? '', 'http://127.0.0.1');
+    const moduleId = url.searchParams.get('module');
+    const id = url.searchParams.get('id') ?? '';
+    if (moduleId !== 'logopedie' && moduleId !== 'verpleegkunde') {
+      sendJson(res, 400, { ok: false, error: 'Onbekende module.' });
+      return;
+    }
+    const target = resolveCatalogFile(id, resourcesRoot, projectRoot);
+    if (!target) {
+      sendJson(res, 404, { ok: false, error: 'Scenario niet gevonden.' });
+      return;
+    }
+    const text =
+      target.type === 'zip'
+        ? envelopeFromZip(target.path, moduleId)
+        : existsSync(target.path)
+          ? readFileSync(target.path, 'utf8')
+          : null;
+    if (!text) {
+      sendJson(res, 404, { ok: false, error: 'Scenario niet gevonden.' });
+      return;
+    }
+    sendJson(res, 200, { ok: true, envelopeText: text });
+  };
+}
+
 function resourcesPlugin(): Plugin {
   const resourcesRoot = resolve(fileURLToPath(new URL('./resources', import.meta.url)));
   const distResourcesRoot = resolve(fileURLToPath(new URL('./dist/resources', import.meta.url)));
@@ -525,6 +990,10 @@ function resourcesPlugin(): Plugin {
       server.middlewares.use(
         editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
+      server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(
+        scenarioCatalogMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(serveResources);
     },
     configurePreviewServer(server) {
@@ -536,6 +1005,10 @@ function resourcesPlugin(): Plugin {
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(
         editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
+      server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(
+        scenarioCatalogMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
       server.middlewares.use(serveResources);
       server.middlewares.use((req, res, next) => {

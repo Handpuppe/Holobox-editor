@@ -31,6 +31,15 @@ import {
   type NursingMediaItem,
   type StagedNursingMediaOp,
 } from './nursingMedia';
+import {
+  editorPackageIssues,
+  envelopeTextForModule,
+  exportPackageToCopy,
+  importPackageMedia,
+  parseEditorPackageZip,
+  pickZipFileToImport,
+  saveExportedZipAs,
+} from './scenarioPackage';
 import type { NursingScenario } from '../nursing/types';
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
@@ -63,8 +72,18 @@ function replaceOption(node: DecisionNode, optionIndex: number, next: StudentOpt
 
 type EditorModule = 'logopedie' | 'verpleegkunde';
 
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
 export function EditorApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importPackageRef = useRef<HTMLInputElement>(null);
   const dirtyRef = useRef(false);
   const nursingDirtyRef = useRef(false);
   const [editorModule, setEditorModule] = useState<EditorModule>('logopedie');
@@ -85,6 +104,7 @@ export function EditorApp() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveBlockIssues, setSaveBlockIssues] = useState<string[] | null>(null);
+  const [blockKind, setBlockKind] = useState<'save' | 'import'>('save');
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
   const [nursingStagedMedia, setNursingStagedMedia] = useState<StagedNursingMediaOp[]>([]);
   const [nursingDiskMedia, setNursingDiskMedia] = useState<NursingMediaItem[]>([]);
@@ -232,6 +252,7 @@ export function EditorApp() {
     if (found.length > 0) {
       setSaveMessage(null);
       setSaveError(null);
+      setBlockKind('save');
       setSaveBlockIssues(found);
       return;
     }
@@ -293,6 +314,130 @@ export function EditorApp() {
       setSaveError(error instanceof Error ? error.message : 'Media opslaan is mislukt.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function extraMediaForExport(): Promise<
+    Array<{ relativePath: string; contentBase64: string }>
+  > {
+    const extra: Array<{ relativePath: string; contentBase64: string }> = [];
+    if (editorModule === 'verpleegkunde') {
+      for (const op of nursingStagedMedia) {
+        if (op.type === 'delete') {
+          continue;
+        }
+        extra.push({
+          relativePath: op.relativePath,
+          contentBase64: await fileToBase64(op.file),
+        });
+      }
+      return extra;
+    }
+    for (const op of stagedMedia) {
+      if (op.type === 'delete') {
+        continue;
+      }
+      extra.push({
+        relativePath: op.relativePath,
+        contentBase64: await fileToBase64(op.file),
+      });
+    }
+    return extra;
+  }
+
+  async function exportPackage() {
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    setSaveBlockIssues(null);
+    const envelopeText =
+      editorModule === 'logopedie'
+        ? envelopeTextForModule('logopedie', scenario)
+        : envelopeTextForModule('verpleegkunde', nursingDraft);
+    const result = await exportPackageToCopy(
+      editorModule,
+      envelopeText,
+      await extraMediaForExport(),
+    );
+    setSaving(false);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
+    }
+    const chosen = await saveExportedZipAs(result.zip);
+    if (chosen === 'saved') {
+      setSaveMessage(`Opgeslagen via Opslaan als. Kopie blijft in ${result.zip}.`);
+      return;
+    }
+    setSaveMessage(`Geëxporteerd naar ${result.zip}`);
+  }
+
+  async function importPackageFromPicker() {
+    const picked = await pickZipFileToImport();
+    if (picked === 'cancelled') {
+      return;
+    }
+    if (picked === 'fallback') {
+      importPackageRef.current?.click();
+      return;
+    }
+    await importPackageFile(picked);
+  }
+
+  async function importPackageFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    setSaveError(null);
+    setSaveMessage(null);
+    setOpenError(null);
+    setSaveBlockIssues(null);
+    try {
+      const parsed = parseEditorPackageZip(new Uint8Array(await file.arrayBuffer()));
+      if (!parsed.ok) {
+        setOpenError(parsed.error);
+        return;
+      }
+      const issues = editorPackageIssues(parsed);
+      if (issues.length > 0) {
+        setBlockKind('import');
+        setSaveBlockIssues(issues);
+        return;
+      }
+      if (parsed.media.length > 0) {
+        const applied = await importPackageMedia(parsed.module, parsed.media);
+        if (!applied.ok) {
+          setSaveError(applied.error);
+          return;
+        }
+      }
+      if (parsed.module === 'logopedie') {
+        markDirty();
+        setEditorModule('logopedie');
+        setScenario(parsed.scenario);
+        setSelectedNodeId(parsed.scenario.startNodeId);
+        setPreviewOptionIndex(0);
+        setStagedMedia([]);
+        setLoadedLabel(`Geladen: ${file.name}`);
+        setLoadNotice(null);
+      } else {
+        markNursingDirty();
+        setEditorModule('verpleegkunde');
+        setNursingDraft(parsed.scenario);
+        setSelectedStepId(parsed.scenario.meta.startStepId);
+        setNursingPreviewOptionIndex(0);
+        setNursingStagedMedia([]);
+        setNursingLoadedLabel(`Geladen: ${file.name}`);
+        setNursingLoadNotice(null);
+        try {
+          setNursingDiskMedia(await listNursingMedia());
+        } catch {
+          // preview still uses the written files
+        }
+      }
+      setSaveMessage(`Pakket ${file.name} is geladen in de editor.`);
+    } catch {
+      setOpenError('Het pakket kon niet worden gelezen.');
     }
   }
 
@@ -387,6 +532,40 @@ export function EditorApp() {
               Opslaan
             </button>
           ) : null}
+          {saveOnThisPc ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-export-package"
+              onClick={() => void exportPackage()}
+              disabled={saving}
+            >
+              Exporteren
+            </button>
+          ) : null}
+          {saveOnThisPc ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-import-package"
+              onClick={() => void importPackageFromPicker()}
+              disabled={saving}
+            >
+              Importeren
+            </button>
+          ) : null}
+          <input
+            ref={importPackageRef}
+            type="file"
+            accept="application/zip,.zip"
+            className="visually-hidden"
+            data-testid="input-import-package"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              void importPackageFile(file);
+            }}
+          />
         </div>
       </header>
 
@@ -454,11 +633,15 @@ export function EditorApp() {
 
       {saveBlockIssues ? (
         <Dialog
-          title="Opslaan geblokkeerd"
+          title={blockKind === 'import' ? 'Importeren geblokkeerd' : 'Opslaan geblokkeerd'}
           testId="dialog-save-blocked"
           onClose={() => setSaveBlockIssues(null)}
         >
-          <p>Dit scenario is niet compleet. Er is niets weggeschreven.</p>
+          <p>
+            {blockKind === 'import'
+              ? 'Dit pakket is niet compleet. Het is niet in de editor geladen.'
+              : 'Dit scenario is niet compleet. Er is niets weggeschreven.'}
+          </p>
           <ul data-testid="dialog-save-blocked-list">
             {saveBlockIssues.map((issue) => (
               <li key={issue}>{issue}</li>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../components/BackButton';
 import { Dialog } from '../components/Dialog';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
@@ -50,9 +51,7 @@ export function HomeScreen() {
           >
             {copy.aboutTraining}
           </button>
-          <button type="button" className="btn btn-secondary" onClick={() => void navigate('/')}>
-            {copy.home}
-          </button>
+          <BackButton fallback="/logopedie" />
         </>
       }
     >

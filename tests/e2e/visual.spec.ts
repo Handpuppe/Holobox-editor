@@ -14,6 +14,7 @@ test.describe('visual screenshots @visual', () => {
     await shot(page, 'home');
 
     await page.getByTestId('btn-module-logopedie').click();
+    await page.getByTestId('btn-scenario-tile-default').click();
     await page.getByTestId('btn-start-simulation').click();
     await expect(page.getByTestId('screen-briefing')).toBeVisible();
     await shot(page, 'briefing');

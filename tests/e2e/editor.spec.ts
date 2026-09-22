@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { chooseDefaultScenario } from './helpers';
 import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -62,6 +64,7 @@ test.describe('logopedie scenario editor', () => {
     expect(envelope.scenario.nodes[0]?.prompt.text).toBe('Vraag gewijzigd in de editor.');
 
     await page.goto('logopedie');
+    await chooseDefaultScenario(page);
     await expect(page.getByTestId('screen-logopedie-home')).toBeVisible();
     await page.getByTestId('btn-start-simulation').click();
     await expect(page.getByTestId('screen-briefing')).toBeVisible();
@@ -122,6 +125,31 @@ test.describe('logopedie scenario editor', () => {
     await expect(page.getByTestId('dialog-save-blocked')).toHaveCount(0);
   });
 
+  test('exports a logopedie package and imports texts and media after reset', async ({ page }) => {
+    cleanupExports('logopedie-');
+    try {
+      await page.goto('editor.html');
+      await expect(page.getByTestId('btn-export-package')).toBeVisible();
+      await expect(page.getByTestId('btn-import-package')).toBeVisible();
+      await expect(page.getByTestId('btn-open-json')).toBeVisible();
+      await expect(page.getByTestId('btn-download-json')).toBeVisible();
+      await page.getByTestId('prompt-text').fill('Tekst voor export-pakket.');
+      await page.getByTestId('btn-export-package').click();
+      await expect(page.getByTestId('editor-save-ok')).toContainText('exports/');
+      const zipPath = latestExportZip('logopedie-');
+      expect(existsSync(zipPath)).toBe(true);
+
+      await page.getByTestId('btn-reset-seed').click();
+      await expect(page.getByTestId('prompt-text')).not.toHaveValue('Tekst voor export-pakket.');
+      await page.getByTestId('input-import-package').setInputFiles(zipPath);
+      await expect(page.getByTestId('prompt-text')).toHaveValue('Tekst voor export-pakket.');
+      await expect(page.getByTestId('logopedie-avatar')).toBeVisible();
+      await expect(page.getByTestId('editor-preview-stage')).not.toHaveCSS('transform', /scale/);
+    } finally {
+      cleanupExports('logopedie-');
+    }
+  });
+
   test('saves JSON for this copy, then falls back without a white screen', async ({ page }) => {
     const scenariosDir = join(process.cwd(), 'resources', 'scenarios');
     const jsonPath = join(scenariosDir, 'logopedie.json');
@@ -162,6 +190,7 @@ test.describe('logopedie scenario editor', () => {
       await expect(page.getByTestId('screen-home')).toBeVisible();
       await expect(page.getByTestId('screen-error')).toHaveCount(0);
       await page.getByTestId('btn-module-logopedie').click();
+      await chooseDefaultScenario(page);
       await page.getByTestId('btn-start-simulation').click();
       await page.getByTestId('btn-start-intake').click();
       await expect(page.getByTestId('client-response')).toHaveText(editedPrompt);
@@ -173,9 +202,10 @@ test.describe('logopedie scenario editor', () => {
       await expect(page.getByTestId('screen-home')).toBeVisible();
       await expect(page.getByTestId('screen-error')).toHaveCount(0);
       await page.getByTestId('btn-module-nursing').click();
-      await expect(page.getByTestId('screen-nursing-home')).toBeVisible();
+      await expect(page.getByTestId('screen-nursing-catalog')).toBeVisible();
       await page.goto('/');
       await page.getByTestId('btn-module-logopedie').click();
+      await chooseDefaultScenario(page);
       await page.getByTestId('btn-start-simulation').click();
       await page.getByTestId('btn-start-intake').click();
       await expect(page.getByTestId('client-response')).toHaveText(originalPrompt);
@@ -285,6 +315,7 @@ test.describe('logopedie scenario editor', () => {
       await page.goto('/');
       await expect(page.getByTestId('screen-home')).toBeVisible();
       await page.getByTestId('btn-module-logopedie').click();
+      await chooseDefaultScenario(page);
       await page.getByTestId('btn-start-simulation').click();
       await page.getByTestId('btn-start-intake').click();
       await expect(page.getByTestId('screen-simulation')).toBeVisible();
@@ -314,6 +345,31 @@ function cleanupNursingJson(): void {
       unlinkSync(file);
     }
   }
+}
+
+function cleanupExports(prefix: string): void {
+  const dir = join(process.cwd(), 'exports');
+  if (!existsSync(dir)) {
+    return;
+  }
+  for (const name of readdirSync(dir)) {
+    if (name.startsWith(prefix)) {
+      rmSync(join(dir, name), { recursive: true, force: true });
+    }
+  }
+}
+
+function latestExportZip(prefix: string): string {
+  const dir = join(process.cwd(), 'exports');
+  const names = existsSync(dir)
+    ? readdirSync(dir).filter((name) => name.startsWith(prefix) && name.endsWith('.zip'))
+    : [];
+  names.sort();
+  const last = names.at(-1);
+  if (!last) {
+    throw new Error(`Geen export-zip gevonden voor ${prefix}`);
+  }
+  return join(dir, last);
 }
 
 test.describe('verpleegkunde scenario editor', () => {
@@ -361,6 +417,7 @@ test.describe('verpleegkunde scenario editor', () => {
     await expect(page.getByTestId('screen-home')).toBeVisible();
     await expect(page.getByTestId('screen-error')).toHaveCount(0);
     await page.getByTestId('btn-module-nursing').click();
+    await chooseDefaultScenario(page);
     await page.getByTestId('btn-start-nursing').click();
     await page.getByTestId('btn-start-nursing-sim').click();
     await expect(page.getByTestId('nursing-step-question')).toHaveText(editedQuestion);
@@ -368,13 +425,14 @@ test.describe('verpleegkunde scenario editor', () => {
 
     await page.goto('/');
     await page.getByTestId('btn-module-logopedie').click();
-    await expect(page.getByTestId('screen-logopedie-home')).toBeVisible();
+    await expect(page.getByTestId('screen-logopedie-catalog')).toBeVisible();
 
     writeFileSync(jsonPath, '{niet-geldig', 'utf8');
     await page.goto('/');
     await expect(page.getByTestId('screen-home')).toBeVisible();
     await expect(page.getByTestId('screen-error')).toHaveCount(0);
     await page.getByTestId('btn-module-nursing').click();
+    await chooseDefaultScenario(page);
     await page.getByTestId('btn-start-nursing').click();
     await page.getByTestId('btn-start-nursing-sim').click();
     await expect(page.getByTestId('nursing-step-question')).toHaveText(originalQuestion);
@@ -435,6 +493,29 @@ test.describe('verpleegkunde scenario editor', () => {
     expect(existsSync(jsonPath)).toBe(false);
   });
 
+  test('exports a verpleegkunde package and imports the question after reset', async ({ page }) => {
+    cleanupExports('verpleegkunde-');
+    try {
+      await page.goto('editor.html');
+      await page.getByTestId('editor-module-nursing').click();
+      await page.getByTestId('nursing-question').fill('Vraag uit export-pakket.');
+      await page.getByTestId('btn-export-package').click();
+      await expect(page.getByTestId('editor-save-ok')).toContainText('exports/');
+      const zipPath = latestExportZip('verpleegkunde-');
+      expect(existsSync(zipPath)).toBe(true);
+
+      await page.getByTestId('btn-reset-seed').click();
+      await expect(page.getByTestId('nursing-question')).not.toHaveValue(
+        'Vraag uit export-pakket.',
+      );
+      await page.getByTestId('input-import-package').setInputFiles(zipPath);
+      await expect(page.getByTestId('nursing-question')).toHaveValue('Vraag uit export-pakket.');
+      await expect(page.getByTestId('nursing-step-video-player')).toBeVisible();
+    } finally {
+      cleanupExports('verpleegkunde-');
+    }
+  });
+
   test('replaces the first step video, saves, and the copy-simulator serves the new file', async ({
     page,
   }) => {
@@ -488,6 +569,7 @@ test.describe('verpleegkunde scenario editor', () => {
       await expect(page.getByTestId('screen-home')).toBeVisible();
       await expect(page.getByTestId('screen-error')).toHaveCount(0);
       await page.getByTestId('btn-module-nursing').click();
+      await chooseDefaultScenario(page);
       await page.getByTestId('btn-start-nursing').click();
       await page.getByTestId('btn-start-nursing-sim').click();
       await expect(page.getByTestId('screen-nursing-simulation')).toBeVisible();

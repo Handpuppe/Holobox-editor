@@ -23,9 +23,15 @@ export async function assertWhiteBackground(
   }
 }
 
+export async function chooseDefaultScenario(page: Page): Promise<void> {
+  await expect(page.getByTestId('btn-scenario-tile-default')).toBeVisible();
+  await page.getByTestId('btn-scenario-tile-default').click();
+}
+
 export async function startIntake(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByTestId('btn-module-logopedie').click();
+  await chooseDefaultScenario(page);
   await page.getByTestId('btn-start-simulation').click();
   await expect(page.getByTestId('screen-briefing')).toBeVisible();
   await page.getByTestId('btn-start-intake').click();

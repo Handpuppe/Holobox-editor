@@ -17,6 +17,7 @@ test.describe('accessibility @a11y', () => {
     await page.goto('/');
     await expectNoSerious(page);
     await page.getByTestId('btn-module-logopedie').click();
+    await page.getByTestId('btn-scenario-tile-default').click();
     await page.getByTestId('btn-start-simulation').click();
     await expectNoSerious(page);
   });

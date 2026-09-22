@@ -1,25 +1,27 @@
 import { APP_VERSION, STORAGE_SCHEMA_VERSION } from '../domain/types';
 import { createSessionId } from '../domain/session';
-import { NURSING_SCENARIO_ID } from '../media/scenarioMedia';
 import { nursingScenarioMeta, nursingSteps } from './scenario';
-import { NURSING_RUBRIC_VERSION, type NursingSession } from './types';
+import type { NursingScenarioMeta, NursingSession, NursingStep } from './types';
 
-export function createNursingSession(now = new Date()): NursingSession {
+export function createNursingSession(
+  now = new Date(),
+  meta: NursingScenarioMeta = nursingScenarioMeta,
+): NursingSession {
   const startedAt = now.toISOString();
   return {
     id: createSessionId(),
     schemaVersion: STORAGE_SCHEMA_VERSION,
     appVersion: APP_VERSION,
-    scenarioId: NURSING_SCENARIO_ID,
-    scenarioVersion: nursingScenarioMeta.version,
-    rubricVersion: NURSING_RUBRIC_VERSION,
+    scenarioId: meta.id,
+    scenarioVersion: meta.version,
+    rubricVersion: meta.rubricVersion,
     startedAt,
     updatedAt: startedAt,
     lastResumedAt: startedAt,
     pauseStartedAt: null,
     accumulatedActiveMs: 0,
     status: 'in_progress',
-    currentStepId: nursingScenarioMeta.startStepId,
+    currentStepId: meta.startStepId,
     history: [],
     sbar: { situation: '', background: '', assessment: '', recommendation: '' },
     mediaState: 'observeren',
@@ -28,6 +30,9 @@ export function createNursingSession(now = new Date()): NursingSession {
   };
 }
 
-export function currentNursingStep(session: NursingSession) {
-  return nursingSteps.find((step) => step.id === session.currentStepId);
+export function currentNursingStep(
+  session: NursingSession,
+  steps: readonly NursingStep[] = nursingSteps,
+) {
+  return steps.find((step) => step.id === session.currentStepId);
 }

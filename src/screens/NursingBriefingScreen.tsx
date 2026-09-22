@@ -1,20 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
-import {
-  nursingLearningObjectives,
-  nursingPatient,
-  nursingScenarioMeta,
-} from '../nursing/scenario';
 import { useAppState } from '../state/AppState';
 
 export function NursingBriefingScreen() {
   const navigate = useNavigate();
-  const { nursingSession, startNursing, unlockNursingAudio } = useAppState();
+  const { nursingSession, nursingScenario, startNursing, unlockNursingAudio } = useAppState();
+  const { patient, learningObjectives, meta } = nursingScenario;
 
   return (
     <Screen
-      title="Scenario: ABCDE en SBAR"
+      title={meta.title || 'Scenario: ABCDE en SBAR'}
       testId="screen-nursing-briefing"
       footer={
         <>
@@ -46,23 +42,23 @@ export function NursingBriefingScreen() {
         <h2>Patiënt</h2>
         <p>
           <strong>
-            {nursingPatient.name}, {String(nursingPatient.age)} jaar
+            {patient.name}, {String(patient.age)} jaar
           </strong>{' '}
           <span className="badge">{copy.clientFictional}</span>
         </p>
-        <p>{nursingPatient.background}</p>
+        <p>{patient.background}</p>
       </section>
       <section className="card">
         <h2>Context</h2>
         <p>
-          {nursingPatient.setting}. {nursingPatient.studentRole}
+          {patient.setting}. {patient.studentRole}
         </p>
-        <p>Geschatte duur: {nursingScenarioMeta.estimatedDuration}.</p>
+        <p>Geschatte duur: {meta.estimatedDuration}.</p>
       </section>
       <section className="card">
         <h2>Leerdoelen</h2>
         <ul className="list">
-          {nursingLearningObjectives.map((item) => (
+          {learningObjectives.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>

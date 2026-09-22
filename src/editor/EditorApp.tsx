@@ -9,12 +9,23 @@ import {
   type StudentOption,
 } from '../domain/types';
 import { validateScenario } from '../domain/scenarioValidation';
+import { cloneNursingScenario } from './cloneNursing';
 import { cloneScenario } from './cloneScenario';
 import { EditorMediaPanel } from './EditorMediaPanel';
 import { downloadEnvelope, parseLogopedieEnvelope, saveEnvelopeToCopy } from './envelope';
 import { EDITOR_FACES, faceLabel } from './faces';
 import { editorSourceLabel, loadEditorStartupScenario } from './loadSavedScenario';
+import { loadEditorStartupNursing, nursingEditorSourceLabel } from './loadSavedNursing';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
+import { NursingEditor } from './NursingEditor';
+import {
+  downloadNursingEnvelope,
+  parseVerpleegkundeEnvelope,
+  saveNursingEnvelopeToCopy,
+} from './nursingEnvelope';
+import { NursingMediaPanel } from './NursingMediaPanel';
+import { saveNursingMediaOp, type StagedNursingMediaOp } from './nursingMedia';
+import type { NursingScenario } from '../nursing/types';
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
   high: 'Goed (high)',
@@ -44,20 +55,34 @@ function replaceOption(node: DecisionNode, optionIndex: number, next: StudentOpt
   return { ...node, options };
 }
 
+type EditorModule = 'logopedie' | 'verpleegkunde';
+
 export function EditorApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dirtyRef = useRef(false);
+  const nursingDirtyRef = useRef(false);
+  const [editorModule, setEditorModule] = useState<EditorModule>('logopedie');
   const [scenario, setScenario] = useState<Scenario>(() => cloneScenario());
+  const [nursingDraft, setNursingDraft] = useState<NursingScenario>(() => cloneNursingScenario());
   const [selectedNodeId, setSelectedNodeId] = useState(scenario.startNodeId);
+  const [selectedStepId, setSelectedStepId] = useState(nursingDraft.meta.startStepId);
   const [previewOptionIndex, setPreviewOptionIndex] = useState(0);
+  const [nursingPreviewOptionIndex, setNursingPreviewOptionIndex] = useState(0);
   const [openError, setOpenError] = useState<string | null>(null);
   const [loadNotice, setLoadNotice] = useState<string | null>(null);
+  const [nursingLoadNotice, setNursingLoadNotice] = useState<string | null>(null);
   const [loadedLabel, setLoadedLabel] = useState(() => editorSourceLabel('seed'));
+  const [nursingLoadedLabel, setNursingLoadedLabel] = useState(() =>
+    nursingEditorSourceLabel('seed'),
+  );
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
+  const [nursingStagedMedia, setNursingStagedMedia] = useState<StagedNursingMediaOp[]>([]);
   const saveOnThisPc = canSaveToThisCopy();
+  const activeLoadNotice = editorModule === 'logopedie' ? loadNotice : nursingLoadNotice;
+  const activeLoadedLabel = editorModule === 'logopedie' ? loadedLabel : nursingLoadedLabel;
 
   useEffect(() => {
     let cancelled = false;
@@ -76,8 +101,29 @@ export function EditorApp() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void loadEditorStartupNursing().then((result) => {
+      if (cancelled || nursingDirtyRef.current) {
+        return;
+      }
+      setNursingDraft(result.scenario);
+      setSelectedStepId(result.scenario.meta.startStepId);
+      setNursingPreviewOptionIndex(0);
+      setNursingLoadedLabel(result.label);
+      setNursingLoadNotice(result.notice);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function markDirty() {
     dirtyRef.current = true;
+  }
+
+  function markNursingDirty() {
+    nursingDirtyRef.current = true;
   }
 
   function resetToSeed() {
@@ -94,12 +140,42 @@ export function EditorApp() {
     setStagedMedia([]);
   }
 
+  function resetNursingToSeed() {
+    markNursingDirty();
+    const seeded = cloneNursingScenario();
+    setNursingDraft(seeded);
+    setSelectedStepId(seeded.meta.startStepId);
+    setNursingPreviewOptionIndex(0);
+    setOpenError(null);
+    setNursingLoadNotice(null);
+    setNursingLoadedLabel(nursingEditorSourceLabel('seed'));
+    setSaveMessage(null);
+    setSaveError(null);
+    setNursingStagedMedia([]);
+  }
+
   async function openJsonFile(file: File | undefined) {
     if (!file) {
       return;
     }
     try {
-      const parsed = parseLogopedieEnvelope(await file.text());
+      const text = await file.text();
+      if (editorModule === 'verpleegkunde') {
+        const parsed = parseVerpleegkundeEnvelope(text);
+        if (!parsed.ok) {
+          setOpenError(parsed.error);
+          return;
+        }
+        markNursingDirty();
+        setNursingDraft(parsed.scenario);
+        setSelectedStepId(parsed.scenario.meta.startStepId);
+        setNursingPreviewOptionIndex(0);
+        setOpenError(null);
+        setNursingLoadNotice(null);
+        setNursingLoadedLabel(nursingEditorSourceLabel('json', file.name));
+        return;
+      }
+      const parsed = parseLogopedieEnvelope(text);
       if (!parsed.ok) {
         setOpenError(parsed.error);
         return;
@@ -120,6 +196,30 @@ export function EditorApp() {
     setSaving(true);
     setSaveError(null);
     setSaveMessage(null);
+    if (editorModule === 'verpleegkunde') {
+      const result = await saveNursingEnvelopeToCopy(nursingDraft);
+      if (!result.ok) {
+        setSaving(false);
+        setSaveError(result.error);
+        return;
+      }
+      try {
+        for (const op of nursingStagedMedia) {
+          await saveNursingMediaOp(op);
+        }
+        setNursingStagedMedia([]);
+        setNursingLoadedLabel(nursingEditorSourceLabel('json'));
+        setNursingLoadNotice(null);
+        setSaveMessage(
+          'Opgeslagen in deze kopie. Start de simulator opnieuw om de wijziging te zien.',
+        );
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : 'Media opslaan is mislukt.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     const result = await saveEnvelopeToCopy(scenario);
     if (!result.ok) {
       setSaving(false);
@@ -168,12 +268,18 @@ export function EditorApp() {
       <header className="editor-header">
         <div>
           <p className="editor-kicker">Los van de studentensimulatie</p>
-          <h1>Logopedie-scenariobewerker</h1>
+          <h1>
+            {editorModule === 'logopedie'
+              ? 'Logopedie-scenariobewerker'
+              : 'Verpleegkunde-scenariobewerker'}
+          </h1>
           <p className="editor-meta">
-            {scenario.title} · {scenario.id} · v{scenario.version}
+            {editorModule === 'logopedie'
+              ? `${scenario.title} · ${scenario.id} · v${scenario.version}`
+              : `${nursingDraft.meta.title} · ${nursingDraft.meta.id} · v${nursingDraft.meta.version}`}
           </p>
           <p className="editor-loaded" data-testid="editor-loaded-source">
-            {loadedLabel}
+            {activeLoadedLabel}
           </p>
         </div>
         <div className="editor-actions">
@@ -181,7 +287,7 @@ export function EditorApp() {
             type="button"
             className="btn btn-secondary"
             data-testid="btn-reset-seed"
-            onClick={resetToSeed}
+            onClick={editorModule === 'logopedie' ? resetToSeed : resetNursingToSeed}
           >
             Herstel startkopie
           </button>
@@ -209,7 +315,11 @@ export function EditorApp() {
             type="button"
             className="btn"
             data-testid="btn-download-json"
-            onClick={() => downloadEnvelope(scenario)}
+            onClick={() =>
+              editorModule === 'logopedie'
+                ? downloadEnvelope(scenario)
+                : downloadNursingEnvelope(nursingDraft)
+            }
           >
             Download JSON
           </button>
@@ -227,18 +337,48 @@ export function EditorApp() {
         </div>
       </header>
 
+      <nav className="editor-module-tabs" aria-label="Module">
+        <button
+          type="button"
+          className={editorModule === 'logopedie' ? 'is-active' : undefined}
+          data-testid="editor-module-logopedie"
+          onClick={() => {
+            setEditorModule('logopedie');
+            setOpenError(null);
+            setSaveError(null);
+            setSaveMessage(null);
+          }}
+        >
+          Logopedie
+        </button>
+        <button
+          type="button"
+          className={editorModule === 'verpleegkunde' ? 'is-active' : undefined}
+          data-testid="editor-module-nursing"
+          onClick={() => {
+            setEditorModule('verpleegkunde');
+            setOpenError(null);
+            setSaveError(null);
+            setSaveMessage(null);
+          }}
+        >
+          Verpleegkunde
+        </button>
+      </nav>
+
       <p className="editor-notice" data-testid="editor-demo-notice">
         Dit is een demo-editor, geen les-app. Open JSON en Download JSON werken in de browser.
         Opslaan naar schijf kan alleen lokaal via Editor.exe.
       </p>
       <p className="editor-notice">
-        Bij openen wordt logopedie.json geladen als die geldig is, anders de startkopie. De avatar
-        is een stilstaande still, zonder zoom.
+        {editorModule === 'logopedie'
+          ? 'Bij openen wordt logopedie.json geladen als die geldig is, anders de startkopie. De avatar is een stilstaande still, zonder zoom.'
+          : 'Bij openen wordt verpleegkunde.json geladen als die geldig is, anders de startkopie. Geen zoom, geen animatie.'}
       </p>
 
-      {loadNotice ? (
+      {activeLoadNotice ? (
         <p className="editor-load-notice" data-testid="editor-load-notice" role="status">
-          {loadNotice}
+          {activeLoadNotice}
         </p>
       ) : null}
       {openError ? (
@@ -257,232 +397,277 @@ export function EditorApp() {
         </p>
       ) : null}
 
-      <section
-        className={`editor-issues${issues.length > 0 ? ' has-issues' : ''}`}
-        data-testid="editor-issues"
-        aria-live="polite"
-      >
-        <h2>Controle</h2>
-        {issues.length === 0 ? (
-          <p data-testid="editor-issues-ok">Geen validatiefouten.</p>
-        ) : (
-          <ul data-testid="editor-issues-list">
-            {issues.map((issue) => (
-              <li key={issue}>{issue}</li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {editorModule === 'verpleegkunde' ? (
+        <>
+          <NursingEditor
+            draft={nursingDraft}
+            onChange={(next) => {
+              markNursingDirty();
+              setNursingDraft(next);
+            }}
+            stagedMedia={nursingStagedMedia}
+            selectedStepId={selectedStepId}
+            onSelectStep={setSelectedStepId}
+            previewOptionIndex={nursingPreviewOptionIndex}
+            onPreviewOption={setNursingPreviewOptionIndex}
+          />
+          <NursingMediaPanel
+            staged={nursingStagedMedia}
+            previewPath={
+              nursingDraft.mediaSlots.find(
+                (slot) =>
+                  slot.slotId ===
+                  (nursingDraft.steps.find((item) => item.id === selectedStepId)?.options[
+                    nursingPreviewOptionIndex
+                  ]?.mediaSlotId ??
+                    nursingDraft.steps.find((item) => item.id === selectedStepId)?.mediaSlotId),
+              )?.primaryMedia ?? null
+            }
+            onStage={(op) => {
+              markNursingDirty();
+              setNursingStagedMedia((current) => {
+                const without = current.filter((item) => item.relativePath !== op.relativePath);
+                return [...without, op];
+              });
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <section
+            className={`editor-issues${issues.length > 0 ? ' has-issues' : ''}`}
+            data-testid="editor-issues"
+            aria-live="polite"
+          >
+            <h2>Controle</h2>
+            {issues.length === 0 ? (
+              <p data-testid="editor-issues-ok">Geen validatiefouten.</p>
+            ) : (
+              <ul data-testid="editor-issues-list">
+                {issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-      <div className="editor-layout">
-        <nav className="editor-nodes" aria-label="Beslissingspunten">
-          <h2>Vragen</h2>
-          <ol>
-            {scenario.nodes.map((item, index) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={item.id === node?.id ? 'is-active' : undefined}
-                  data-testid={`node-tab-${item.id}`}
-                  onClick={() => {
-                    setSelectedNodeId(item.id);
-                    setPreviewOptionIndex(0);
-                  }}
-                >
-                  {String(index + 1)}. {item.phaseLabel}
-                </button>
-              </li>
-            ))}
-          </ol>
-        </nav>
+          <div className="editor-layout">
+            <nav className="editor-nodes" aria-label="Beslissingspunten">
+              <h2>Vragen</h2>
+              <ol>
+                {scenario.nodes.map((item, index) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className={item.id === node?.id ? 'is-active' : undefined}
+                      data-testid={`node-tab-${item.id}`}
+                      onClick={() => {
+                        setSelectedNodeId(item.id);
+                        setPreviewOptionIndex(0);
+                      }}
+                    >
+                      {String(index + 1)}. {item.phaseLabel}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </nav>
 
-        {node ? (
-          <main className="editor-main" id="inhoud">
-            <section className="editor-card">
-              <h2>Vraag van de cliënt</h2>
-              <p className="muted">Node {node.id}</p>
-              <div className="field">
-                <label htmlFor="prompt-text">Wat zegt de cliënt?</label>
-                <textarea
-                  id="prompt-text"
-                  data-testid="prompt-text"
-                  rows={3}
-                  value={node.prompt.text}
-                  onChange={(event) =>
-                    updateSelected({
-                      ...node,
-                      prompt: { ...node.prompt, text: event.target.value },
-                    })
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="prompt-context">Wat is zichtbaar?</label>
-                <textarea
-                  id="prompt-context"
-                  data-testid="prompt-context"
-                  rows={2}
-                  value={node.prompt.context}
-                  onChange={(event) =>
-                    updateSelected({
-                      ...node,
-                      prompt: { ...node.prompt, context: event.target.value },
-                    })
-                  }
-                />
-              </div>
-            </section>
-
-            {node.options.map((option, optionIndex) => (
-              <section
-                key={option.id}
-                className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
-                data-testid={`option-editor-${option.id}`}
-              >
-                <div className="option-card-head">
-                  <h2>Antwoord {String(optionIndex + 1)}</h2>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    data-testid={`btn-preview-option-${String(optionIndex)}`}
-                    onClick={() => setPreviewOptionIndex(optionIndex)}
-                  >
-                    Toon gezicht
-                  </button>
-                </div>
-                <div className="field">
-                  <label htmlFor={`quality-${option.id}`}>Kwaliteit</label>
-                  <select
-                    id={`quality-${option.id}`}
-                    data-testid={`option-quality-${option.id}`}
-                    value={option.quality}
-                    onChange={(event) =>
-                      updateSelected(
-                        replaceOption(node, optionIndex, {
-                          ...option,
-                          quality: event.target.value as OptionQuality,
-                        }),
-                      )
-                    }
-                  >
-                    {QUALITIES.map((quality) => (
-                      <option key={quality} value={quality}>
-                        {QUALITY_LABELS[quality]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor={`option-text-${option.id}`}>Wat zegt de student?</label>
-                  <textarea
-                    id={`option-text-${option.id}`}
-                    data-testid={`option-text-${option.id}`}
-                    rows={3}
-                    value={option.text}
-                    onChange={(event) =>
-                      updateSelected(
-                        replaceOption(node, optionIndex, { ...option, text: event.target.value }),
-                      )
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor={`client-response-${option.id}`}>Reactie van de cliënt</label>
-                  <textarea
-                    id={`client-response-${option.id}`}
-                    data-testid={`client-response-${option.id}`}
-                    rows={2}
-                    value={option.clientResponse.text}
-                    onChange={(event) =>
-                      updateSelected(
-                        replaceOption(node, optionIndex, {
-                          ...option,
-                          clientResponse: { ...option.clientResponse, text: event.target.value },
-                        }),
-                      )
-                    }
-                  />
-                </div>
-                <fieldset className="face-picker">
-                  <legend>Gezicht na dit antwoord</legend>
-                  <div className="face-options">
-                    {EDITOR_FACES.map((face) => (
-                      <label key={face.emotion} className="face-option">
-                        <input
-                          type="radio"
-                          name={`face-${option.id}`}
-                          value={face.emotion}
-                          checked={option.emotion === face.emotion}
-                          data-testid={`option-face-${option.id}-${face.emotion}`}
-                          onChange={() => {
-                            setPreviewOptionIndex(optionIndex);
-                            updateSelected(
-                              replaceOption(node, optionIndex, {
-                                ...option,
-                                emotion: face.emotion,
-                              }),
-                            );
-                          }}
-                        />
-                        {face.label}
-                      </label>
-                    ))}
+            {node ? (
+              <main className="editor-main" id="inhoud">
+                <section className="editor-card">
+                  <h2>Vraag van de cliënt</h2>
+                  <p className="muted">Node {node.id}</p>
+                  <div className="field">
+                    <label htmlFor="prompt-text">Wat zegt de cliënt?</label>
+                    <textarea
+                      id="prompt-text"
+                      data-testid="prompt-text"
+                      rows={3}
+                      value={node.prompt.text}
+                      onChange={(event) =>
+                        updateSelected({
+                          ...node,
+                          prompt: { ...node.prompt, text: event.target.value },
+                        })
+                      }
+                    />
                   </div>
-                </fieldset>
-                <div className="field">
-                  <label htmlFor={`next-${option.id}`}>Volgende stap</label>
-                  <select
-                    id={`next-${option.id}`}
-                    data-testid={`option-next-${option.id}`}
-                    value={option.nextNodeId}
-                    onChange={(event) =>
-                      updateSelected(
-                        replaceOption(node, optionIndex, {
-                          ...option,
-                          nextNodeId: event.target.value,
-                        }),
-                      )
-                    }
+                  <div className="field">
+                    <label htmlFor="prompt-context">Wat is zichtbaar?</label>
+                    <textarea
+                      id="prompt-context"
+                      data-testid="prompt-context"
+                      rows={2}
+                      value={node.prompt.context}
+                      onChange={(event) =>
+                        updateSelected({
+                          ...node,
+                          prompt: { ...node.prompt, context: event.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                </section>
+
+                {node.options.map((option, optionIndex) => (
+                  <section
+                    key={option.id}
+                    className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
+                    data-testid={`option-editor-${option.id}`}
                   >
-                    {nextTargets.map((target) => (
-                      <option key={target.id} value={target.id}>
-                        {target.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </section>
-            ))}
-          </main>
-        ) : null}
+                    <div className="option-card-head">
+                      <h2>Antwoord {String(optionIndex + 1)}</h2>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        data-testid={`btn-preview-option-${String(optionIndex)}`}
+                        onClick={() => setPreviewOptionIndex(optionIndex)}
+                      >
+                        Toon gezicht
+                      </button>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`quality-${option.id}`}>Kwaliteit</label>
+                      <select
+                        id={`quality-${option.id}`}
+                        data-testid={`option-quality-${option.id}`}
+                        value={option.quality}
+                        onChange={(event) =>
+                          updateSelected(
+                            replaceOption(node, optionIndex, {
+                              ...option,
+                              quality: event.target.value as OptionQuality,
+                            }),
+                          )
+                        }
+                      >
+                        {QUALITIES.map((quality) => (
+                          <option key={quality} value={quality}>
+                            {QUALITY_LABELS[quality]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`option-text-${option.id}`}>Wat zegt de student?</label>
+                      <textarea
+                        id={`option-text-${option.id}`}
+                        data-testid={`option-text-${option.id}`}
+                        rows={3}
+                        value={option.text}
+                        onChange={(event) =>
+                          updateSelected(
+                            replaceOption(node, optionIndex, {
+                              ...option,
+                              text: event.target.value,
+                            }),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`client-response-${option.id}`}>Reactie van de cliënt</label>
+                      <textarea
+                        id={`client-response-${option.id}`}
+                        data-testid={`client-response-${option.id}`}
+                        rows={2}
+                        value={option.clientResponse.text}
+                        onChange={(event) =>
+                          updateSelected(
+                            replaceOption(node, optionIndex, {
+                              ...option,
+                              clientResponse: {
+                                ...option.clientResponse,
+                                text: event.target.value,
+                              },
+                            }),
+                          )
+                        }
+                      />
+                    </div>
+                    <fieldset className="face-picker">
+                      <legend>Gezicht na dit antwoord</legend>
+                      <div className="face-options">
+                        {EDITOR_FACES.map((face) => (
+                          <label key={face.emotion} className="face-option">
+                            <input
+                              type="radio"
+                              name={`face-${option.id}`}
+                              value={face.emotion}
+                              checked={option.emotion === face.emotion}
+                              data-testid={`option-face-${option.id}-${face.emotion}`}
+                              onChange={() => {
+                                setPreviewOptionIndex(optionIndex);
+                                updateSelected(
+                                  replaceOption(node, optionIndex, {
+                                    ...option,
+                                    emotion: face.emotion,
+                                  }),
+                                );
+                              }}
+                            />
+                            {face.label}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <div className="field">
+                      <label htmlFor={`next-${option.id}`}>Volgende stap</label>
+                      <select
+                        id={`next-${option.id}`}
+                        data-testid={`option-next-${option.id}`}
+                        value={option.nextNodeId}
+                        onChange={(event) =>
+                          updateSelected(
+                            replaceOption(node, optionIndex, {
+                              ...option,
+                              nextNodeId: event.target.value,
+                            }),
+                          )
+                        }
+                      >
+                        {nextTargets.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {target.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </section>
+                ))}
+              </main>
+            ) : null}
 
-        <aside className="editor-preview">
-          <h2>Voorbeeld</h2>
-          <p className="muted" data-testid="preview-face-label">
-            {faceLabel(previewEmotion)}
-          </p>
-          <div className="editor-preview-stage" data-testid="editor-preview-stage">
-            <LogopedieAvatar
-              emotion={previewEmotion}
-              heightPx={420}
-              name={scenario.client.name}
-              srcOverride={avatarOverride}
-            />
+            <aside className="editor-preview">
+              <h2>Voorbeeld</h2>
+              <p className="muted" data-testid="preview-face-label">
+                {faceLabel(previewEmotion)}
+              </p>
+              <div className="editor-preview-stage" data-testid="editor-preview-stage">
+                <LogopedieAvatar
+                  emotion={previewEmotion}
+                  heightPx={420}
+                  name={scenario.client.name}
+                  srcOverride={avatarOverride}
+                />
+              </div>
+              <p className="muted">{previewOption?.clientResponse.text}</p>
+            </aside>
           </div>
-          <p className="muted">{previewOption?.clientResponse.text}</p>
-        </aside>
-      </div>
 
-      <EditorMediaPanel
-        staged={stagedMedia}
-        previewPath={previewAvatarPath}
-        onStage={(op) => {
-          setStagedMedia((current) => {
-            const without = current.filter((item) => item.relativePath !== op.relativePath);
-            return [...without, op];
-          });
-        }}
-      />
+          <EditorMediaPanel
+            staged={stagedMedia}
+            previewPath={previewAvatarPath}
+            onStage={(op) => {
+              setStagedMedia((current) => {
+                const without = current.filter((item) => item.relativePath !== op.relativePath);
+                return [...without, op];
+              });
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

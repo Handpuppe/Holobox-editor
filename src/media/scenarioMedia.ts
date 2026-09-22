@@ -160,6 +160,9 @@ export const mediaSlots: MediaSlotConfig[] = [
   },
 ];
 
-export function slotById(slotId: string): MediaSlotConfig | undefined {
-  return mediaSlots.find((slot) => slot.slotId === slotId);
+export function slotById(
+  slotId: string,
+  slots: MediaSlotConfig[] = mediaSlots,
+): MediaSlotConfig | undefined {
+  return slots.find((slot) => slot.slotId === slotId);
 }

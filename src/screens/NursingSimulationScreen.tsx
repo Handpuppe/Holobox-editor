@@ -6,7 +6,6 @@ import { copy } from '../content/nl';
 import { PatientStage } from '../media/PatientStage';
 import { defaultDisplayConfig } from '../media/scale';
 import { slotById } from '../media/scenarioMedia';
-import { nursingPatient, nursingSteps } from '../nursing/scenario';
 import { currentNursingStep } from '../nursing/session';
 import { useAppState } from '../state/AppState';
 
@@ -22,10 +21,13 @@ export function NursingSimulationScreen() {
     audioBlocked,
     setAudioBlocked,
     unlockNursingAudio,
+    nursingScenario,
   } = useAppState();
   const [pauseOpen, setPauseOpen] = useState(false);
   const [replayToken, setReplayToken] = useState(0);
-  const step = nursingSession ? currentNursingStep(nursingSession) : undefined;
+  const steps = nursingScenario.steps;
+  const patient = nursingScenario.patient;
+  const step = nursingSession ? currentNursingStep(nursingSession, steps) : undefined;
 
   if (!nursingSession) {
     return <Navigate to="/verpleegkunde" replace />;
@@ -41,22 +43,22 @@ export function NursingSimulationScreen() {
   };
   const last = nursingSession.history.at(-1);
   const mediaSlotId = last
-    ? (nursingSteps
+    ? (steps
         .find((item) => item.id === last.stepId)
         ?.options.find((item) => item.id === last.optionId)?.mediaSlotId ?? step?.mediaSlotId)
     : step?.mediaSlotId;
-  const slot = mediaSlotId ? slotById(mediaSlotId) : undefined;
-  const progress = (nursingSession.history.length / nursingSteps.length) * 100;
+  const slot = mediaSlotId ? slotById(mediaSlotId, nursingScenario.mediaSlots) : undefined;
+  const progress = (nursingSession.history.length / Math.max(1, steps.length)) * 100;
   const override = mediaSlotId ? teacher.mediaOverrides[mediaSlotId] : undefined;
 
   return (
     <div className="sim-layout" data-testid="screen-nursing-simulation">
       <h1 id="screen-title" className="visually-hidden" tabIndex={-1}>
-        ABCDE en SBAR met {nursingPatient.name}
+        ABCDE en SBAR met {patient.name}
       </h1>
       <PatientStage
         moduleId="verpleegkunde"
-        name={nursingPatient.name}
+        name={patient.name}
         fictionalLabel={copy.clientFictional}
         mediaSlotId={mediaSlotId}
         mediaOverride={override}
@@ -68,11 +70,12 @@ export function NursingSimulationScreen() {
         display={display}
         replayToken={replayToken}
         onAudioBlocked={() => setAudioBlocked(true)}
+        slots={nursingScenario.mediaSlots}
       />
       <aside className="question-panel" data-testid="question-panel" id="inhoud" lang="nl">
         <SideAppMenu />
         <p className="patient-identity">
-          {nursingPatient.name} <span className="badge">{copy.clientFictional}</span>
+          {patient.name} <span className="badge">{copy.clientFictional}</span>
         </p>
         <p className="muted" data-testid="nursing-phase">
           {step?.phaseLabel}
@@ -85,10 +88,12 @@ export function NursingSimulationScreen() {
             />
           </div>
           <p className="muted">
-            {String(nursingSession.history.length + 1)}/{String(nursingSteps.length)}
+            {String(nursingSession.history.length + 1)}/{String(steps.length)}
           </p>
         </div>
-        <p className="panel-question">{step?.question}</p>
+        <p className="panel-question" data-testid="nursing-step-question">
+          {step?.question}
+        </p>
         <p className="muted">{step?.help}</p>
         <p data-testid="client-response">
           {slot?.transcript ?? 'Observeer de patiënt en beantwoord de vraag.'}

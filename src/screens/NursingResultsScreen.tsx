@@ -17,12 +17,19 @@ const labels: Record<(typeof NURSING_COMPETENCIES)[number], string> = {
 
 export function NursingResultsScreen() {
   const navigate = useNavigate();
-  const { nursingSession, saveNursingResult, discardNursing, startNursing, storageAvailable } =
-    useAppState();
+  const {
+    nursingSession,
+    nursingScenario,
+    saveNursingResult,
+    discardNursing,
+    startNursing,
+    storageAvailable,
+  } = useAppState();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const score = useMemo(
-    () => (nursingSession ? calculateNursingScores(nursingSession.history) : null),
-    [nursingSession],
+    () =>
+      nursingSession ? calculateNursingScores(nursingSession.history, nursingScenario.steps) : null,
+    [nursingSession, nursingScenario.steps],
   );
 
   if (!nursingSession || nursingSession.status !== 'completed' || !score) {

@@ -181,9 +181,7 @@ test.describe('logopedie scenario editor', () => {
 
     await page.reload();
     await expect(page.getByTestId('prompt-text')).toHaveValue(extra);
-    await expect(page.getByTestId('editor-loaded-source')).toHaveText(
-      'Geladen: logopedie.json',
-    );
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText('Geladen: logopedie.json');
     await expect(page.getByTestId('btn-open-json')).toBeVisible();
     await expect(page.getByTestId('btn-download-json')).toBeVisible();
 
@@ -275,5 +273,130 @@ test.describe('logopedie scenario editor', () => {
     } finally {
       restore();
     }
+  });
+});
+
+function nursingJsonFiles(): string[] {
+  return [
+    join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json'),
+    join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json.bak'),
+    join(process.cwd(), 'dist', 'resources', 'scenarios', 'verpleegkunde.json'),
+    join(process.cwd(), 'dist', 'resources', 'scenarios', 'verpleegkunde.json.bak'),
+  ];
+}
+
+function cleanupNursingJson(): void {
+  for (const file of nursingJsonFiles()) {
+    if (existsSync(file)) {
+      unlinkSync(file);
+    }
+  }
+}
+
+test.describe('verpleegkunde scenario editor', () => {
+  test.beforeEach(() => {
+    cleanupNursingJson();
+    cleanupLogopedieJson();
+  });
+  test.afterEach(() => {
+    cleanupNursingJson();
+    cleanupLogopedieJson();
+  });
+
+  test('switches module, saves JSON, and the copy-simulator shows the new question', async ({
+    page,
+  }) => {
+    const originalQuestion = 'Wat is nu je eerste actie bij de luchtweg?';
+    const editedQuestion = 'Vraag opgeslagen voor de verpleegkunde-kopie.';
+    const jsonPath = join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json');
+    const bakPath = `${jsonPath}.bak`;
+    const firstSave = 'Eerste opslag voor verpleegkunde-kopie.';
+
+    await page.goto('editor.html');
+    await expect(page.getByTestId('screen-scenario-editor')).toBeVisible();
+    await expect(page.getByTestId('editor-module-logopedie')).toBeVisible();
+    await page.getByTestId('editor-module-nursing').click();
+    await expect(page.getByTestId('nursing-question')).toBeVisible();
+    await expect(page.getByTestId('nursing-weights-readonly')).toBeVisible();
+    await page.getByTestId('nursing-question').fill(firstSave);
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+    await page.getByTestId('nursing-question').fill(editedQuestion);
+    await expect(page.getByTestId('preview-nursing-question')).toHaveText(editedQuestion);
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+    expect(existsSync(jsonPath)).toBe(true);
+    expect(existsSync(bakPath)).toBe(true);
+    const saved = JSON.parse(readFileSync(jsonPath, 'utf8')) as {
+      module: string;
+      steps: Array<{ question: string }>;
+    };
+    expect(saved.module).toBe('verpleegkunde');
+    expect(saved.steps[0]?.question).toBe(editedQuestion);
+
+    await page.goto('/');
+    await expect(page.getByTestId('screen-home')).toBeVisible();
+    await expect(page.getByTestId('screen-error')).toHaveCount(0);
+    await page.getByTestId('btn-module-nursing').click();
+    await page.getByTestId('btn-start-nursing').click();
+    await page.getByTestId('btn-start-nursing-sim').click();
+    await expect(page.getByTestId('nursing-step-question')).toHaveText(editedQuestion);
+    await page.evaluate(() => window.localStorage.clear());
+
+    await page.goto('/');
+    await page.getByTestId('btn-module-logopedie').click();
+    await expect(page.getByTestId('screen-logopedie-home')).toBeVisible();
+
+    writeFileSync(jsonPath, '{niet-geldig', 'utf8');
+    await page.goto('/');
+    await expect(page.getByTestId('screen-home')).toBeVisible();
+    await expect(page.getByTestId('screen-error')).toHaveCount(0);
+    await page.getByTestId('btn-module-nursing').click();
+    await page.getByTestId('btn-start-nursing').click();
+    await page.getByTestId('btn-start-nursing-sim').click();
+    await expect(page.getByTestId('nursing-step-question')).toHaveText(originalQuestion);
+  });
+
+  test('loads verpleegkunde.json in the editor and keeps logopedie working', async ({ page }) => {
+    await page.goto('editor.html');
+    await page.getByTestId('editor-module-nursing').click();
+    await page.getByTestId('nursing-question').fill('Extra zin uit verpleegkunde.json.');
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+
+    await page.reload();
+    await page.getByTestId('editor-module-nursing').click();
+    await expect(page.getByTestId('nursing-question')).toHaveValue(
+      'Extra zin uit verpleegkunde.json.',
+    );
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText(
+      'Geladen: verpleegkunde.json',
+    );
+
+    await page.getByTestId('editor-module-logopedie').click();
+    await expect(page.getByTestId('prompt-text')).toBeVisible();
+    await expect(page.getByTestId('logopedie-avatar')).toBeVisible();
+    await expect(page.getByTestId('editor-preview-stage')).not.toHaveCSS('transform', /scale/);
+  });
+
+  test('asks confirmation before deleting verpleegkunde media and does not use logopedie', async ({
+    page,
+  }) => {
+    const pain = join(process.cwd(), 'resources', 'verpleegkunde', 'Staat is pijn.mp4');
+    const painSize = statSync(pain).size;
+    const erik = join(process.cwd(), 'resources', 'logopedie', 'avatar', 'erik_basis.png');
+    const erikSize = statSync(erik).size;
+
+    await page.goto('editor.html');
+    await page.getByTestId('editor-module-nursing').click();
+    await expect(page.getByTestId('editor-nursing-media')).toBeVisible();
+    await page.getByTestId('nursing-media-row-verpleegkunde_Staat is pijn.mp4').click();
+    await page.getByTestId('btn-nursing-media-delete').click();
+    await expect(page.getByTestId('dialog-delete-nursing-media')).toBeVisible();
+    await page.getByTestId('btn-cancel-delete-nursing-media').click();
+    await expect(page.getByTestId('dialog-delete-nursing-media')).toHaveCount(0);
+    expect(statSync(pain).size).toBe(painSize);
+    expect(statSync(erik).size).toBe(erikSize);
+    await expect(page.getByTestId('editor-media')).toHaveCount(0);
   });
 });

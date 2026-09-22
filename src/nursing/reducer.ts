@@ -1,11 +1,11 @@
 import { currentNursingStep } from './session';
-import type { NursingSession } from './types';
+import type { NursingSession, NursingStep } from './types';
 
 export type NursingAction =
   | { type: 'start'; session: NursingSession }
   | { type: 'hydrate'; session: NursingSession }
   | { type: 'unlock-audio' }
-  | { type: 'select'; optionId: string; at: string }
+  | { type: 'select'; optionId: string; at: string; steps?: readonly NursingStep[] }
   | { type: 'pause'; at: string }
   | { type: 'resume'; at: string }
   | { type: 'clear' };
@@ -68,7 +68,7 @@ export function nursingReducer(
     if (session.status !== 'in_progress') {
       return session;
     }
-    const step = currentNursingStep(session);
+    const step = currentNursingStep(session, action.steps);
     const option = step?.options.find((item) => item.id === action.optionId);
     if (!step || !option) {
       return session;

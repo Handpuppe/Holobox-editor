@@ -6,7 +6,12 @@ import { LogopedieAvatar } from './logopedie/LogopedieAvatar';
 import { resolveSlot } from './matching';
 import { visiblePatientHeightPx } from './scale';
 import { slotById } from './scenarioMedia';
-import type { PatientDisplayConfig, PatientMediaState, TrainingModule } from './types';
+import type {
+  MediaSlotConfig,
+  PatientDisplayConfig,
+  PatientMediaState,
+  TrainingModule,
+} from './types';
 
 interface PatientStageProps {
   moduleId: TrainingModule;
@@ -25,6 +30,7 @@ interface PatientStageProps {
   display: PatientDisplayConfig;
   replayToken?: number;
   onAudioBlocked?: () => void;
+  slots?: MediaSlotConfig[];
 }
 
 export function PatientStage({
@@ -42,11 +48,12 @@ export function PatientStage({
   display,
   replayToken = 0,
   onAudioBlocked,
+  slots,
 }: PatientStageProps) {
   const reducedMotion = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [mediaError, setMediaError] = useState(false);
-  const slot = mediaSlotId ? slotById(mediaSlotId) : undefined;
+  const slot = mediaSlotId ? slotById(mediaSlotId, slots) : undefined;
   const resolved = slot ? resolveSlot(slot, mediaOverride) : { media: null, alternatives: [] };
   const media = resolved.media && resolved.media.module === moduleId ? resolved.media : null;
   const heightPx = visiblePatientHeightPx(display);

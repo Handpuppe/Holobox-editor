@@ -1,5 +1,5 @@
 import type { AwardValue, OptionQuality } from '../domain/types';
-import type { PatientMediaState } from '../media/types';
+import type { MediaSlotConfig, PatientMediaState } from '../media/types';
 
 export const NURSING_SCENARIO_VERSION = '1.0.1';
 export const NURSING_RUBRIC_VERSION = '1.0.0';
@@ -52,6 +52,33 @@ export interface NursingSbar {
   background: string;
   assessment: string;
   recommendation: string;
+}
+
+export interface NursingPatient {
+  name: string;
+  age: number;
+  fictional: true;
+  heightCm: number;
+  setting: string;
+  background: string;
+  studentRole: string;
+}
+
+export interface NursingScenarioMeta {
+  id: string;
+  version: string;
+  rubricVersion: string;
+  title: string;
+  estimatedDuration: string;
+  startStepId: string;
+}
+
+export interface NursingScenario {
+  meta: NursingScenarioMeta;
+  patient: NursingPatient;
+  learningObjectives: string[];
+  steps: NursingStep[];
+  mediaSlots: MediaSlotConfig[];
 }
 
 export interface NursingScoreEvent {

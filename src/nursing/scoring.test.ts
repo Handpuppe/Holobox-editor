@@ -42,4 +42,12 @@ describe('nursing scoring', () => {
     expect(calculateNursingScores(session?.history ?? []).total).toBe(0);
     expect(session?.criticalErrors.length).toBeGreaterThan(0);
   });
+
+  it('uses supplied steps for the maximum without changing the formula', () => {
+    const session = play('high');
+    expect(calculateNursingScores(session?.history ?? [], nursingSteps).total).toBe(100);
+    expect(calculateNursingScores(session?.history ?? []).total).toBe(
+      calculateNursingScores(session?.history ?? [], nursingSteps).total,
+    );
+  });
 });

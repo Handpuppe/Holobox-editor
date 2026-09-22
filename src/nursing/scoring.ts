@@ -6,6 +6,7 @@ import {
   NURSING_WEIGHTS,
   type NursingCompetency,
   type NursingScoreEvent,
+  type NursingStep,
 } from './types';
 
 export function nursingWeightTotal(): number {
@@ -22,9 +23,11 @@ function emptyAwards(): Record<NursingCompetency, number> {
   };
 }
 
-export function nursingMaximum(): Record<NursingCompetency, number> {
+export function nursingMaximum(
+  steps: readonly NursingStep[] = nursingSteps,
+): Record<NursingCompetency, number> {
   const max = emptyAwards();
-  for (const step of nursingSteps) {
+  for (const step of steps) {
     for (const competency of step.scoredCompetencies) {
       max[competency] += 1;
     }
@@ -32,8 +35,11 @@ export function nursingMaximum(): Record<NursingCompetency, number> {
   return max;
 }
 
-export function calculateNursingScores(events: NursingScoreEvent[]): ScoreSummary {
-  const max = nursingMaximum();
+export function calculateNursingScores(
+  events: NursingScoreEvent[],
+  steps: readonly NursingStep[] = nursingSteps,
+): ScoreSummary {
+  const max = nursingMaximum(steps);
   const earned = emptyAwards();
   for (const event of events) {
     for (const competency of NURSING_COMPETENCIES) {
@@ -76,8 +82,11 @@ export function toGenericEvents(events: NursingScoreEvent[]): ScoreEvent[] {
   }));
 }
 
-export function optionIdsByQuality(quality: 'high' | 'partial' | 'inappropriate'): string[] {
-  return nursingSteps.map((step) => {
+export function optionIdsByQuality(
+  quality: 'high' | 'partial' | 'inappropriate',
+  steps: readonly NursingStep[] = nursingSteps,
+): string[] {
+  return steps.map((step) => {
     const option = step.options.find((item) => item.quality === quality);
     if (!option) {
       throw new Error(`Geen ${quality}-optie in ${step.id}`);

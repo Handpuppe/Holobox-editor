@@ -249,4 +249,86 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
   });
+
+  it('switches to Verpleegkunde, edits a step, and downloads JSON', async () => {
+    const user = userEvent.setup();
+    const originalQuestion = aphasiaIntakeScenario.nodes[0]?.prompt.text ?? '';
+    let captured: unknown;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((value) => {
+      captured = value;
+      return 'blob:nursing-editor';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    expect(screen.getByTestId('nursing-question')).toBeInTheDocument();
+    expect(screen.getByTestId('nursing-weights-readonly')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-nursing-preview-stage')).not.toHaveStyle({
+      transform: 'scale(1.5)',
+    });
+    expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor-nursing-media')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('nursing-question'), {
+      target: { value: 'Aangepaste verpleegkundevraag in de editor.' },
+    });
+    expect(screen.getByTestId('preview-nursing-question')).toHaveTextContent(
+      'Aangepaste verpleegkundevraag in de editor.',
+    );
+
+    await user.click(screen.getByTestId('btn-download-json'));
+    expect(captured).toBeInstanceOf(Blob);
+    const json = JSON.parse(await (captured as Blob).text()) as {
+      schemaVersion: number;
+      module: string;
+      steps: Array<{ question: string }>;
+    };
+    expect(json.schemaVersion).toBe(1);
+    expect(json.module).toBe('verpleegkunde');
+    expect(json.steps[0]?.question).toBe('Aangepaste verpleegkundevraag in de editor.');
+
+    await user.click(screen.getByTestId('editor-module-logopedie'));
+    expect(screen.getByTestId('prompt-text')).toHaveValue(originalQuestion);
+  });
+
+  it('saves the nursing draft to this copy via the editor API', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    fireEvent.change(screen.getByTestId('nursing-question'), {
+      target: { value: 'Vraag opgeslagen in deze verpleegkunde-kopie.' },
+    });
+    await user.click(screen.getByTestId('btn-save-json'));
+    expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+      'Opgeslagen in deze kopie',
+    );
+    const post = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('save-verpleegkunde'),
+    );
+    expect(post).toBeTruthy();
+    const body = JSON.parse(String(post?.[1]?.body)) as {
+      module: string;
+      steps: Array<{ question: string }>;
+    };
+    expect(body.module).toBe('verpleegkunde');
+    expect(body.steps[0]?.question).toBe('Vraag opgeslagen in deze verpleegkunde-kopie.');
+  });
 });

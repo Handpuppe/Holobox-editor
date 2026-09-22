@@ -1,0 +1,750 @@
+{
+  "schemaVersion": 1,
+  "module": "verpleegkunde",
+  "meta": {
+    "id": "abcde-sbar-sara-meijer",
+    "version": "1.0.1",
+    "rubricVersion": "1.0.0",
+    "title": "ABCDE en SBAR bij acute benauwdheid",
+    "estimatedDuration": "10–15 minuten",
+    "startStepId": "n-a"
+  },
+  "patient": {
+    "name": "Meneer de Vries",
+    "age": 58,
+    "fictional": true,
+    "heightCm": 170,
+    "setting": "Spoedeisende hulp",
+    "background": "Meneer de Vries is een fictieve patiënt van 58 jaar. Twintig minuten geleden nam hij voor het eerst amoxicilline in. Hij is toenemend benauwd en jeukend. Een naaste is aanwezig.",
+    "studentRole": "Jij bent de verpleegkundige. Je volgt ABCDE, bewaakt veiligheid en draagt daarna gestructureerd over met SBAR. Stel geen zekere medische diagnose."
+  },
+  "learningObjectives": [
+    "ABCDE stap voor stap toepassen. ",
+    "Een mogelijk bedreigde luchtweg herkennen.",
+    "Ademhaling en oxygenatie observeren.",
+    "Circulatie beoordelen (bleek, klam).",
+    "Bewustzijn beoordelen.",
+    "Huid en omgeving inspecteren zonder ABCDE te doorbreken.",
+    "Kritieke acties niet uitstellen.",
+    "Observatie scheiden van interpretatie.",
+    "SBAR gestructureerd overdragen.",
+    "Tijdig hulp inschakelen."
+  ],
+  "steps": [
+    {
+      "id": "n-a",
+      "phaseLabel": "A – Luchtweg",
+      "question": "Wat is nu je eerste actie bij de luchtweg?",
+      "help": "Eén beslissing. Blijf bij A voordat je verder gaat.",
+      "mediaSlotId": "nursing-airway",
+      "scoredCompetencies": [
+        "abcdeSystematics",
+        "patientSafety"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-a-high",
+          "text": "Ik spreek meneer de Vries aan, beoordeel of de luchtweg vrij is en vraag direct hulp.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 1,
+            "patientSafety": 1
+          },
+          "delayedFeedback": "Je start bij A en schakelt hulp in.",
+          "educationalRationale": "Een mogelijke luchtwegdreiging vraagt directe beoordeling en extra handen.",
+          "mediaSlotId": "nursing-airway",
+          "nextStepId": "n-b"
+        },
+        {
+          "id": "n-a-partial",
+          "text": "Ik vraag eerst uitgebreid naar zijn ziektegeschiedenis.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 0.5,
+            "patientSafety": 0.5
+          },
+          "delayedFeedback": "Voorgeschiedenis telt, maar niet vóór de luchtweg.",
+          "educationalRationale": "ABCDE gaat voor een uitgebreide anamnese.",
+          "nextStepId": "n-b"
+        },
+        {
+          "id": "n-a-low",
+          "text": "Ik geef hem water om te drinken en te kalmeren.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "criticalError": "Orale intake bij mogelijke luchtwegdreiging.",
+          "competencyAwards": {
+            "abcdeSystematics": 0,
+            "patientSafety": 0
+          },
+          "delayedFeedback": "Drinken is onveilig bij een mogelijk bedreigde luchtweg.",
+          "educationalRationale": "Niets oraals totdat de luchtweg betrouwbaar vrij is.",
+          "nextStepId": "n-b"
+        }
+      ]
+    },
+    {
+      "id": "n-b",
+      "phaseLabel": "B – Ademhaling",
+      "question": "Hoe beoordeel je de ademhaling?",
+      "help": "Beschrijf wat je ziet en meet. Stel geen zekere diagnose.",
+      "mediaSlotId": "nursing-breathing",
+      "scoredCompetencies": [
+        "abcdeSystematics",
+        "observation"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-b-low",
+          "text": "Ik laat hem alleen en haal eerst het dossier.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "criticalError": "Patiënt alleen gelaten tijdens benauwdheid.",
+          "competencyAwards": {
+            "abcdeSystematics": 0,
+            "observation": 0
+          },
+          "delayedFeedback": "Een benauwde patiënt laat je niet alleen.",
+          "educationalRationale": "Blijf bij de patiënt en observeer ademhaling ter plaatse.",
+          "nextStepId": "n-c"
+        },
+        {
+          "id": "n-b-high",
+          "text": "Ik kijk naar ademarbeid, tel de frequentie en laat saturatie meten.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 1,
+            "observation": 1
+          },
+          "delayedFeedback": "Je observeert ademhaling meetbaar en systematisch.",
+          "educationalRationale": "B bestaat uit kijken, tellen en meten, niet uit geruststellen alleen.",
+          "mediaSlotId": "nursing-oxygen",
+          "nextStepId": "n-c"
+        },
+        {
+          "id": "n-b-partial",
+          "text": "Ik zeg dat hij rustig moet ademhalen, dan gaat het over.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 0.5,
+            "observation": 0.5
+          },
+          "delayedFeedback": "Kalmeren helpt soms, maar vervangt geen observatie.",
+          "educationalRationale": "Instructie zonder meting mist klinische informatie.",
+          "mediaSlotId": "nursing-hyperventilation",
+          "nextStepId": "n-c"
+        }
+      ]
+    },
+    {
+      "id": "n-c",
+      "phaseLabel": "C – Circulatie",
+      "question": "Wat doe je bij de circulatie?",
+      "help": "Huidskleur en klamheid zijn observaties, geen bewezen shock.",
+      "mediaSlotId": "nursing-circulation",
+      "scoredCompetencies": [
+        "abcdeSystematics",
+        "observation"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-c-high",
+          "text": "Ik beoordeel kleur, klamheid, pols en capillaire refill.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 1,
+            "observation": 1
+          },
+          "delayedFeedback": "Je beoordeelt circulatie met meerdere observaties.",
+          "educationalRationale": "C vraagt naar huid, pols en perfusionetekenen.",
+          "nextStepId": "n-d"
+        },
+        {
+          "id": "n-c-partial",
+          "text": "Ik zie dat hij bleek is en ga meteen medicatie klaarzetten.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 0.5,
+            "observation": 0.5
+          },
+          "delayedFeedback": "Je zag bleekheid, maar sloeg meting en overleg over.",
+          "educationalRationale": "Eerst observeren en alarmeren, dan pas behandeling op voorschrift.",
+          "nextStepId": "n-d"
+        },
+        {
+          "id": "n-c-low",
+          "text": "Bleekheid zegt weinig, ik sla C over.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "abcdeSystematics": 0,
+            "observation": 0
+          },
+          "delayedFeedback": "C overslaan is onveilig.",
+          "educationalRationale": "Iedere ABCDE-letter krijgt een bewuste beoordeling.",
+          "nextStepId": "n-d"
+        }
+      ]
+    },
+    {
+      "id": "n-d",
+      "phaseLabel": "D – Bewustzijn",
+      "question": "Hoe beoordeel je het bewustzijn?",
+      "help": "Spreek de patiënt aan. Vermijd zware labels zonder onderbouwing.",
+      "mediaSlotId": "nursing-disability",
+      "scoredCompetencies": [
+        "abcdeSystematics",
+        "patientSafety"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-d-partial",
+          "text": "Ik noteer dat hij in coma is en wacht af.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 0.5,
+            "patientSafety": 0.5
+          },
+          "delayedFeedback": "Coma is een aanname. Wachten bij dalend bewustzijn is riskant.",
+          "educationalRationale": "Beschrijf de reactie op aanspreken, niet een zwaar label.",
+          "nextStepId": "n-e"
+        },
+        {
+          "id": "n-d-low",
+          "text": "Ik schud hem hard wakker en laat hem lopen.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "criticalError": "Onveilige mobilisatie bij verminderd bewustzijn.",
+          "competencyAwards": {
+            "abcdeSystematics": 0,
+            "patientSafety": 0
+          },
+          "delayedFeedback": "Hard schudden en laten lopen is onveilig.",
+          "educationalRationale": "Eerst beveiligen, aanspreken en hulp inschakelen.",
+          "nextStepId": "n-e"
+        },
+        {
+          "id": "n-d-high",
+          "text": "Ik spreek hem aan, beoordeel de reactie en houd de luchtweg in de gaten.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "abcdeSystematics": 1,
+            "patientSafety": 1
+          },
+          "delayedFeedback": "Je koppelt bewustzijn terug aan luchtwegveiligheid.",
+          "educationalRationale": "D en A blijven verbonden bij een acuut zieke patiënt.",
+          "nextStepId": "n-e"
+        }
+      ]
+    },
+    {
+      "id": "n-e",
+      "phaseLabel": "E – Huid en omgeving",
+      "question": "Wat inspecteer je bij exposure?",
+      "help": "Huid, temperatuur en pijn, zonder ABCDE te verlaten.",
+      "mediaSlotId": "nursing-exposure",
+      "scoredCompetencies": [
+        "observation",
+        "professionalBehaviour"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-e-high",
+          "text": "Ik inspecteer de huid, vraag naar jeuk of pijn en laat de temperatuur meten.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1,
+            "professionalBehaviour": 1
+          },
+          "delayedFeedback": "Je maakt E compleet: huid, pijn en temperatuur.",
+          "educationalRationale": "E is inspectie, niet een zekere allergiediagnose.",
+          "mediaSlotId": "nursing-fever",
+          "nextStepId": "n-sbar-s"
+        },
+        {
+          "id": "n-e-partial",
+          "text": "Ik dek hem toe en ga door zonder verder te kijken.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5,
+            "professionalBehaviour": 0.5
+          },
+          "delayedFeedback": "Toedekken is comfort, geen volledige E.",
+          "educationalRationale": "Exposure vraagt gericht kijken naar huid en omgeving.",
+          "nextStepId": "n-sbar-s"
+        },
+        {
+          "id": "n-e-low",
+          "text": "Dit is vast een virus, geen actie nodig.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0,
+            "professionalBehaviour": 0
+          },
+          "delayedFeedback": "Een verzonnen diagnose is geen observatie.",
+          "educationalRationale": "Benoem wat je ziet, niet wat je denkt dat het zeker is.",
+          "nextStepId": "n-sbar-s"
+        }
+      ]
+    },
+    {
+      "id": "n-sbar-s",
+      "phaseLabel": "SBAR – Situation",
+      "question": "Hoe open je de overdracht?",
+      "help": "Kort: wie, waar, wat nu.",
+      "mediaSlotId": "nursing-breathing",
+      "scoredCompetencies": [
+        "sbarCommunication",
+        "professionalBehaviour"
+      ],
+      "kind": "choice",
+      "sbarField": "situation",
+      "options": [
+        {
+          "id": "n-s-high",
+          "text": "Ik bel de arts: meneer de Vries, 58 jaar, SEH, acuut benauwd na amoxicilline.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 1,
+            "professionalBehaviour": 1
+          },
+          "delayedFeedback": "Situation is kort, concreet en zonder overdiagnose.",
+          "educationalRationale": "S bevat identiteit, locatie en het actuele probleem.",
+          "nextStepId": "n-sbar-b"
+        },
+        {
+          "id": "n-s-partial",
+          "text": "Ik zeg dat het niet goed gaat en dat de arts moet komen.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 0.5,
+            "professionalBehaviour": 0.5
+          },
+          "delayedFeedback": "Urgentie is duidelijk, de situatie ontbreekt.",
+          "educationalRationale": "Zonder naam, leeftijd en aanleiding is S onvolledig.",
+          "nextStepId": "n-sbar-b"
+        },
+        {
+          "id": "n-s-low",
+          "text": "Ik wacht tot de dienst wisselt, het is vast overwaaien.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "criticalError": "Escalatie uitgesteld bij acute benauwdheid.",
+          "competencyAwards": {
+            "sbarCommunication": 0,
+            "professionalBehaviour": 0
+          },
+          "delayedFeedback": "Uitstellen van overdracht is onveilig.",
+          "educationalRationale": "Acute ABCDE-afwijkingen vragen directe overdracht.",
+          "nextStepId": "n-sbar-b"
+        }
+      ]
+    },
+    {
+      "id": "n-sbar-b",
+      "phaseLabel": "SBAR – Background",
+      "question": "Welke achtergrond hoort in de overdracht?",
+      "help": "Relevante context, geen levensverhaal.",
+      "mediaSlotId": "nursing-exposure",
+      "scoredCompetencies": [
+        "sbarCommunication"
+      ],
+      "kind": "choice",
+      "sbarField": "background",
+      "options": [
+        {
+          "id": "n-bg-partial",
+          "text": "Ik vertel zijn hele levensloop en alle oude ziekten.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 0.5
+          },
+          "delayedFeedback": "Te veel achtergrond verdringt het acute beeld.",
+          "educationalRationale": "B is relevant, niet compleet.",
+          "nextStepId": "n-sbar-a"
+        },
+        {
+          "id": "n-bg-high",
+          "text": "Eerste dosis amoxicilline 20 minuten geleden, verder tot nu toe stabiel.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 1
+          },
+          "delayedFeedback": "Je noemt de relevante blootstelling.",
+          "educationalRationale": "De nieuwe medicatie is de kern van B in dit scenario.",
+          "nextStepId": "n-sbar-a"
+        },
+        {
+          "id": "n-bg-low",
+          "text": "Achtergrond is onbelangrijk, ik sla B over.",
+          "quality": "inappropriate",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 0
+          },
+          "delayedFeedback": "Zonder B mist de arts context.",
+          "educationalRationale": "SBAR is onvolledig zonder Background.",
+          "nextStepId": "n-sbar-a"
+        }
+      ]
+    },
+    {
+      "id": "n-sbar-a",
+      "phaseLabel": "SBAR – Assessment",
+      "question": "Hoe verwoord je je inschatting?",
+      "help": "Observaties eerst. Geen zekere diagnose.",
+      "mediaSlotId": "nursing-circulation",
+      "scoredCompetencies": [
+        "sbarCommunication",
+        "observation"
+      ],
+      "kind": "choice",
+      "sbarField": "assessment",
+      "options": [
+        {
+          "id": "n-as-high",
+          "text": "Luchtweg mogelijk bedreigd, benauwd, bleek en klam, huiduitslag, bewustzijn wisselend.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 1,
+            "observation": 1
+          },
+          "delayedFeedback": "Je somt ABCDE-observaties op zonder te overclaimen.",
+          "educationalRationale": "Assessment is het klinische beeld, geen definitieve diagnose.",
+          "nextStepId": "n-sbar-r"
+        },
+        {
+          "id": "n-as-partial",
+          "text": "Ik denk dat het wel meevalt, maar hij ziet er ziek uit.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 0.5,
+            "observation": 0.5
+          },
+          "delayedFeedback": "Te vaag voor een bruikbare assessment.",
+          "educationalRationale": "Noem de ABCDE-bevindingen.",
+          "nextStepId": "n-sbar-r"
+        },
+        {
+          "id": "n-as-low",
+          "text": "Het is bewezen anafylaxie, shock en coma.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "sbarCommunication": 0,
+            "observation": 0
+          },
+          "delayedFeedback": "Dat zijn aannames, geen vastgestelde feiten in deze oefening.",
+          "educationalRationale": "Zware labels zonder bevestiging misleiden de ontvanger.",
+          "nextStepId": "n-sbar-r"
+        }
+      ]
+    },
+    {
+      "id": "n-sbar-r",
+      "phaseLabel": "SBAR – Recommendation",
+      "question": "Wat beveel je aan?",
+      "help": "Blijf binnen de verpleegkundige rol.",
+      "mediaSlotId": "nursing-airway",
+      "scoredCompetencies": [
+        "sbarCommunication",
+        "patientSafety"
+      ],
+      "kind": "choice",
+      "sbarField": "recommendation",
+      "options": [
+        {
+          "id": "n-r-low",
+          "text": "Ik start zelf adrenaline en stuur hem naar huis.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "criticalError": "Behandeling en ontslag buiten bevoegdheid.",
+          "competencyAwards": {
+            "sbarCommunication": 0,
+            "patientSafety": 0
+          },
+          "delayedFeedback": "Zelfstandig medicatie starten en ontslag horen niet bij deze rol.",
+          "educationalRationale": "R is een verzoek om beoordeling, geen eigen protocol buiten bevoegdheid.",
+          "nextStepId": "n-sbar-check"
+        },
+        {
+          "id": "n-r-high",
+          "text": "Komt u nu beoordelen? Ik blijf bij de patiënt en herhaal ABCDE.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 1,
+            "patientSafety": 1
+          },
+          "delayedFeedback": "Je vraagt directe beoordeling en blijft aanwezig.",
+          "educationalRationale": "Een duidelijke, haalbare recommendation sluit SBAR af.",
+          "nextStepId": "n-sbar-check"
+        },
+        {
+          "id": "n-r-partial",
+          "text": "Misschien later visites, als u tijd heeft.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 0.5,
+            "patientSafety": 0.5
+          },
+          "delayedFeedback": "Te vrijblijvend bij een acuut beeld.",
+          "educationalRationale": "Recommendation moet de urgentie weerspiegelen.",
+          "nextStepId": "n-sbar-check"
+        }
+      ]
+    },
+    {
+      "id": "n-sbar-check",
+      "phaseLabel": "SBAR – Controle",
+      "question": "Wat doe je vóór afronden?",
+      "help": "Controleer of de boodschap klopt en de patiënt niet alleen is.",
+      "mediaSlotId": "nursing-disability",
+      "scoredCompetencies": [
+        "sbarCommunication",
+        "professionalBehaviour"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-k-high",
+          "text": "Ik herhaal kernpunten, bevestig dat de arts komt en blijf bij meneer de Vries.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 1,
+            "professionalBehaviour": 1
+          },
+          "delayedFeedback": "Je sluit de overdracht af en laat de patiënt niet los.",
+          "educationalRationale": "Closed loop en aanwezigheid horen bij veilige overdracht.",
+          "nextStepId": "completed"
+        },
+        {
+          "id": "n-k-partial",
+          "text": "Ik hang op en ga documenteren in een andere ruimte.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "sbarCommunication": 0.5,
+            "professionalBehaviour": 0.5
+          },
+          "delayedFeedback": "Documenteren telt, maar niet uit het zicht van een instabiele patiënt.",
+          "educationalRationale": "Eerst veiligheid, dan registratie.",
+          "nextStepId": "completed"
+        },
+        {
+          "id": "n-k-low",
+          "text": "Ik geef de naaste de verantwoordelijkheid en ga pauze houden.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "criticalError": "Zorg overgedragen aan naaste, patiënt verlaten.",
+          "competencyAwards": {
+            "sbarCommunication": 0,
+            "professionalBehaviour": 0
+          },
+          "delayedFeedback": "Een naaste vervangt geen professionele bewaking.",
+          "educationalRationale": "Verantwoordelijkheid blijft bij de zorgverlener.",
+          "nextStepId": "completed"
+        }
+      ]
+    }
+  ],
+  "mediaSlots": [
+    {
+      "slotId": "nursing-airway",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "luchtweg",
+        "airway",
+        "bedreigde"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is Mogelijk bedreigde luchtweg – A (Airway).mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Observatie A: de patiënt staat, de luchtweg lijkt mogelijk bedreigd. Beoordeel of spreken en ademen vrij zijn.",
+      "captions": "Mogelijke bedreiging van de luchtweg. Dit is een fictieve onderwijssituatie.",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie luchtweg"
+    },
+    {
+      "slotId": "nursing-breathing",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "benauwd"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is benauwd.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Observatie B: de patiënt is zichtbaar benauwd. Let op ademarbeid zonder een diagnose te stellen.",
+      "captions": "Benauwdheid. Fictieve onderwijssituatie.",
+      "alternativeMatches": [
+        "verpleegkunde/Staat is zuurstof te kort.mp4",
+        "verpleegkunde/Staat is hyperventileren.mp4"
+      ],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie ademhaling"
+    },
+    {
+      "slotId": "nursing-oxygen",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "zuurstof"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is zuurstof te kort.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Aanvullende observatie: mogelijke tekenen van zuurstoftekort. Meet en rapporteer, interpreteer niet te zwaar.",
+      "captions": "Mogelijke tekenen van zuurstoftekort. Fictieve onderwijssituatie.",
+      "alternativeMatches": [
+        "verpleegkunde/Staat is benauwd.mp4"
+      ],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie oxygenatie"
+    },
+    {
+      "slotId": "nursing-hyperventilation",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "hyperventileren"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is hyperventileren.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Aanvullende observatie: de ademhaling kan snel en oppervlakkig zijn. Beschrijf wat je ziet.",
+      "captions": "Snelle ademhaling. Fictieve onderwijssituatie.",
+      "alternativeMatches": [
+        "verpleegkunde/Staat is benauwd.mp4"
+      ],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie adempatroon"
+    },
+    {
+      "slotId": "nursing-circulation",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "bleek",
+        "klam"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is Bleek en klam.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Observatie C: de huid kan bleek en klam aanvoelen. Beoordeel circulatie systematisch.",
+      "captions": "Bleke, klamme huid. Fictieve onderwijssituatie.",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie circulatie"
+    },
+    {
+      "slotId": "nursing-disability",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "bewustzijn",
+        "verminderde"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is Verminderde bewustzijn.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Observatie D: het bewustzijn kan verminderd zijn. Spreek de patiënt aan en beoordeel de reactie.",
+      "captions": "Verminderd bewustzijn. Fictieve onderwijssituatie.",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie bewustzijn"
+    },
+    {
+      "slotId": "nursing-exposure",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "huiduitslag",
+        "allergische",
+        "exposureenvironment"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is Huiduitslag of mogelijke allergische reactie – E (ExposureEnvironment).mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Observatie E: er kan huiduitslag zichtbaar zijn, passend bij een mogelijke allergische reactie. Stel geen zekere diagnose.",
+      "captions": "Huiduitslag, mogelijke allergische reactie. Fictieve onderwijssituatie.",
+      "alternativeMatches": [
+        "verpleegkunde/Staat is koorts.mp4",
+        "verpleegkunde/Staat is pijn.mp4"
+      ],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie huid en omgeving"
+    },
+    {
+      "slotId": "nursing-fever",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "koorts"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is koorts.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Aanvullende observatie: let op tekenen van koorts zonder andere ABCDE-bevindingen te negeren.",
+      "captions": "Mogelijke koorts. Fictieve onderwijssituatie.",
+      "alternativeMatches": [
+        "verpleegkunde/Staat is Huiduitslag of mogelijke allergische reactie – E (ExposureEnvironment).mp4"
+      ],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie temperatuur"
+    },
+    {
+      "slotId": "nursing-pain",
+      "scenarioId": "abcde-sbar-sara-meijer",
+      "module": "verpleegkunde",
+      "matchedKeywords": [
+        "pijn"
+      ],
+      "primaryMedia": "verpleegkunde/Staat is pijn.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "Aanvullende observatie: de patiënt kan pijn aangeven. Pijn mag ABCDE niet verdringen.",
+      "captions": "Pijn. Fictieve onderwijssituatie.",
+      "alternativeMatches": [
+        "verpleegkunde/Staat is Huiduitslag of mogelijke allergische reactie – E (ExposureEnvironment).mp4"
+      ],
+      "loopBehaviour": "none",
+      "audioEnabled": true,
+      "studentLabel": "Observatie pijn"
+    }
+  ]
+}

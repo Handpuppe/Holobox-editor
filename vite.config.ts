@@ -22,6 +22,7 @@ const packageJson = JSON.parse(
 ) as { version: string };
 
 const MAX_EDITOR_BODY_BYTES = 8_000_000;
+const MAX_EDITOR_MEDIA_BYTES = 16_000_000;
 
 const APP_BASE = '/Holobox-editor/';
 const LEGACY_LOCAL_BASE = '/HoloboxVPKenLogo';
@@ -37,9 +38,18 @@ function requestPath(url: string | undefined): string {
   return decodeURIComponent((url ?? '').split('?')[0] ?? '');
 }
 
-function isEditorSavePath(url: string | undefined): boolean {
+function editorSaveModule(url: string | undefined): 'logopedie' | 'verpleegkunde' | null {
   const path = requestPath(url);
-  return path === '/editor-api/save-logopedie' || path.endsWith('/editor-api/save-logopedie');
+  if (path === '/editor-api/save-logopedie' || path.endsWith('/editor-api/save-logopedie')) {
+    return 'logopedie';
+  }
+  if (
+    path === '/editor-api/save-verpleegkunde' ||
+    path.endsWith('/editor-api/save-verpleegkunde')
+  ) {
+    return 'verpleegkunde';
+  }
+  return null;
 }
 
 function isEditorMediaPath(url: string | undefined): boolean {
@@ -47,7 +57,25 @@ function isEditorMediaPath(url: string | undefined): boolean {
   return path === '/editor-api/logopedie-media' || path.includes('/editor-api/logopedie-media');
 }
 
+function isNursingEditorMediaPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return (
+    path === '/editor-api/verpleegkunde-media' || path.includes('/editor-api/verpleegkunde-media')
+  );
+}
+
 const LOGOPEDIE_IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif']);
+const NURSING_MEDIA_EXT = new Set([
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.m4v',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.avif',
+]);
 const ERIK_BASIS_REL = 'logopedie/avatar/erik_basis.png';
 
 function safeLogopedieRel(input: string, resourcesRoot: string): string | null {
@@ -70,9 +98,30 @@ function safeLogopedieRel(input: string, resourcesRoot: string): string | null {
   return normalized;
 }
 
-function walkLogopedieImages(
+function safeNursingRel(input: string, resourcesRoot: string): string | null {
+  const normalized = input.replaceAll('\\', '/').replace(/^\/+/, '');
+  if (
+    !normalized.startsWith('verpleegkunde/') ||
+    normalized.includes('..') ||
+    normalized.includes('logopedie')
+  ) {
+    return null;
+  }
+  if (!NURSING_MEDIA_EXT.has(extname(normalized).toLowerCase())) {
+    return null;
+  }
+  const abs = resolve(resourcesRoot, normalized);
+  const nursingRoot = resolve(resourcesRoot, 'verpleegkunde');
+  if (abs !== nursingRoot && !abs.startsWith(nursingRoot + sep)) {
+    return null;
+  }
+  return normalized;
+}
+
+function walkMediaFiles(
   dir: string,
   resourcesRoot: string,
+  accept: (rel: string) => boolean,
 ): Array<{ relativePath: string; sizeBytes: number }> {
   if (!existsSync(dir)) {
     return [];
@@ -81,15 +130,29 @@ function walkLogopedieImages(
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      items.push(...walkLogopedieImages(full, resourcesRoot));
+      items.push(...walkMediaFiles(full, resourcesRoot, accept));
       continue;
     }
     const rel = relative(resourcesRoot, full).split(sep).join('/');
-    if (safeLogopedieRel(rel, resourcesRoot)) {
+    if (accept(rel)) {
       items.push({ relativePath: rel, sizeBytes: statSync(full).size });
     }
   }
   return items.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'nl'));
+}
+
+function walkLogopedieImages(
+  dir: string,
+  resourcesRoot: string,
+): Array<{ relativePath: string; sizeBytes: number }> {
+  return walkMediaFiles(dir, resourcesRoot, (rel) => Boolean(safeLogopedieRel(rel, resourcesRoot)));
+}
+
+function walkNursingMedia(
+  dir: string,
+  resourcesRoot: string,
+): Array<{ relativePath: string; sizeBytes: number }> {
+  return walkMediaFiles(dir, resourcesRoot, (rel) => Boolean(safeNursingRel(rel, resourcesRoot)));
 }
 
 function regenerateMediaManifest(projectRoot: string): void {
@@ -124,7 +187,7 @@ function sendJson(res: ServerResponse, status: number, payload: Record<string, u
   res.end(JSON.stringify(payload));
 }
 
-function writeLogopedieJson(target: string, pretty: string, makeBak: boolean): boolean {
+function writeScenarioJson(target: string, pretty: string, makeBak: boolean): boolean {
   mkdirSync(dirname(target), { recursive: true });
   let backup = false;
   if (makeBak && existsSync(target)) {
@@ -135,9 +198,34 @@ function writeLogopedieJson(target: string, pretty: string, makeBak: boolean): b
   return backup;
 }
 
+function isLogopedieEnvelope(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { schemaVersion?: unknown }).schemaVersion === 1 &&
+    (data as { module?: unknown }).module === 'logopedie' &&
+    typeof (data as { scenario?: unknown }).scenario === 'object' &&
+    (data as { scenario?: unknown }).scenario !== null
+  );
+}
+
+function isVerpleegkundeEnvelope(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { schemaVersion?: unknown }).schemaVersion === 1 &&
+    (data as { module?: unknown }).module === 'verpleegkunde' &&
+    typeof (data as { meta?: unknown }).meta === 'object' &&
+    (data as { meta?: unknown }).meta !== null &&
+    Array.isArray((data as { steps?: unknown }).steps) &&
+    Array.isArray((data as { mediaSlots?: unknown }).mediaSlots)
+  );
+}
+
 function editorSaveMiddleware(resourcesRoot: string, distResourcesRoot: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-    if (!isEditorSavePath(req.url)) {
+    const moduleId = editorSaveModule(req.url);
+    if (!moduleId) {
       next();
       return;
     }
@@ -154,30 +242,29 @@ function editorSaveMiddleware(resourcesRoot: string, distResourcesRoot: string) 
           sendJson(res, 400, { ok: false, error: 'Dit bestand is geen geldige JSON.' });
           return;
         }
-        if (
-          typeof data !== 'object' ||
-          data === null ||
-          (data as { schemaVersion?: unknown }).schemaVersion !== 1 ||
-          (data as { module?: unknown }).module !== 'logopedie' ||
-          typeof (data as { scenario?: unknown }).scenario !== 'object' ||
-          (data as { scenario?: unknown }).scenario === null
-        ) {
+        const valid =
+          moduleId === 'logopedie' ? isLogopedieEnvelope(data) : isVerpleegkundeEnvelope(data);
+        if (!valid) {
           sendJson(res, 400, {
             ok: false,
-            error: 'Alleen een Logopedie-envelope met schemaVersion 1 kan worden opgeslagen.',
+            error:
+              moduleId === 'logopedie'
+                ? 'Alleen een Logopedie-envelope met schemaVersion 1 kan worden opgeslagen.'
+                : 'Alleen een Verpleegkunde-envelope met schemaVersion 1 kan worden opgeslagen.',
           });
           return;
         }
+        const filename = moduleId === 'logopedie' ? 'logopedie.json' : 'verpleegkunde.json';
         const pretty = `${JSON.stringify(data, null, 2)}\n`;
-        const target = join(resourcesRoot, 'scenarios', 'logopedie.json');
-        const backup = writeLogopedieJson(target, pretty, true);
+        const target = join(resourcesRoot, 'scenarios', filename);
+        const backup = writeScenarioJson(target, pretty, true);
         const distDir = join(distResourcesRoot, 'scenarios');
         if (existsSync(dirname(distResourcesRoot)) || existsSync(distResourcesRoot)) {
-          writeLogopedieJson(join(distDir, 'logopedie.json'), pretty, false);
+          writeScenarioJson(join(distDir, filename), pretty, false);
         }
         sendJson(res, 200, {
           ok: true,
-          file: 'resources/scenarios/logopedie.json',
+          file: `resources/scenarios/${filename}`,
           backup,
         });
       })
@@ -295,6 +382,100 @@ function editorMediaMiddleware(resourcesRoot: string, projectRoot: string) {
   };
 }
 
+function editorNursingMediaMiddleware(resourcesRoot: string, projectRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (!isNursingEditorMediaPath(req.url)) {
+      next();
+      return;
+    }
+    const method = req.method ?? 'GET';
+    if (method === 'GET') {
+      sendJson(res, 200, {
+        ok: true,
+        items: walkNursingMedia(join(resourcesRoot, 'verpleegkunde'), resourcesRoot),
+      });
+      return;
+    }
+    if (method === 'DELETE') {
+      const url = new URL(req.url ?? '', 'http://127.0.0.1');
+      const rel = safeNursingRel(url.searchParams.get('path') ?? '', resourcesRoot);
+      if (!rel) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'Alleen bestanden onder resources/verpleegkunde/ kunnen worden verwijderd.',
+        });
+        return;
+      }
+      const target = join(resourcesRoot, rel);
+      if (existsSync(target)) {
+        unlinkSync(target);
+      }
+      const distCopy = join(projectRoot, 'dist', 'resources', rel);
+      if (existsSync(distCopy)) {
+        unlinkSync(distCopy);
+      }
+      regenerateMediaManifest(projectRoot);
+      sendJson(res, 200, { ok: true, file: `resources/${rel}` });
+      return;
+    }
+    if (method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'GET, POST of DELETE is toegestaan.' });
+      return;
+    }
+    void readRequestBody(req, MAX_EDITOR_MEDIA_BYTES)
+      .then((body) => {
+        let data: {
+          relativePath?: unknown;
+          replace?: unknown;
+          contentBase64?: unknown;
+        };
+        try {
+          data = JSON.parse(body) as typeof data;
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'Media-JSON is ongeldig.' });
+          return;
+        }
+        const rel = safeNursingRel(String(data.relativePath ?? ''), resourcesRoot);
+        if (!rel) {
+          sendJson(res, 400, {
+            ok: false,
+            error: 'Alleen media onder resources/verpleegkunde/ kunnen worden opgeslagen.',
+          });
+          return;
+        }
+        if (typeof data.contentBase64 !== 'string' || data.contentBase64.length === 0) {
+          sendJson(res, 400, { ok: false, error: 'Bestandsinhoud ontbreekt.' });
+          return;
+        }
+        const target = join(resourcesRoot, rel);
+        const exists = existsSync(target);
+        if (exists && data.replace !== true) {
+          sendJson(res, 409, { ok: false, error: 'Bestand bestaat al. Kies Vervangen.' });
+          return;
+        }
+        if (exists) {
+          copyFileSync(target, `${target}.bak`);
+        }
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, Buffer.from(data.contentBase64, 'base64'));
+        const distCopy = join(projectRoot, 'dist', 'resources', rel);
+        if (existsSync(join(projectRoot, 'dist'))) {
+          mkdirSync(dirname(distCopy), { recursive: true });
+          writeFileSync(distCopy, Buffer.from(data.contentBase64, 'base64'));
+        }
+        regenerateMediaManifest(projectRoot);
+        sendJson(res, 200, { ok: true, file: `resources/${rel}` });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'Het mediabestand is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'Media opslaan is mislukt.' });
+      });
+  };
+}
+
 function resourcesPlugin(): Plugin {
   const resourcesRoot = resolve(fileURLToPath(new URL('./resources', import.meta.url)));
   const distResourcesRoot = resolve(fileURLToPath(new URL('./dist/resources', import.meta.url)));
@@ -341,6 +522,9 @@ function resourcesPlugin(): Plugin {
       });
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(
+        editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(serveResources);
     },
     configurePreviewServer(server) {
@@ -350,6 +534,9 @@ function resourcesPlugin(): Plugin {
       });
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(
+        editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(serveResources);
       server.middlewares.use((req, res, next) => {
         const path = req.url ?? '';
@@ -358,7 +545,8 @@ function resourcesPlugin(): Plugin {
           path.startsWith('/index.html') ||
           path.startsWith('/editor.html') ||
           path.startsWith('/assets/') ||
-          path.startsWith('/logopedie')
+          path.startsWith('/logopedie') ||
+          path.startsWith('/verpleegkunde')
         ) {
           res.setHeader('Cache-Control', 'no-store');
         }

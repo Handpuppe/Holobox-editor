@@ -1,6 +1,6 @@
 import { withBaseUrl } from './baseUrl';
 import { mediaManifest } from './generated/media-manifest';
-import type { MediaManifestItem, MediaSlotConfig, TrainingModule } from './types';
+import type { MediaFileType, MediaManifestItem, MediaSlotConfig, TrainingModule } from './types';
 
 function withPublicBase(item: MediaManifestItem): MediaManifestItem {
   return { ...item, publicUrl: withBaseUrl(item.publicUrl) };
@@ -73,6 +73,50 @@ export function pickPrimary(
   };
 }
 
+function fileTypeFromPath(relativePath: string): MediaFileType {
+  const ext = relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase();
+  if (['.png', '.jpg', '.jpeg', '.webp', '.avif', '.svg'].includes(ext)) {
+    return 'image';
+  }
+  return 'video';
+}
+
+export function mediaItemFromRelativePath(
+  relativePath: string,
+  moduleId: TrainingModule,
+): MediaManifestItem {
+  const fromCatalog = findByRelativePath(relativePath);
+  if (fromCatalog) {
+    return fromCatalog;
+  }
+  const ext = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.')) : '';
+  return {
+    relativePath,
+    module: moduleId,
+    fileType: fileTypeFromPath(relativePath),
+    extension: ext,
+    sizeBytes: 0,
+    normalizedName: relativePath.toLowerCase(),
+    keywords: [],
+    durationSeconds: null,
+    width: null,
+    height: null,
+    publicUrl: withBaseUrl(
+      `/resources/${relativePath
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')}`,
+    ),
+    warnings: [],
+  };
+}
+
+function alternativesFor(slot: MediaSlotConfig): MediaManifestItem[] {
+  return slot.alternativeMatches
+    .map((path) => findByRelativePath(path))
+    .filter((item): item is MediaManifestItem => Boolean(item));
+}
+
 export function resolveSlot(
   slot: MediaSlotConfig,
   overridePath?: string,
@@ -85,9 +129,13 @@ export function resolveSlot(
     if (override && override.module === slot.module) {
       return {
         media: override,
-        alternatives: slot.alternativeMatches
-          .map((path) => findByRelativePath(path))
-          .filter((item): item is MediaManifestItem => Boolean(item)),
+        alternatives: alternativesFor(slot),
+      };
+    }
+    if (overridePath.replaceAll('\\', '/').startsWith(`${slot.module}/`)) {
+      return {
+        media: mediaItemFromRelativePath(overridePath, slot.module),
+        alternatives: alternativesFor(slot),
       };
     }
   }
@@ -96,9 +144,13 @@ export function resolveSlot(
     if (configured) {
       return {
         media: configured,
-        alternatives: slot.alternativeMatches
-          .map((path) => findByRelativePath(path))
-          .filter((item): item is MediaManifestItem => Boolean(item)),
+        alternatives: alternativesFor(slot),
+      };
+    }
+    if (slot.primaryMedia.replaceAll('\\', '/').startsWith(`${slot.module}/`)) {
+      return {
+        media: mediaItemFromRelativePath(slot.primaryMedia, slot.module),
+        alternatives: alternativesFor(slot),
       };
     }
   }

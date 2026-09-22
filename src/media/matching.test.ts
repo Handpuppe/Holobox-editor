@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { pickPrimary, rankCandidates, scoreMediaItem } from './matching';
+import {
+  mediaItemFromRelativePath,
+  pickPrimary,
+  rankCandidates,
+  resolveSlot,
+  scoreMediaItem,
+} from './matching';
+import { mediaSlots } from './scenarioMedia';
 import { mediaManifest } from './generated/media-manifest';
 
 describe('media matching', () => {
@@ -35,5 +42,17 @@ describe('media matching', () => {
     expect(scoreMediaItem(airway, ['luchtweg', 'airway'])).toBeGreaterThan(
       scoreMediaItem(pain, ['luchtweg', 'airway']),
     );
+  });
+
+  it('still resolves a nursing path that is not in the bundled manifest', () => {
+    const synthetic = mediaItemFromRelativePath('verpleegkunde/nieuw-bestand.mp4', 'verpleegkunde');
+    expect(synthetic.module).toBe('verpleegkunde');
+    expect(synthetic.fileType).toBe('video');
+    expect(synthetic.publicUrl).toContain('verpleegkunde');
+    const slot = {
+      ...mediaSlots[0]!,
+      primaryMedia: 'verpleegkunde/nieuw-bestand.mp4',
+    };
+    expect(resolveSlot(slot).media?.relativePath).toBe('verpleegkunde/nieuw-bestand.mp4');
   });
 });

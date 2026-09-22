@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { resolveLogopedieScenario } from '../data/loadLogopedieScenario';
+import { resolveNursingScenario } from '../data/loadNursingScenario';
 import { buildFeedback } from '../domain/feedback';
 import { emptyFlags } from '../domain/notes';
 import { calculateScores } from '../domain/scoring';
@@ -25,9 +26,9 @@ import { clampTeacherSettings, defaultTeacherSettings } from '../media/teacherDe
 import type { TeacherSettings } from '../media/types';
 import { nursingReducer } from '../nursing/reducer';
 import { calculateNursingScores, toGenericEvents } from '../nursing/scoring';
-import { nursingSteps } from '../nursing/scenario';
+import { builtInNursingScenario } from '../nursing/scenario';
 import { createNursingSession } from '../nursing/session';
-import type { NursingSession } from '../nursing/types';
+import type { NursingScenario, NursingSession } from '../nursing/types';
 import { createStorageService, type StorageService } from '../storage/storageService';
 import { simulationReducer } from './simulationReducer';
 
@@ -56,10 +57,10 @@ function logopedieResult(session: SimulationSession, scenario: Scenario): SavedR
   };
 }
 
-function nursingResult(session: NursingSession): SavedResult {
-  const score = calculateNursingScores(session.history);
+function nursingResult(session: NursingSession, nursing: NursingScenario): SavedResult {
+  const score = calculateNursingScores(session.history, nursing.steps);
   const timeline = session.history.map((event) => {
-    const step = nursingSteps.find((item) => item.id === event.stepId);
+    const step = nursing.steps.find((item) => item.id === event.stepId);
     const option = step?.options.find((item) => item.id === event.optionId);
     return {
       nodeId: event.stepId,
@@ -117,6 +118,7 @@ function nursingResult(session: NursingSession): SavedResult {
 
 interface AppContextValue {
   scenario: Scenario;
+  nursingScenario: NursingScenario;
   overlayReady: boolean;
   scenarioValid: boolean;
   scenarioIssues: string[];
@@ -179,6 +181,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const storage = useMemo(() => createStorageService(), []);
   const initialRead = useMemo(() => storage.read(), [storage]);
   const [scenario, setScenario] = useState<Scenario>(aphasiaIntakeScenario);
+  const [nursingScenario, setNursingScenario] = useState<NursingScenario>(builtInNursingScenario);
   const [overlayReady, setOverlayReady] = useState(() => import.meta.env.MODE === 'test');
   const [store, setStore] = useState<StorageSchema>(initialRead.data);
   const [audioBlocked, setAudioBlocked] = useState(false);
@@ -207,17 +210,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setOverlayReady(true);
       }
     }, 2500);
-    void resolveLogopedieScenario()
-      .then((loaded) => {
+    void Promise.all([resolveLogopedieScenario(), resolveNursingScenario()])
+      .then(([loadedLogopedie, loadedNursing]) => {
         if (cancelled) {
           return;
         }
-        setScenario(loaded.scenario);
+        setScenario(loadedLogopedie.scenario);
+        setNursingScenario(loadedNursing.scenario);
         setOverlayReady(true);
       })
       .catch(() => {
         if (!cancelled) {
           setScenario(aphasiaIntakeScenario);
+          setNursingScenario(builtInNursingScenario);
           setOverlayReady(true);
         }
       })
@@ -241,6 +246,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppContextValue>(
     () => ({
       scenario,
+      nursingScenario,
       overlayReady,
       scenarioValid: boot.ok,
       scenarioIssues: boot.issues,
@@ -307,12 +313,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setStore(storage.read().data);
       },
       startNursing: () => {
-        const next = createNursingSession();
+        const next = createNursingSession(new Date(), nursingScenario.meta);
         dispatchNursing({ type: 'start', session: next });
         return next;
       },
       selectNursing: (optionId: string) => {
-        dispatchNursing({ type: 'select', optionId, at: new Date().toISOString() });
+        dispatchNursing({
+          type: 'select',
+          optionId,
+          at: new Date().toISOString(),
+          steps: nursingScenario.steps,
+        });
       },
       pauseNursing: () => dispatchNursing({ type: 'pause', at: new Date().toISOString() }),
       resumeNursing: () => dispatchNursing({ type: 'resume', at: new Date().toISOString() }),
@@ -326,7 +337,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (!nursingSession || nursingSession.status !== 'completed') {
           return null;
         }
-        const result = nursingResult(nursingSession);
+        const result = nursingResult(nursingSession, nursingScenario);
         storage.saveResult(result);
         setStore(storage.read().data);
         return result;
@@ -346,6 +357,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       boot.issues,
       boot.ok,
       nursingSession,
+      nursingScenario,
       overlayReady,
       scenario,
       session,

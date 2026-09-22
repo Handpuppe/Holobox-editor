@@ -1,5 +1,10 @@
-import { NURSING_SCENARIO_ID } from '../media/scenarioMedia';
-import { NURSING_RUBRIC_VERSION, NURSING_SCENARIO_VERSION, type NursingStep } from './types';
+import { mediaSlots, NURSING_SCENARIO_ID } from '../media/scenarioMedia';
+import {
+  NURSING_RUBRIC_VERSION,
+  NURSING_SCENARIO_VERSION,
+  type NursingScenario,
+  type NursingStep,
+} from './types';
 
 export const nursingPatient = {
   name: 'Meneer de Vries',
@@ -463,4 +468,12 @@ export const nursingScenarioMeta = {
   title: 'ABCDE en SBAR bij acute benauwdheid',
   estimatedDuration: '10–15 minuten',
   startStepId: 'n-a',
+};
+
+export const builtInNursingScenario: NursingScenario = {
+  meta: nursingScenarioMeta,
+  patient: nursingPatient,
+  learningObjectives: nursingLearningObjectives,
+  steps: nursingSteps,
+  mediaSlots,
 };

@@ -390,4 +390,50 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('nursing-step-video-missing')).toBeInTheDocument();
     expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
   });
+
+  it('blocks save when a logopedie question is empty and writes nothing', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    });
+    fireEvent.change(screen.getByTestId('prompt-text'), { target: { value: '' } });
+    await user.click(screen.getByTestId('btn-save-json'));
+    expect(screen.getByTestId('dialog-save-blocked')).toBeInTheDocument();
+    expect(screen.getByTestId('dialog-save-blocked-list')).toHaveTextContent(
+      'stap zonder vraagtekst',
+    );
+    expect(screen.queryByTestId('editor-save-ok')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false);
+    await user.click(screen.getByTestId('btn-save-blocked-close'));
+    expect(screen.queryByTestId('dialog-save-blocked')).not.toBeInTheDocument();
+  });
+
+  it('blocks save when a Verpleegkunde step has no video', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    await user.click(screen.getByTestId('btn-nursing-step-unlink'));
+    await user.click(screen.getByTestId('btn-save-json'));
+    expect(screen.getByTestId('dialog-save-blocked')).toBeInTheDocument();
+    expect(screen.getByTestId('dialog-save-blocked-list')).toHaveTextContent('zonder video');
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false);
+  });
 });

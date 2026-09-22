@@ -107,6 +107,21 @@ test.describe('logopedie scenario editor', () => {
     await expect(page.getByTestId('editor-open-error')).toHaveCount(0);
   });
 
+  test('blocks save when the logopedie question is empty', async ({ page }) => {
+    const jsonPath = join(process.cwd(), 'resources', 'scenarios', 'logopedie.json');
+    await page.goto('editor.html');
+    await page.getByTestId('prompt-text').fill('');
+    await expect(page.getByTestId('editor-issues-list')).toContainText('stap zonder vraagtekst');
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('dialog-save-blocked')).toBeVisible();
+    await expect(page.getByTestId('dialog-save-blocked-list')).toContainText(
+      'stap zonder vraagtekst',
+    );
+    expect(existsSync(jsonPath)).toBe(false);
+    await page.getByTestId('btn-save-blocked-close').click();
+    await expect(page.getByTestId('dialog-save-blocked')).toHaveCount(0);
+  });
+
   test('saves JSON for this copy, then falls back without a white screen', async ({ page }) => {
     const scenariosDir = join(process.cwd(), 'resources', 'scenarios');
     const jsonPath = join(scenariosDir, 'logopedie.json');
@@ -406,6 +421,18 @@ test.describe('verpleegkunde scenario editor', () => {
     expect(statSync(pain).size).toBe(painSize);
     expect(statSync(erik).size).toBe(erikSize);
     await expect(page.getByTestId('editor-media')).toHaveCount(0);
+  });
+
+  test('blocks save when a Verpleegkunde step has no video', async ({ page }) => {
+    const jsonPath = join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json');
+    await page.goto('editor.html');
+    await page.getByTestId('editor-module-nursing').click();
+    await page.getByTestId('btn-nursing-step-unlink').click();
+    await expect(page.getByTestId('editor-nursing-issues-list')).toContainText('zonder video');
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('dialog-save-blocked')).toBeVisible();
+    await expect(page.getByTestId('dialog-save-blocked-list')).toContainText('zonder video');
+    expect(existsSync(jsonPath)).toBe(false);
   });
 
   test('replaces the first step video, saves, and the copy-simulator serves the new file', async ({

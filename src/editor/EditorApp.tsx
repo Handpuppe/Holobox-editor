@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Dialog } from '../components/Dialog';
 import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
 import { avatarSourceChain } from '../media/logopedie/resolveAvatar';
 import {
@@ -8,7 +9,7 @@ import {
   type Scenario,
   type StudentOption,
 } from '../domain/types';
-import { validateScenario } from '../domain/scenarioValidation';
+import { logopedieSaveIssues, nursingSaveIssues } from './saveChecks';
 import { cloneNursingScenario } from './cloneNursing';
 import { cloneScenario } from './cloneScenario';
 import { EditorMediaPanel } from './EditorMediaPanel';
@@ -83,6 +84,7 @@ export function EditorApp() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveBlockIssues, setSaveBlockIssues] = useState<string[] | null>(null);
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
   const [nursingStagedMedia, setNursingStagedMedia] = useState<StagedNursingMediaOp[]>([]);
   const [nursingDiskMedia, setNursingDiskMedia] = useState<NursingMediaItem[]>([]);
@@ -219,10 +221,29 @@ export function EditorApp() {
     }
   }
 
+  function currentSaveIssues(): string[] {
+    return editorModule === 'verpleegkunde'
+      ? nursingSaveIssues(nursingDraft, nursingStagedMedia)
+      : logopedieSaveIssues(scenario);
+  }
+
+  function requestSave() {
+    const found = currentSaveIssues();
+    if (found.length > 0) {
+      setSaveMessage(null);
+      setSaveError(null);
+      setSaveBlockIssues(found);
+      return;
+    }
+    setSaveBlockIssues(null);
+    void saveToCopy();
+  }
+
   async function saveToCopy() {
     setSaving(true);
     setSaveError(null);
     setSaveMessage(null);
+    setSaveBlockIssues(null);
     if (editorModule === 'verpleegkunde') {
       const result = await saveNursingEnvelopeToCopy(nursingDraft);
       if (!result.ok) {
@@ -275,7 +296,7 @@ export function EditorApp() {
     }
   }
 
-  const issues = useMemo(() => validateScenario(scenario), [scenario]);
+  const issues = useMemo(() => logopedieSaveIssues(scenario), [scenario]);
   const node = scenario.nodes.find((item) => item.id === selectedNodeId) ?? scenario.nodes[0];
   const previewOption = node?.options[previewOptionIndex] ?? node?.options[0];
   const previewEmotion = previewOption?.emotion ?? node?.promptEmotion ?? 'neutral';
@@ -360,7 +381,7 @@ export function EditorApp() {
               type="button"
               className="btn"
               data-testid="btn-save-json"
-              onClick={() => void saveToCopy()}
+              onClick={() => requestSave()}
               disabled={saving}
             >
               Opslaan
@@ -379,6 +400,7 @@ export function EditorApp() {
             setOpenError(null);
             setSaveError(null);
             setSaveMessage(null);
+            setSaveBlockIssues(null);
           }}
         >
           Logopedie
@@ -392,6 +414,7 @@ export function EditorApp() {
             setOpenError(null);
             setSaveError(null);
             setSaveMessage(null);
+            setSaveBlockIssues(null);
           }}
         >
           Verpleegkunde
@@ -427,6 +450,31 @@ export function EditorApp() {
         <p className="editor-save-ok" data-testid="editor-save-ok" role="status">
           {saveMessage}
         </p>
+      ) : null}
+
+      {saveBlockIssues ? (
+        <Dialog
+          title="Opslaan geblokkeerd"
+          testId="dialog-save-blocked"
+          onClose={() => setSaveBlockIssues(null)}
+        >
+          <p>Dit scenario is niet compleet. Er is niets weggeschreven.</p>
+          <ul data-testid="dialog-save-blocked-list">
+            {saveBlockIssues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-save-blocked-close"
+              onClick={() => setSaveBlockIssues(null)}
+            >
+              Sluiten
+            </button>
+          </div>
+        </Dialog>
       ) : null}
 
       {editorModule === 'verpleegkunde' ? (

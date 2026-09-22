@@ -10,7 +10,7 @@ import {
   type NursingScenario,
   type NursingStep,
 } from '../nursing/types';
-import { validateNursingScenario } from '../nursing/validateNursing';
+import { nursingSaveIssues } from './saveChecks';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
 import {
   applyStagedNursingMedia,
@@ -149,7 +149,7 @@ export function NursingEditor({
   previewOptionIndex,
   onPreviewOption,
 }: NursingEditorProps) {
-  const issues = useMemo(() => validateNursingScenario(draft), [draft]);
+  const issues = useMemo(() => nursingSaveIssues(draft, stagedMedia), [draft, stagedMedia]);
   const mediaPathOptions = useMemo(() => {
     const seed = new Map<string, NursingMediaItem>();
     for (const slot of draft.mediaSlots) {

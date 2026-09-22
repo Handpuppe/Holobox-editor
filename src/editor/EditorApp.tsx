@@ -24,7 +24,12 @@ import {
   saveNursingEnvelopeToCopy,
 } from './nursingEnvelope';
 import { NursingMediaPanel } from './NursingMediaPanel';
-import { saveNursingMediaOp, type StagedNursingMediaOp } from './nursingMedia';
+import {
+  listNursingMedia,
+  saveNursingMediaOp,
+  type NursingMediaItem,
+  type StagedNursingMediaOp,
+} from './nursingMedia';
 import type { NursingScenario } from '../nursing/types';
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
@@ -80,6 +85,7 @@ export function EditorApp() {
   const [saving, setSaving] = useState(false);
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
   const [nursingStagedMedia, setNursingStagedMedia] = useState<StagedNursingMediaOp[]>([]);
+  const [nursingDiskMedia, setNursingDiskMedia] = useState<NursingMediaItem[]>([]);
   const saveOnThisPc = canSaveToThisCopy();
   const activeLoadNotice = editorModule === 'logopedie' ? loadNotice : nursingLoadNotice;
   const activeLoadedLabel = editorModule === 'logopedie' ? loadedLabel : nursingLoadedLabel;
@@ -113,6 +119,27 @@ export function EditorApp() {
       setNursingLoadedLabel(result.label);
       setNursingLoadNotice(result.notice);
     });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') {
+      return;
+    }
+    let cancelled = false;
+    void listNursingMedia()
+      .then((items) => {
+        if (!cancelled) {
+          setNursingDiskMedia(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNursingDiskMedia([]);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -208,6 +235,11 @@ export function EditorApp() {
           await saveNursingMediaOp(op);
         }
         setNursingStagedMedia([]);
+        try {
+          setNursingDiskMedia(await listNursingMedia());
+        } catch {
+          // catalog refresh is optional; JSON and files are already written
+        }
         setNursingLoadedLabel(nursingEditorSourceLabel('json'));
         setNursingLoadNotice(null);
         setSaveMessage(
@@ -406,6 +438,14 @@ export function EditorApp() {
               setNursingDraft(next);
             }}
             stagedMedia={nursingStagedMedia}
+            onStage={(op) => {
+              markNursingDirty();
+              setNursingStagedMedia((current) => {
+                const without = current.filter((item) => item.relativePath !== op.relativePath);
+                return [...without, op];
+              });
+            }}
+            diskMedia={nursingDiskMedia}
             selectedStepId={selectedStepId}
             onSelectStep={setSelectedStepId}
             previewOptionIndex={nursingPreviewOptionIndex}

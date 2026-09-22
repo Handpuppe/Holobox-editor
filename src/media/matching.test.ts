@@ -44,6 +44,11 @@ describe('media matching', () => {
     );
   });
 
+  it('does not invent a video when a slot is explicitly unlinked', () => {
+    const slot = { ...mediaSlots[0]!, primaryMedia: null };
+    expect(resolveSlot(slot).media).toBeNull();
+  });
+
   it('still resolves a nursing path that is not in the bundled manifest', () => {
     const synthetic = mediaItemFromRelativePath('verpleegkunde/nieuw-bestand.mp4', 'verpleegkunde');
     expect(synthetic.module).toBe('verpleegkunde');

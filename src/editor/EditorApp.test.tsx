@@ -331,4 +331,63 @@ describe('EditorApp', () => {
     expect(body.module).toBe('verpleegkunde');
     expect(body.steps[0]?.question).toBe('Vraag opgeslagen in deze verpleegkunde-kopie.');
   });
+
+  it('replaces the current Verpleegkunde step video and previews it before save', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:nursing-replace');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    expect(screen.getByTestId('nursing-step-video')).toBeInTheDocument();
+    expect(screen.getByTestId('nursing-step-video-path')).not.toHaveTextContent(
+      'Geen video gekoppeld.',
+    );
+    const file = new File([new Uint8Array([1, 2, 3, 4])], 'vervanging.mp4', { type: 'video/mp4' });
+    await user.upload(screen.getByTestId('input-nursing-step-replace'), file);
+    expect(screen.getByTestId('nursing-step-video-player')).toHaveAttribute(
+      'src',
+      'blob:nursing-replace',
+    );
+    expect(screen.getByTestId('editor-nursing-preview-stage')).not.toHaveStyle({
+      transform: 'scale(1.5)',
+    });
+    await user.click(screen.getByTestId('btn-save-json'));
+    expect(await screen.findByTestId('editor-save-ok')).toBeInTheDocument();
+    const mediaPost = fetchMock.mock.calls.find(
+      (call) => String(call[0]).includes('verpleegkunde-media') && call[1]?.method === 'POST',
+    );
+    expect(mediaPost).toBeTruthy();
+    const mediaBody = JSON.parse(String(mediaPost?.[1]?.body)) as {
+      relativePath: string;
+      replace: boolean;
+    };
+    expect(mediaBody.relativePath.startsWith('verpleegkunde/')).toBe(true);
+    expect(mediaBody.relativePath.includes('logopedie')).toBe(false);
+    expect(mediaBody.replace).toBe(true);
+  });
+
+  it('unlinks a step video without deleting logopedie media', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    await user.click(screen.getByTestId('btn-nursing-step-unlink'));
+    expect(screen.getByTestId('nursing-step-video-missing')).toBeInTheDocument();
+    expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
+  });
 });

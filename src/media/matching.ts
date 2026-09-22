@@ -154,6 +154,9 @@ export function resolveSlot(
       };
     }
   }
+  if (slot.primaryMedia === null) {
+    return { media: null, alternatives: [] };
+  }
   const picked = pickPrimary(slot.module, slot.matchedKeywords);
   return { media: picked.primary, alternatives: picked.alternatives };
 }

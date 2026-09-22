@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ClientEmotion } from '../domain/types';
-import { useReducedMotion } from '../hooks/useReducedMotion';
-import { FullBodyErik } from './FullBodyErik';
 import { LogopedieAvatar } from './logopedie/LogopedieAvatar';
 import { resolveSlot } from './matching';
 import { visiblePatientHeightPx } from './scale';
@@ -50,13 +48,13 @@ export function PatientStage({
   onAudioBlocked,
   slots,
 }: PatientStageProps) {
-  const reducedMotion = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [mediaError, setMediaError] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const slot = mediaSlotId ? slotById(mediaSlotId, slots) : undefined;
   const resolved = slot ? resolveSlot(slot, mediaOverride) : { media: null, alternatives: [] };
   const media = resolved.media && resolved.media.module === moduleId ? resolved.media : null;
   const heightPx = visiblePatientHeightPx(display);
+  const mediaError = Boolean(media?.publicUrl && failedUrl === media.publicUrl);
   const showVideo = Boolean(media && media.fileType === 'video' && !mediaError);
   const isLogopedie = moduleId === 'logopedie';
 
@@ -93,7 +91,7 @@ export function PatientStage({
         {caption}
       </p>
       <div
-        className={`patient-figure${showVideo ? ' has-video' : ''}${isLogopedie ? ' has-logopedie-photo' : ''}${reducedMotion || showVideo || isLogopedie ? '' : ' patient-idle'}${state === 'kritiek' ? ' is-critical' : ''}`}
+        className={`patient-figure${showVideo ? ' has-video' : ''}${isLogopedie ? ' has-logopedie-photo' : ''}${state === 'kritiek' ? ' is-critical' : ''}`}
         style={
           isLogopedie ? { width: '100%', height: '100%' } : { height: `${String(heightPx)}px` }
         }
@@ -112,7 +110,7 @@ export function PatientStage({
             preload="metadata"
             controls={false}
             loop={false}
-            onError={() => setMediaError(true)}
+            onError={() => setFailedUrl(media?.publicUrl ?? 'mediafout')}
             aria-label={slot?.studentLabel ?? 'Observatie van de patiënt'}
             style={{ backgroundColor: '#ffffff' }}
           >
@@ -126,7 +124,9 @@ export function PatientStage({
         ) : isLogopedie ? (
           <LogopedieAvatar emotion={emotion} heightPx={heightPx} name={name} />
         ) : (
-          <FullBodyErik emotion={emotion} reducedMotion={reducedMotion} heightPx={heightPx} />
+          <div className="nursing-video-fallback" data-testid="nursing-video-fallback">
+            Video ontbreekt
+          </div>
         )}
         {showVideo ? (
           <svg className="visually-hidden" aria-hidden="true" width="0" height="0">

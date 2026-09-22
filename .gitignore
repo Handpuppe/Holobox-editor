@@ -13,4 +13,6 @@ Thumbs.db
 .idea
 resources/scenarios/logopedie.json
 resources/scenarios/logopedie.json.bak
+resources/scenarios/verpleegkunde.json
+resources/scenarios/verpleegkunde.json.bak
 resources/**/*.bak

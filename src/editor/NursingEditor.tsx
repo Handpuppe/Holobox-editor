@@ -11,7 +11,12 @@ import {
   type NursingStep,
 } from '../nursing/types';
 import { validateNursingScenario } from '../nursing/validateNursing';
-import type { StagedNursingMediaOp } from './nursingMedia';
+import { NursingStepVideoCard } from './NursingStepVideoCard';
+import {
+  applyStagedNursingMedia,
+  type NursingMediaItem,
+  type StagedNursingMediaOp,
+} from './nursingMedia';
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
   high: 'Goed (high)',
@@ -35,6 +40,8 @@ interface NursingEditorProps {
   draft: NursingScenario;
   onChange: (next: NursingScenario) => void;
   stagedMedia: StagedNursingMediaOp[];
+  onStage: (op: StagedNursingMediaOp) => void;
+  diskMedia: NursingMediaItem[];
   selectedStepId: string;
   onSelectStep: (id: string) => void;
   previewOptionIndex: number;
@@ -92,13 +99,12 @@ function emptyOption(
 function createStep(existing: NursingStep[]): NursingStep {
   const id = nextCustomStepId(existing);
   const scored: NursingCompetency[] = ['abcdeSystematics'];
-  const mediaSlotId = existing[0]?.mediaSlotId ?? 'nursing-airway';
   return {
     id,
     phaseLabel: 'Nieuwe stap',
     question: 'Nieuwe vraag',
     help: '',
-    mediaSlotId,
+    mediaSlotId: `nursing-step-${id}`,
     scoredCompetencies: scored,
     kind: 'choice',
     options: [
@@ -136,6 +142,8 @@ export function NursingEditor({
   draft,
   onChange,
   stagedMedia,
+  onStage,
+  diskMedia,
   selectedStepId,
   onSelectStep,
   previewOptionIndex,
@@ -143,19 +151,19 @@ export function NursingEditor({
 }: NursingEditorProps) {
   const issues = useMemo(() => validateNursingScenario(draft), [draft]);
   const mediaPathOptions = useMemo(() => {
-    const paths = new Set<string>();
+    const seed = new Map<string, NursingMediaItem>();
     for (const slot of draft.mediaSlots) {
       if (slot.primaryMedia) {
-        paths.add(slot.primaryMedia);
+        seed.set(slot.primaryMedia, { relativePath: slot.primaryMedia, sizeBytes: 0 });
       }
     }
-    for (const op of stagedMedia) {
-      if (op.type !== 'delete') {
-        paths.add(op.relativePath);
-      }
+    for (const item of diskMedia) {
+      seed.set(item.relativePath, item);
     }
-    return [...paths].sort((a, b) => a.localeCompare(b, 'nl'));
-  }, [draft.mediaSlots, stagedMedia]);
+    return applyStagedNursingMedia([...seed.values()], stagedMedia).map(
+      (item) => item.relativePath,
+    );
+  }, [diskMedia, draft.mediaSlots, stagedMedia]);
   const step = draft.steps.find((item) => item.id === selectedStepId) ?? draft.steps[0];
   const previewOption = step?.options[previewOptionIndex] ?? step?.options[0];
   const previewSlotId = previewOption?.mediaSlotId ?? step?.mediaSlotId;
@@ -171,7 +179,27 @@ export function NursingEditor({
 
   function addStep() {
     const next = createStep(draft.steps);
-    onChange({ ...draft, steps: [...draft.steps, next] });
+    const template = draft.mediaSlots[0];
+    const extraSlot = template
+      ? {
+          ...template,
+          slotId: next.mediaSlotId,
+          module: 'verpleegkunde' as const,
+          matchedKeywords: [],
+          primaryMedia: null,
+          idleMedia: null,
+          posterImage: null,
+          alternativeMatches: [],
+          studentLabel: next.phaseLabel,
+          transcript: next.question,
+          captions: 'Fictieve onderwijssituatie.',
+        }
+      : null;
+    onChange({
+      ...draft,
+      steps: [...draft.steps, next],
+      mediaSlots: extraSlot ? [...draft.mediaSlots, extraSlot] : draft.mediaSlots,
+    });
     onSelectStep(next.id);
     onPreviewOption(0);
   }
@@ -340,21 +368,16 @@ export function NursingEditor({
                   onChange={(event) => updateSelected({ ...step, help: event.target.value })}
                 />
               </div>
-              <div className="field">
-                <label htmlFor="nursing-step-slot">Videospot</label>
-                <select
-                  id="nursing-step-slot"
-                  data-testid="nursing-step-slot"
-                  value={step.mediaSlotId}
-                  onChange={(event) => updateSelected({ ...step, mediaSlotId: event.target.value })}
-                >
-                  {draft.mediaSlots.map((slot) => (
-                    <option key={slot.slotId} value={slot.slotId}>
-                      {slot.studentLabel} ({slot.slotId})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            </section>
+            <NursingStepVideoCard
+              draft={draft}
+              step={step}
+              staged={stagedMedia}
+              catalog={mediaPathOptions}
+              onChange={onChange}
+              onStage={onStage}
+            />
+            <section className="editor-card">
               <div className="field">
                 <span className="editor-readonly-label">Type (niet bewerkbaar)</span>
                 <p className="editor-readonly-value" data-testid="nursing-step-kind">
@@ -614,40 +637,6 @@ export function NursingEditor({
                 </div>
               </section>
             ))}
-
-            <section className="editor-card">
-              <h2>Videobestand per slot</h2>
-              <p className="muted">
-                Pad blijft onder resources/verpleegkunde/. Bestanden niet hernoemen.
-              </p>
-              {draft.mediaSlots.map((slot) => (
-                <div className="field" key={slot.slotId}>
-                  <label htmlFor={`slot-media-${slot.slotId}`}>{slot.studentLabel}</label>
-                  <select
-                    id={`slot-media-${slot.slotId}`}
-                    data-testid={`nursing-slot-media-${slot.slotId}`}
-                    value={slot.primaryMedia ?? ''}
-                    onChange={(event) =>
-                      onChange({
-                        ...draft,
-                        mediaSlots: draft.mediaSlots.map((item) =>
-                          item.slotId === slot.slotId
-                            ? { ...item, primaryMedia: event.target.value || null }
-                            : item,
-                        ),
-                      })
-                    }
-                  >
-                    <option value="">Geen</option>
-                    {mediaPathOptions.map((path) => (
-                      <option key={path} value={path}>
-                        {path}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </section>
           </main>
         ) : null}
 

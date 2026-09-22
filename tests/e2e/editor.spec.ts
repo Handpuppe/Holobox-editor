@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 function logopedieJsonFiles(): string[] {
@@ -398,5 +406,77 @@ test.describe('verpleegkunde scenario editor', () => {
     expect(statSync(pain).size).toBe(painSize);
     expect(statSync(erik).size).toBe(erikSize);
     await expect(page.getByTestId('editor-media')).toHaveCount(0);
+  });
+
+  test('replaces the first step video, saves, and the copy-simulator serves the new file', async ({
+    page,
+  }) => {
+    const folder = join(process.cwd(), 'resources', 'verpleegkunde');
+    const airwayName = readdirSync(folder).find(
+      (name) => name.includes('luchtweg') || name.includes('Airway'),
+    );
+    const koortsName = readdirSync(folder).find((name) => name.includes('koorts'));
+    expect(airwayName).toBeTruthy();
+    expect(koortsName).toBeTruthy();
+    if (!airwayName || !koortsName) {
+      throw new Error('Verpleegkunde-video’s ontbreken in resources/verpleegkunde/.');
+    }
+    const airway = join(folder, airwayName);
+    const koorts = join(folder, koortsName);
+    const bak = `${airway}.bak`;
+    const distAirway = join(process.cwd(), 'dist', 'resources', 'verpleegkunde', airwayName);
+    const original = readFileSync(airway);
+    const replacement = readFileSync(koorts);
+    const erik = join(process.cwd(), 'resources', 'logopedie', 'avatar', 'erik_basis.png');
+    const erikSize = statSync(erik).size;
+
+    const restore = () => {
+      writeFileSync(airway, original);
+      if (existsSync(distAirway)) {
+        writeFileSync(distAirway, original);
+      }
+      if (existsSync(bak)) {
+        unlinkSync(bak);
+      }
+    };
+
+    try {
+      await page.goto('editor.html');
+      await page.getByTestId('editor-module-nursing').click();
+      await expect(page.getByTestId('nursing-step-video')).toBeVisible();
+      await expect(page.getByTestId('nursing-step-video-path')).toContainText('verpleegkunde/');
+      await page.getByTestId('input-nursing-step-replace').setInputFiles({
+        name: airwayName,
+        mimeType: 'video/mp4',
+        buffer: replacement,
+      });
+      await expect(page.getByTestId('nursing-step-video-player')).toBeVisible();
+      await page.getByTestId('btn-save-json').click();
+      await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+      expect(statSync(airway).size).toBe(replacement.length);
+      expect(existsSync(bak)).toBe(true);
+      expect(statSync(erik).size).toBe(erikSize);
+
+      await page.goto('/');
+      await expect(page.getByTestId('screen-home')).toBeVisible();
+      await expect(page.getByTestId('screen-error')).toHaveCount(0);
+      await page.getByTestId('btn-module-nursing').click();
+      await page.getByTestId('btn-start-nursing').click();
+      await page.getByTestId('btn-start-nursing-sim').click();
+      await expect(page.getByTestId('screen-nursing-simulation')).toBeVisible();
+      await expect(page.getByTestId('nursing-video-fallback')).toHaveCount(0);
+      const video = page.getByTestId('patient-video');
+      await expect(video).toBeVisible();
+      const src = await video.getAttribute('src');
+      expect(src).toContain('verpleegkunde');
+      expect(src).not.toContain('logopedie');
+      const served = await page.request.get(
+        `resources/verpleegkunde/${encodeURIComponent(airwayName)}`,
+      );
+      expect(served.ok()).toBe(true);
+      expect((await served.body()).length).toBe(replacement.length);
+    } finally {
+      restore();
+    }
   });
 });

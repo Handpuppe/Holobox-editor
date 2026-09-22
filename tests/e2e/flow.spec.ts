@@ -115,6 +115,8 @@ test.describe('core simulation routes', () => {
     await page.goto('/');
     await page.getByTestId('btn-module-logopedie').click();
     await expect(page.getByTestId('screen-logopedie-catalog')).toBeVisible();
+    await expect(page.getByTestId('btn-scenario-tile-default')).toHaveCount(1);
+    await expect(page.locator('.scenario-tile')).toHaveCount(1);
     await expect(page.getByTestId('btn-back')).toHaveText('Terug');
     await page.getByTestId('btn-back').click();
     await expect(page.getByTestId('screen-home')).toBeVisible();

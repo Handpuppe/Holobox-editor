@@ -51,6 +51,7 @@ describe('application flow', () => {
     renderApp();
     await user.click(screen.getByTestId('btn-module-logopedie'));
     expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Erik/i })).toHaveLength(1);
     expect(screen.getByTestId('btn-scenario-tile-default')).toHaveTextContent('logopedie');
     await user.click(screen.getByTestId('btn-back'));
     expect(screen.getByTestId('screen-home')).toBeInTheDocument();

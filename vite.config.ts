@@ -16,7 +16,7 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
-import { unzipStore, zipStore, type ZipEntry } from './src/editor/zipStore';
+import { zipStore, type ZipEntry } from './src/editor/zipStore';
 
 const packageJson = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
@@ -768,21 +768,9 @@ function envelopeSummary(
   }
 }
 
-function envelopeFromZip(zipPath: string, moduleId: 'logopedie' | 'verpleegkunde'): string | null {
-  try {
-    const entries = unzipStore(new Uint8Array(readFileSync(zipPath)));
-    const wanted = `${moduleId}.json`;
-    const entry = entries.find((item) => item.name.replaceAll('\\', '/') === wanted);
-    return entry ? new TextDecoder().decode(entry.data) : null;
-  } catch {
-    return null;
-  }
-}
-
 function listExtraScenarioTiles(
   moduleId: 'logopedie' | 'verpleegkunde',
   resourcesRoot: string,
-  projectRoot: string,
 ): Array<{ id: string; title: string; summary: string; module: string; source: 'file' }> {
   const tiles: Array<{
     id: string;
@@ -791,62 +779,21 @@ function listExtraScenarioTiles(
     module: string;
     source: 'file';
   }> = [];
-  const skip = `${moduleId}.json`;
+  const overlayName = `${moduleId}.json`;
   const scenariosDir = join(resourcesRoot, 'scenarios');
-  if (existsSync(scenariosDir)) {
-    for (const name of readdirSync(scenariosDir)) {
-      if (!name.endsWith('.json') || name.endsWith('.bak') || name === skip) {
-        continue;
-      }
-      try {
-        const text = readFileSync(join(scenariosDir, name), 'utf8');
-        const info = envelopeSummary(text, moduleId);
-        if (info) {
-          tiles.push({
-            id: `scenarios/${name}`,
-            title: info.title,
-            summary: info.summary,
-            module: moduleId,
-            source: 'file',
-          });
-        }
-      } catch {
-        // skip unreadable files
-      }
-    }
-  }
-  const exportsDir = join(projectRoot, 'exports');
-  if (!existsSync(exportsDir)) {
+  if (!existsSync(scenariosDir)) {
     return tiles;
   }
-  for (const name of readdirSync(exportsDir)) {
-    const full = join(exportsDir, name);
+  for (const name of readdirSync(scenariosDir)) {
+    if (!name.endsWith('.json') || name.endsWith('.bak') || name === overlayName) {
+      continue;
+    }
     try {
-      if (name.endsWith('.zip')) {
-        const text = envelopeFromZip(full, moduleId);
-        const info = text ? envelopeSummary(text, moduleId) : null;
-        if (info) {
-          tiles.push({
-            id: `exports/${name}`,
-            title: info.title,
-            summary: info.summary,
-            module: moduleId,
-            source: 'file',
-          });
-        }
-        continue;
-      }
-      if (!statSync(full).isDirectory()) {
-        continue;
-      }
-      const jsonPath = join(full, `${moduleId}.json`);
-      if (!existsSync(jsonPath)) {
-        continue;
-      }
-      const info = envelopeSummary(readFileSync(jsonPath, 'utf8'), moduleId);
+      const text = readFileSync(join(scenariosDir, name), 'utf8');
+      const info = envelopeSummary(text, moduleId);
       if (info) {
         tiles.push({
-          id: `exports/${name}/${moduleId}.json`,
+          id: `scenarios/${name}`,
           title: info.title,
           summary: info.summary,
           module: moduleId,
@@ -854,7 +801,7 @@ function listExtraScenarioTiles(
         });
       }
     } catch {
-      // skip broken exports
+      // skip unreadable files
     }
   }
   return tiles;
@@ -863,10 +810,9 @@ function listExtraScenarioTiles(
 function resolveCatalogFile(
   id: string,
   resourcesRoot: string,
-  projectRoot: string,
-): { type: 'json'; path: string } | { type: 'zip'; path: string } | null {
+): { type: 'json'; path: string } | null {
   const normalized = id.replaceAll('\\', '/').replace(/^\/+/, '');
-  if (normalized.includes('..')) {
+  if (normalized.includes('..') || normalized.includes('exports/')) {
     return null;
   }
   if (normalized.startsWith('scenarios/') && normalized.endsWith('.json')) {
@@ -877,26 +823,10 @@ function resolveCatalogFile(
     }
     return { type: 'json', path: abs };
   }
-  if (normalized.startsWith('exports/') && normalized.endsWith('.zip')) {
-    const abs = resolve(projectRoot, normalized);
-    const root = resolve(projectRoot, 'exports');
-    if (abs === root || !abs.startsWith(root + sep) || !existsSync(abs)) {
-      return null;
-    }
-    return { type: 'zip', path: abs };
-  }
-  if (normalized.startsWith('exports/') && normalized.endsWith('.json')) {
-    const abs = resolve(projectRoot, normalized);
-    const root = resolve(projectRoot, 'exports');
-    if (abs === root || !abs.startsWith(root + sep) || !existsSync(abs)) {
-      return null;
-    }
-    return { type: 'json', path: abs };
-  }
   return null;
 }
 
-function scenarioCatalogMiddleware(resourcesRoot: string, projectRoot: string) {
+function scenarioCatalogMiddleware(resourcesRoot: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (isScenarioTilesPath(req.url)) {
       const url = new URL(req.url ?? '', 'http://127.0.0.1');
@@ -907,7 +837,7 @@ function scenarioCatalogMiddleware(resourcesRoot: string, projectRoot: string) {
       }
       sendJson(res, 200, {
         ok: true,
-        tiles: listExtraScenarioTiles(moduleId, resourcesRoot, projectRoot),
+        tiles: listExtraScenarioTiles(moduleId, resourcesRoot),
       });
       return;
     }
@@ -922,17 +852,12 @@ function scenarioCatalogMiddleware(resourcesRoot: string, projectRoot: string) {
       sendJson(res, 400, { ok: false, error: 'Onbekende module.' });
       return;
     }
-    const target = resolveCatalogFile(id, resourcesRoot, projectRoot);
+    const target = resolveCatalogFile(id, resourcesRoot);
     if (!target) {
       sendJson(res, 404, { ok: false, error: 'Scenario niet gevonden.' });
       return;
     }
-    const text =
-      target.type === 'zip'
-        ? envelopeFromZip(target.path, moduleId)
-        : existsSync(target.path)
-          ? readFileSync(target.path, 'utf8')
-          : null;
+    const text = existsSync(target.path) ? readFileSync(target.path, 'utf8') : null;
     if (!text) {
       sendJson(res, 404, { ok: false, error: 'Scenario niet gevonden.' });
       return;
@@ -991,9 +916,7 @@ function resourcesPlugin(): Plugin {
         editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
       server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
-      server.middlewares.use(
-        scenarioCatalogMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
-      );
+      server.middlewares.use(scenarioCatalogMiddleware(resourcesRoot));
       server.middlewares.use(serveResources);
     },
     configurePreviewServer(server) {
@@ -1007,9 +930,7 @@ function resourcesPlugin(): Plugin {
         editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
       server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
-      server.middlewares.use(
-        scenarioCatalogMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
-      );
+      server.middlewares.use(scenarioCatalogMiddleware(resourcesRoot));
       server.middlewares.use(serveResources);
       server.middlewares.use((req, res, next) => {
         const path = req.url ?? '';

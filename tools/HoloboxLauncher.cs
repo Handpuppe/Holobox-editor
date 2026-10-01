@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
 using System.Net;
 using System.Threading;
 using System.Windows.Forms;
@@ -90,7 +91,7 @@ internal static class Program
                 return 1;
             }
 
-            browser.WaitForExit();
+            WaitForBrowserClose(browser, BrowserProfile(editor), url);
         }
         finally
         {
@@ -215,11 +216,16 @@ internal static class Program
         return false;
     }
 
-    private static Process StartBrowser(string url, bool windowed, bool editor)
+    private static string BrowserProfile(bool editor)
     {
-        var profile = Path.Combine(
+        return Path.Combine(
             Path.GetTempPath(),
             editor ? "holobox-editor-profile" : "holobox-kiosk-profile");
+    }
+
+    private static Process StartBrowser(string url, bool windowed, bool editor)
+    {
+        var profile = BrowserProfile(editor);
         var edge86 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft\\Edge\\Application\\msedge.exe");
         var edge64 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft\\Edge\\Application\\msedge.exe");
         var chrome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google\\Chrome\\Application\\chrome.exe");
@@ -263,6 +269,96 @@ internal static class Program
             Arguments = arguments,
             UseShellExecute = false,
         });
+    }
+
+    private static void WaitForBrowserClose(Process started, string profileDir, string url)
+    {
+        Process watch = null;
+        var until = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < until)
+        {
+            var found = FindOpenBrowser(profileDir, url);
+            if (found != null)
+            {
+                watch = found;
+                break;
+            }
+            Thread.Sleep(200);
+        }
+        if (watch == null && started != null && !started.HasExited)
+        {
+            watch = started;
+        }
+        while (watch != null)
+        {
+            try
+            {
+                if (!watch.HasExited)
+                {
+                    watch.WaitForExit();
+                }
+            }
+            catch
+            {
+                break;
+            }
+            Thread.Sleep(800);
+            var again = FindOpenBrowser(profileDir, url);
+            if (again == null)
+            {
+                break;
+            }
+            watch = again;
+        }
+    }
+
+    private static Process FindOpenBrowser(string profileDir, string url)
+    {
+        try
+        {
+            using (var searcher = new ManagementObjectSearcher(
+                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='msedge.exe' OR Name='chrome.exe'"))
+            {
+                foreach (ManagementObject item in searcher.Get())
+                {
+                    var command = item["CommandLine"] as string;
+                    if (string.IsNullOrEmpty(command))
+                    {
+                        continue;
+                    }
+                    if (command.IndexOf(profileDir, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+                    if (command.IndexOf(url, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+                    if (command.IndexOf("--type=", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        continue;
+                    }
+                    var pid = Convert.ToInt32(item["ProcessId"]);
+                    try
+                    {
+                        var process = Process.GetProcessById(pid);
+                        if (!process.HasExited)
+                        {
+                            return process;
+                        }
+                    }
+                    catch
+                    {
+                        // proces is net gestopt
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // zonder proceslijst blijft het gestarte proces de fallback
+        }
+        return null;
     }
 
     private static void StartStopScriptOnce()

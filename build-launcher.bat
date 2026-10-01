@@ -7,9 +7,9 @@ if not exist "%CSC%" (
   echo C# compiler niet gevonden.
   exit /b 1
 )
-"%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /out:"HoloboxZorgsimulator.exe" "tools\HoloboxLauncher.cs"
+"%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /r:System.Management.dll /out:"HoloboxZorgsimulator.exe" "tools\HoloboxLauncher.cs"
 if errorlevel 1 exit /b 1
 echo Gemaakt: HoloboxZorgsimulator.exe
-"%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /out:"Editor.exe" "tools\HoloboxLauncher.cs"
+"%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /r:System.Management.dll /out:"Editor.exe" "tools\HoloboxLauncher.cs"
 if errorlevel 1 exit /b 1
 echo Gemaakt: Editor.exe

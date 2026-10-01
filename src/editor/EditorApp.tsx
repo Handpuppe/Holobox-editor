@@ -1,24 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog } from '../components/Dialog';
+import { withBaseUrl } from '../media/baseUrl';
 import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
 import { avatarSourceChain } from '../media/logopedie/resolveAvatar';
 import {
-  CONCLUSION_NODE_ID,
   type DecisionNode,
   type OptionQuality,
   type Scenario,
   type StudentOption,
 } from '../domain/types';
 import { logopedieSaveIssues, nursingSaveIssues } from './saveChecks';
-import { cloneNursingScenario } from './cloneNursing';
 import { cloneScenario } from './cloneScenario';
 import { EditorMediaPanel } from './EditorMediaPanel';
+import { emptyLogopedieScenario, emptyNursingScenario } from './emptyScenario';
 import { downloadEnvelope, parseLogopedieEnvelope, saveEnvelopeToCopy } from './envelope';
 import { EDITOR_FACES, faceLabel } from './faces';
+import { readLastOpenedModule, writeLastOpenedModule } from './lastOpened';
 import { editorSourceLabel, loadEditorStartupScenario } from './loadSavedScenario';
 import { loadEditorStartupNursing, nursingEditorSourceLabel } from './loadSavedNursing';
+import { overlayScenarioFileName } from './newCaseFile';
+import { saveEnvelopeAsNewCase } from './saveAsCase';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
 import { NursingEditor } from './NursingEditor';
+import { NodeOverview } from './NodeOverview';
+import {
+  connectLogopedieFlow,
+  connectNursingFlow,
+  disconnectLogopedieFlow,
+  disconnectNursingFlow,
+  logopedieNodeOverview,
+  nursingNodeOverview,
+} from './nodeBoard';
+import { PrintListView } from './PrintListView';
+import { nursingPrintList } from './printList';
 import {
   downloadNursingEnvelope,
   parseVerpleegkundeEnvelope,
@@ -43,12 +57,25 @@ import {
 import type { NursingScenario } from '../nursing/types';
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
-  high: 'Goed (high)',
-  partial: 'Gedeeltelijk (partial)',
-  inappropriate: 'Ongepast (inappropriate)',
+  high: 'Goed antwoord',
+  partial: 'Deels goed antwoord',
+  inappropriate: 'Verkeerd antwoord',
 };
 
 const QUALITIES: OptionQuality[] = ['high', 'partial', 'inappropriate'];
+
+function fieldClass(value: string): string {
+  return value.trim() ? 'field' : 'field is-empty';
+}
+
+async function quitEditor(): Promise<void> {
+  try {
+    await fetch(withBaseUrl('/editor-api/quit?immediate=1'), { method: 'POST' });
+  } catch {
+    // Het venster sluit ook als de server het script niet kon starten.
+  }
+  window.close();
+}
 
 function canSaveToThisCopy(): boolean {
   if (typeof window === 'undefined') {
@@ -86,9 +113,11 @@ export function EditorApp() {
   const importPackageRef = useRef<HTMLInputElement>(null);
   const dirtyRef = useRef(false);
   const nursingDirtyRef = useRef(false);
-  const [editorModule, setEditorModule] = useState<EditorModule>('logopedie');
+  const [editorModule, setEditorModule] = useState<EditorModule>(
+    () => readLastOpenedModule() ?? 'logopedie',
+  );
   const [scenario, setScenario] = useState<Scenario>(() => cloneScenario());
-  const [nursingDraft, setNursingDraft] = useState<NursingScenario>(() => cloneNursingScenario());
+  const [nursingDraft, setNursingDraft] = useState<NursingScenario>(() => emptyNursingScenario());
   const [selectedNodeId, setSelectedNodeId] = useState(scenario.startNodeId);
   const [selectedStepId, setSelectedStepId] = useState(nursingDraft.meta.startStepId);
   const [previewOptionIndex, setPreviewOptionIndex] = useState(0);
@@ -103,6 +132,8 @@ export function EditorApp() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [printListOpen, setPrintListOpen] = useState(false);
+  const [nodesOpen, setNodesOpen] = useState(false);
   const [saveBlockIssues, setSaveBlockIssues] = useState<string[] | null>(null);
   const [blockKind, setBlockKind] = useState<'save' | 'import'>('save');
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
@@ -147,6 +178,32 @@ export function EditorApp() {
   }, []);
 
   useEffect(() => {
+    const sendClose = () => {
+      const url = withBaseUrl('/editor-api/quit');
+      if (typeof navigator.sendBeacon === 'function') {
+        navigator.sendBeacon(url);
+        return;
+      }
+      void fetch(url, { method: 'POST', keepalive: true }).catch(() => undefined);
+    };
+    window.addEventListener('pagehide', sendClose);
+    let timer = 0;
+    if (import.meta.env.MODE !== 'test' && canSaveToThisCopy()) {
+      const ping = () => {
+        void fetch(withBaseUrl('/editor-api/editor-alive'), { method: 'POST' }).catch(() => undefined);
+      };
+      ping();
+      timer = window.setInterval(ping, 800);
+    }
+    return () => {
+      window.removeEventListener('pagehide', sendClose);
+      if (timer) {
+        window.clearInterval(timer);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (import.meta.env.MODE === 'test') {
       return;
     }
@@ -167,12 +224,63 @@ export function EditorApp() {
     };
   }, []);
 
+  function rememberOpenedModule(next: EditorModule) {
+    writeLastOpenedModule(next);
+  }
+
+  function selectEditorModule(next: EditorModule) {
+    setEditorModule(next);
+    rememberOpenedModule(next);
+    setOpenError(null);
+    setSaveError(null);
+    setSaveMessage(null);
+    setSaveBlockIssues(null);
+  }
+
   function markDirty() {
     dirtyRef.current = true;
+    rememberOpenedModule('logopedie');
   }
 
   function markNursingDirty() {
     nursingDirtyRef.current = true;
+    rememberOpenedModule('verpleegkunde');
+  }
+
+  function connectNodes(from: string, to: string) {
+    if (editorModule === 'verpleegkunde') {
+      const next = connectNursingFlow(nursingDraft, from, to);
+      if (next === nursingDraft) {
+        return;
+      }
+      markNursingDirty();
+      setNursingDraft(next);
+      return;
+    }
+    const next = connectLogopedieFlow(scenario, from, to);
+    if (next === scenario) {
+      return;
+    }
+    markDirty();
+    setScenario(next);
+  }
+
+  function disconnectNodes(from: string) {
+    if (editorModule === 'verpleegkunde') {
+      const next = disconnectNursingFlow(nursingDraft, from);
+      if (next === nursingDraft) {
+        return;
+      }
+      markNursingDirty();
+      setNursingDraft(next);
+      return;
+    }
+    const next = disconnectLogopedieFlow(scenario, from);
+    if (next === scenario) {
+      return;
+    }
+    markDirty();
+    setScenario(next);
   }
 
   function resetToSeed() {
@@ -191,7 +299,7 @@ export function EditorApp() {
 
   function resetNursingToSeed() {
     markNursingDirty();
-    const seeded = cloneNursingScenario();
+    const seeded = emptyNursingScenario();
     setNursingDraft(seeded);
     setSelectedStepId(seeded.meta.startStepId);
     setNursingPreviewOptionIndex(0);
@@ -201,6 +309,32 @@ export function EditorApp() {
     setSaveMessage(null);
     setSaveError(null);
     setNursingStagedMedia([]);
+  }
+
+  function startNewScenario() {
+    setOpenError(null);
+    setSaveError(null);
+    setSaveMessage(null);
+    setSaveBlockIssues(null);
+    if (editorModule === 'verpleegkunde') {
+      markNursingDirty();
+      const empty = emptyNursingScenario();
+      setNursingDraft(empty);
+      setSelectedStepId(empty.meta.startStepId);
+      setNursingPreviewOptionIndex(0);
+      setNursingLoadNotice(null);
+      setNursingLoadedLabel('Nieuw scenario (niet opgeslagen)');
+      setNursingStagedMedia([]);
+      return;
+    }
+    markDirty();
+    const empty = emptyLogopedieScenario();
+    setScenario(empty);
+    setSelectedNodeId(empty.startNodeId);
+    setPreviewOptionIndex(0);
+    setLoadNotice(null);
+    setLoadedLabel('Nieuw scenario (niet opgeslagen)');
+    setStagedMedia([]);
   }
 
   async function openJsonFile(file: File | undefined) {
@@ -260,6 +394,19 @@ export function EditorApp() {
     void saveToCopy();
   }
 
+  function requestSaveAsNewCase() {
+    const found = currentSaveIssues();
+    if (found.length > 0) {
+      setSaveMessage(null);
+      setSaveError(null);
+      setBlockKind('save');
+      setSaveBlockIssues(found);
+      return;
+    }
+    setSaveBlockIssues(null);
+    void saveAsNewCase();
+  }
+
   async function saveToCopy() {
     setSaving(true);
     setSaveError(null);
@@ -315,6 +462,37 @@ export function EditorApp() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveAsNewCase() {
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    setSaveBlockIssues(null);
+    const envelopeText =
+      editorModule === 'logopedie'
+        ? envelopeTextForModule('logopedie', scenario)
+        : envelopeTextForModule('verpleegkunde', nursingDraft);
+    const title = editorModule === 'logopedie' ? scenario.title : nursingDraft.meta.title;
+    const result = await saveEnvelopeAsNewCase(editorModule, envelopeText, title);
+    if (!result.ok) {
+      setSaving(false);
+      setSaveError(result.error);
+      return;
+    }
+    rememberOpenedModule(editorModule);
+    const fileName = result.file.replaceAll('\\', '/').split('/').pop() ?? result.file;
+    if (editorModule === 'verpleegkunde') {
+      setNursingLoadedLabel(`Geladen: ${fileName}`);
+      setNursingLoadNotice(null);
+    } else {
+      setLoadedLabel(`Geladen: ${fileName}`);
+      setLoadNotice(null);
+    }
+    setSaving(false);
+    setSaveMessage(
+      `Opgeslagen als nieuwe casus (${result.file}). ${overlayScenarioFileName(editorModule)} is niet overschreven.`,
+    );
   }
 
   async function extraMediaForExport(): Promise<
@@ -451,14 +629,44 @@ export function EditorApp() {
   );
   const avatarOverride =
     stagedAvatar && stagedAvatar.type !== 'delete' ? stagedAvatar.previewUrl : null;
-  const nextTargets = [
-    ...scenario.nodes.map((item) => ({ id: item.id, label: `${item.phaseLabel} (${item.id})` })),
-    { id: CONCLUSION_NODE_ID, label: 'Conclusie' },
-  ];
 
   function updateSelected(next: DecisionNode) {
     markDirty();
     setScenario((current) => replaceNode(current, next.id, next));
+  }
+
+  if (nodesOpen) {
+    const overview =
+      editorModule === 'verpleegkunde'
+        ? nursingNodeOverview(nursingDraft)
+        : logopedieNodeOverview(scenario);
+    return (
+      <div className="scenario-editor node-overview-page" data-testid="screen-scenario-editor" lang="nl">
+        <NodeOverview
+          model={overview}
+          onClose={() => setNodesOpen(false)}
+          onConnect={connectNodes}
+          onDisconnect={disconnectNodes}
+        />
+      </div>
+    );
+  }
+
+  if (printListOpen) {
+    const list =
+      editorModule === 'verpleegkunde'
+        ? nursingPrintList(nursingDraft)
+        : { title: scenario.title.trim(), steps: [] };
+    return (
+      <div className="scenario-editor print-list-page" data-testid="screen-scenario-editor" lang="nl">
+        <PrintListView
+          title={list.title}
+          steps={list.steps}
+          onPrint={() => window.print()}
+          onClose={() => setPrintListOpen(false)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -473,14 +681,47 @@ export function EditorApp() {
           </h1>
           <p className="editor-meta">
             {editorModule === 'logopedie'
-              ? `${scenario.title} · ${scenario.id} · v${scenario.version}`
-              : `${nursingDraft.meta.title} · ${nursingDraft.meta.id} · v${nursingDraft.meta.version}`}
+              ? `${scenario.title} · v${scenario.version}`
+              : `${nursingDraft.meta.title} · v${nursingDraft.meta.version}`}
           </p>
           <p className="editor-loaded" data-testid="editor-loaded-source">
             {activeLoadedLabel}
           </p>
         </div>
-        <div className="editor-actions">
+        <div className="editor-header-side">
+          <div className="editor-actions">
+          <button
+            type="button"
+            className="btn"
+            data-testid="btn-editor-quit"
+            onClick={() => quitEditor()}
+          >
+            Afsluiten
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            data-testid="btn-new-scenario"
+            onClick={startNewScenario}
+          >
+            Nieuw scenario
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            data-testid="btn-print-list"
+            onClick={() => setPrintListOpen(true)}
+          >
+            Printlijst
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            data-testid="btn-nodes"
+            onClick={() => setNodesOpen(true)}
+          >
+            Nodes
+          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -536,6 +777,17 @@ export function EditorApp() {
             <button
               type="button"
               className="btn btn-secondary"
+              data-testid="btn-save-as-case"
+              onClick={() => requestSaveAsNewCase()}
+              disabled={saving}
+            >
+              Opslaan als nieuwe casus
+            </button>
+          ) : null}
+          {saveOnThisPc ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
               data-testid="btn-export-package"
               onClick={() => void exportPackage()}
               disabled={saving}
@@ -566,6 +818,7 @@ export function EditorApp() {
               void importPackageFile(file);
             }}
           />
+          </div>
         </div>
       </header>
 
@@ -574,13 +827,7 @@ export function EditorApp() {
           type="button"
           className={editorModule === 'logopedie' ? 'is-active' : undefined}
           data-testid="editor-module-logopedie"
-          onClick={() => {
-            setEditorModule('logopedie');
-            setOpenError(null);
-            setSaveError(null);
-            setSaveMessage(null);
-            setSaveBlockIssues(null);
-          }}
+          onClick={() => selectEditorModule('logopedie')}
         >
           Logopedie
         </button>
@@ -588,13 +835,7 @@ export function EditorApp() {
           type="button"
           className={editorModule === 'verpleegkunde' ? 'is-active' : undefined}
           data-testid="editor-module-nursing"
-          onClick={() => {
-            setEditorModule('verpleegkunde');
-            setOpenError(null);
-            setSaveError(null);
-            setSaveMessage(null);
-            setSaveBlockIssues(null);
-          }}
+          onClick={() => selectEditorModule('verpleegkunde')}
         >
           Verpleegkunde
         </button>
@@ -606,8 +847,8 @@ export function EditorApp() {
       </p>
       <p className="editor-notice">
         {editorModule === 'logopedie'
-          ? 'Bij openen wordt logopedie.json geladen als die geldig is, anders de startkopie. De avatar is een stilstaande still, zonder zoom.'
-          : 'Bij openen wordt verpleegkunde.json geladen als die geldig is, anders de startkopie. Geen zoom, geen animatie.'}
+          ? 'Bij openen wordt het laatst geopende scenario geladen. Was er nog geen scenario geopend, dan de startkopie. De avatar is een stilstaande still, zonder zoom.'
+          : 'Bij openen wordt het laatst geopende scenario geladen. Was er nog geen scenario geopend, dan de startkopie. Geen zoom, geen animatie.'}
       </p>
 
       {activeLoadNotice ? (
@@ -737,7 +978,7 @@ export function EditorApp() {
                         setPreviewOptionIndex(0);
                       }}
                     >
-                      {String(index + 1)}. {item.phaseLabel}
+                      {item.phaseLabel.trim() || `Vraag ${index + 1}`}
                     </button>
                   </li>
                 ))}
@@ -748,8 +989,20 @@ export function EditorApp() {
               <main className="editor-main" id="inhoud">
                 <section className="editor-card">
                   <h2>Vraag van de cliënt</h2>
-                  <p className="muted">Node {node.id}</p>
                   <div className="field">
+                    <label htmlFor="scenario-title">Titel</label>
+                    <textarea
+                      id="scenario-title"
+                      data-testid="scenario-title"
+                      rows={1}
+                      value={scenario.title}
+                      onChange={(event) => {
+                        markDirty();
+                        setScenario((current) => ({ ...current, title: event.target.value }));
+                      }}
+                    />
+                  </div>
+                  <div className={fieldClass(node.prompt.text)}>
                     <label htmlFor="prompt-text">Wat zegt de cliënt?</label>
                     <textarea
                       id="prompt-text"
@@ -781,6 +1034,7 @@ export function EditorApp() {
                   </div>
                 </section>
 
+                <div className="editor-option-grid">
                 {node.options.map((option, optionIndex) => (
                   <section
                     key={option.id}
@@ -820,7 +1074,7 @@ export function EditorApp() {
                         ))}
                       </select>
                     </div>
-                    <div className="field">
+                    <div className={fieldClass(option.text)}>
                       <label htmlFor={`option-text-${option.id}`}>Wat zegt de student?</label>
                       <textarea
                         id={`option-text-${option.id}`}
@@ -837,7 +1091,7 @@ export function EditorApp() {
                         }
                       />
                     </div>
-                    <div className="field">
+                    <div className={fieldClass(option.clientResponse.text)}>
                       <label htmlFor={`client-response-${option.id}`}>Reactie van de cliënt</label>
                       <textarea
                         id={`client-response-${option.id}`}
@@ -883,30 +1137,9 @@ export function EditorApp() {
                         ))}
                       </div>
                     </fieldset>
-                    <div className="field">
-                      <label htmlFor={`next-${option.id}`}>Volgende stap</label>
-                      <select
-                        id={`next-${option.id}`}
-                        data-testid={`option-next-${option.id}`}
-                        value={option.nextNodeId}
-                        onChange={(event) =>
-                          updateSelected(
-                            replaceOption(node, optionIndex, {
-                              ...option,
-                              nextNodeId: event.target.value,
-                            }),
-                          )
-                        }
-                      >
-                        {nextTargets.map((target) => (
-                          <option key={target.id} value={target.id}>
-                            {target.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </section>
                 ))}
+                </div>
               </main>
             ) : null}
 
@@ -918,7 +1151,7 @@ export function EditorApp() {
               <div className="editor-preview-stage" data-testid="editor-preview-stage">
                 <LogopedieAvatar
                   emotion={previewEmotion}
-                  heightPx={420}
+                  heightPx={240}
                   name={scenario.client.name}
                   srcOverride={avatarOverride}
                 />

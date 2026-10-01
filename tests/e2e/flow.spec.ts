@@ -191,7 +191,8 @@ test.describe('core simulation routes', () => {
       await choose(page, optionId);
     }
     await expect(page.getByTestId('screen-nursing-results')).toBeVisible();
-    await expect(page.getByTestId('score-value')).toHaveText('100');
+    await expect(page.getByTestId('score-value')).toHaveCount(0);
+    await expect(page.getByText('Competentie scores')).toHaveCount(0);
   });
 
   test('open an unknown route and recover to a valid screen', async ({ page }) => {

@@ -27,6 +27,9 @@ describe('nursing editor startup JSON', () => {
     expect(missing.source).toBe('seed');
     expect(missing.label).toBe('Geladen: startkopie');
     expect(missing.notice).toBe('Geen opgeslagen verpleegkunde.json gevonden.');
+    expect(missing.scenario.steps).toHaveLength(1);
+    expect(missing.scenario.steps[0]?.question).toBe('');
+    expect(missing.scenario.steps[0]?.question).not.toContain('luchtweg');
 
     const invalid = await loadEditorStartupNursing(
       async () =>
@@ -37,6 +40,8 @@ describe('nursing editor startup JSON', () => {
     );
     expect(invalid.source).toBe('seed');
     expect(invalid.notice).toContain('ongeldig');
+    expect(invalid.scenario.steps).toHaveLength(1);
+    expect(invalid.scenario.steps[0]?.question).toBe('');
   });
 
   it('labels the built-in copy and a saved file', () => {

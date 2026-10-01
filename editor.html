@@ -24,6 +24,25 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        var host = location.hostname;
+        if (host !== '127.0.0.1' && host !== 'localhost') return;
+        var left = 40;
+        function ping() {
+          fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(function () {});
+        }
+        ping();
+        var timer = setInterval(function () {
+          left -= 1;
+          if (left <= 0) {
+            clearInterval(timer);
+            return;
+          }
+          ping();
+        }, 400);
+      })();
+    </script>
     <script type="module" src="/src/editor/main.tsx"></script>
   </body>
 </html>

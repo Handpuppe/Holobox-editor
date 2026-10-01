@@ -133,9 +133,6 @@ function validateOption(
   if (typeof option.unsafe !== 'boolean') {
     issues.push(`Antwoord ${option.id} mist de veiligheidsvlag.`);
   }
-  if (!isNonEmptyString(option.delayedFeedback) || !isNonEmptyString(option.educationalRationale)) {
-    issues.push(`Antwoord ${option.id} mist feedback of toelichting.`);
-  }
   if (option.nextStepId !== 'completed' && !stepIds.has(option.nextStepId)) {
     issues.push(`Antwoord ${option.id} verwijst naar onbekende stap ${option.nextStepId}.`);
   }

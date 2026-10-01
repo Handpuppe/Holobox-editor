@@ -94,6 +94,10 @@ internal static class Program
         }
         finally
         {
+            if (editor && browser != null)
+            {
+                StartStopScriptOnce();
+            }
             KillTree(browser);
             KillTree(server);
             KillListeners(port);
@@ -259,6 +263,44 @@ internal static class Program
             Arguments = arguments,
             UseShellExecute = false,
         });
+    }
+
+    private static void StartStopScriptOnce()
+    {
+        var lockPath = Path.Combine(Path.GetTempPath(), "holobox-stop-holobox.lock");
+        try
+        {
+            if (File.Exists(lockPath))
+            {
+                var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(lockPath);
+                if (age.TotalSeconds >= 0 && age.TotalSeconds < 20)
+                {
+                    return;
+                }
+                File.Delete(lockPath);
+            }
+            using (new FileStream(lockPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+            }
+        }
+        catch
+        {
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-ExecutionPolicy Bypass -File \"D:\\GrokBuild\\HoloBox2\\Stop-Holobox.ps1\"",
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Normal,
+            });
+        }
+        catch
+        {
+            // Het venster is al dicht. Het script start bij de volgende poging.
+        }
     }
 
     private static void KillTree(Process process)

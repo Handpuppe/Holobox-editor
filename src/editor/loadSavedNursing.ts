@@ -1,7 +1,7 @@
 import { NURSING_SCENARIO_JSON_PATH } from '../data/loadNursingScenario';
 import { withBaseUrl } from '../media/baseUrl';
 import type { NursingScenario } from '../nursing/types';
-import { cloneNursingScenario } from './cloneNursing';
+import { emptyNursingScenario } from './emptyScenario';
 import { parseVerpleegkundeEnvelope, VERPLEEGKUNDE_ENVELOPE_FILENAME } from './nursingEnvelope';
 
 export type NursingEditorStartupSource = 'json' | 'seed';
@@ -27,7 +27,7 @@ export async function loadEditorStartupNursing(
   fetchImpl?: typeof fetch,
 ): Promise<NursingEditorStartupLoad> {
   const seed = (): NursingEditorStartupLoad => ({
-    scenario: cloneNursingScenario(),
+    scenario: emptyNursingScenario(),
     source: 'seed',
     label: nursingEditorSourceLabel('seed'),
     notice: 'Geen opgeslagen verpleegkunde.json gevonden.',
@@ -43,7 +43,7 @@ export async function loadEditorStartupNursing(
     const parsed = parseVerpleegkundeEnvelope(await response.text());
     if (!parsed.ok) {
       return {
-        scenario: cloneNursingScenario(),
+        scenario: emptyNursingScenario(),
         source: 'seed',
         label: nursingEditorSourceLabel('seed'),
         notice: `Opgeslagen verpleegkunde.json is ongeldig: ${parsed.error}`,

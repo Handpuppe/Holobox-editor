@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { chooseDefaultScenario } from './helpers';
 import { spawnSync } from 'node:child_process';
 import {
@@ -36,6 +36,40 @@ test.describe('logopedie scenario editor', () => {
   });
   test.afterEach(() => {
     cleanupLogopedieJson();
+  });
+
+  test('starts a new empty scenario without writing logopedie.json', async ({ page }) => {
+    const jsonPath = join(process.cwd(), 'resources', 'scenarios', 'logopedie.json');
+    await page.goto('editor.html');
+    await expect(page.getByTestId('btn-new-scenario')).toBeVisible();
+    await page.getByTestId('btn-new-scenario').click();
+    await expect(page.getByTestId('scenario-title')).toHaveValue('');
+    await expect(page.getByTestId('prompt-text')).toHaveValue('');
+    await expect(page.getByTestId('editor-loaded-source')).toHaveText(
+      'Nieuw scenario (niet opgeslagen)',
+    );
+    expect(existsSync(jsonPath)).toBe(false);
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('dialog-save-blocked')).toBeVisible();
+    expect(existsSync(jsonPath)).toBe(false);
+    await expect(page.getByTestId('btn-open-json')).toBeVisible();
+    await expect(page.getByTestId('btn-download-json')).toBeVisible();
+    await expect(page.getByTestId('btn-export-package')).toBeVisible();
+    await expect(page.getByTestId('btn-import-package')).toBeVisible();
+  });
+
+  test('reopens the last opened module after reload', async ({ page }) => {
+    await page.goto('editor.html');
+    await expect(page.getByTestId('prompt-text')).toBeVisible();
+    await page.getByTestId('editor-module-nursing').click();
+    await expect(page.getByTestId('nursing-question')).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('nursing-question')).toBeVisible();
+    await expect(page.getByTestId('prompt-text')).toHaveCount(0);
+    await page.getByTestId('btn-new-scenario').click();
+    await expect(page.getByTestId('nursing-title')).toHaveValue('');
+    await expect(page.getByTestId('nursing-question')).toHaveValue('');
+    await expect(page.getByTestId('nursing-step-video-missing')).toBeVisible();
   });
 
   test('opens beside the simulator and downloads JSON without changing /logopedie', async ({
@@ -372,6 +406,23 @@ function latestExportZip(prefix: string): string {
   return join(dir, last);
 }
 
+async function fillSavableNursing(page: Page, question: string) {
+  await page.getByTestId('nursing-patient-name').fill('Testpatiënt');
+  await page.getByTestId('nursing-education-type').fill('Eigen type');
+  await page.getByTestId('nursing-step-name').fill('Stapnaam');
+  await page.getByTestId('nursing-phase').fill('Fase');
+  await page.getByTestId('nursing-question').fill(question);
+  await page.getByTestId('nursing-option-text-n-1-high').fill('Goed antwoord');
+  await page.getByTestId('nursing-option-text-n-1-partial').fill('Deels goed antwoord');
+  await page.getByTestId('nursing-option-text-n-1-inappropriate').fill('Verkeerd antwoord');
+}
+
+async function saveStepPlaceholder(page: Page) {
+  await page.getByTestId('nursing-step-mode-placeholder').click();
+  await page.getByTestId('nursing-step-placeholder').fill('Video volgt later.');
+  await page.getByTestId('btn-nursing-step-placeholder-save').click();
+}
+
 test.describe('verpleegkunde scenario editor', () => {
   test.beforeEach(() => {
     cleanupNursingJson();
@@ -396,8 +447,16 @@ test.describe('verpleegkunde scenario editor', () => {
     await expect(page.getByTestId('editor-module-logopedie')).toBeVisible();
     await page.getByTestId('editor-module-nursing').click();
     await expect(page.getByTestId('nursing-question')).toBeVisible();
-    await expect(page.getByTestId('nursing-weights-readonly')).toBeVisible();
-    await page.getByTestId('nursing-question').fill(firstSave);
+    await expect(page.getByTestId('nursing-question')).toHaveValue('');
+    await expect(page.getByTestId('nursing-weights-readonly')).toHaveCount(0);
+    await expect(page.getByLabel('Situatiebeschrijving')).toBeVisible();
+    await expect(page.getByTestId('btn-editor-quit')).toBeVisible();
+    await expect(page.getByText('Stap n-1')).toHaveCount(0);
+    await expect(page.getByText('Volgende stap')).toHaveCount(0);
+    await expect(page.getByText('Onveilig')).toHaveCount(0);
+    await expect(page.getByText('Gescoorde competenties')).toHaveCount(0);
+    await fillSavableNursing(page, firstSave);
+    await saveStepPlaceholder(page);
     await page.getByTestId('btn-save-json').click();
     await expect(page.getByTestId('editor-save-ok')).toBeVisible();
     await page.getByTestId('nursing-question').fill(editedQuestion);
@@ -441,7 +500,8 @@ test.describe('verpleegkunde scenario editor', () => {
   test('loads verpleegkunde.json in the editor and keeps logopedie working', async ({ page }) => {
     await page.goto('editor.html');
     await page.getByTestId('editor-module-nursing').click();
-    await page.getByTestId('nursing-question').fill('Extra zin uit verpleegkunde.json.');
+    await fillSavableNursing(page, 'Extra zin uit verpleegkunde.json.');
+    await saveStepPlaceholder(page);
     await page.getByTestId('btn-save-json').click();
     await expect(page.getByTestId('editor-save-ok')).toBeVisible();
 
@@ -481,16 +541,21 @@ test.describe('verpleegkunde scenario editor', () => {
     await expect(page.getByTestId('editor-media')).toHaveCount(0);
   });
 
-  test('blocks save when a Verpleegkunde step has no video', async ({ page }) => {
+  test('saves a filled Verpleegkunde step when there is no video yet', async ({ page }) => {
     const jsonPath = join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json');
     await page.goto('editor.html');
     await page.getByTestId('editor-module-nursing').click();
-    await page.getByTestId('btn-nursing-step-unlink').click();
-    await expect(page.getByTestId('editor-nursing-issues-list')).toContainText('zonder video');
+    await expect(page.getByTestId('editor-nursing-issues-list')).not.toContainText('zonder video');
+    await fillSavableNursing(page, 'Vraag zonder video.');
     await page.getByTestId('btn-save-json').click();
-    await expect(page.getByTestId('dialog-save-blocked')).toBeVisible();
-    await expect(page.getByTestId('dialog-save-blocked-list')).toContainText('zonder video');
-    expect(existsSync(jsonPath)).toBe(false);
+    await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+    await expect(page.getByTestId('dialog-save-blocked')).toHaveCount(0);
+    expect(existsSync(jsonPath)).toBe(true);
+    const saved = JSON.parse(readFileSync(jsonPath, 'utf8')) as {
+      steps: Array<{ question: string; stepName?: string }>;
+    };
+    expect(saved.steps[0]?.question).toBe('Vraag zonder video.');
+    expect(saved.steps[0]?.stepName).toBe('Stapnaam');
   });
 
   test('exports a verpleegkunde package and imports the question after reset', async ({ page }) => {
@@ -498,7 +563,14 @@ test.describe('verpleegkunde scenario editor', () => {
     try {
       await page.goto('editor.html');
       await page.getByTestId('editor-module-nursing').click();
-      await page.getByTestId('nursing-question').fill('Vraag uit export-pakket.');
+      await fillSavableNursing(page, 'Vraag uit export-pakket.');
+      await page.getByTestId('nursing-step-mode-video').click();
+      await page.getByTestId('input-nursing-step-upload').setInputFiles({
+        name: 'export-stap.mp4',
+        mimeType: 'video/mp4',
+        buffer: Buffer.from('export-video'),
+      });
+      await expect(page.getByTestId('nursing-step-video-player')).toBeVisible();
       await page.getByTestId('btn-export-package').click();
       await expect(page.getByTestId('editor-save-ok')).toContainText('exports/');
       const zipPath = latestExportZip('verpleegkunde-');
@@ -513,6 +585,44 @@ test.describe('verpleegkunde scenario editor', () => {
       await expect(page.getByTestId('nursing-step-video-player')).toBeVisible();
     } finally {
       cleanupExports('verpleegkunde-');
+    }
+  });
+
+  test('saves as a new case file and leaves verpleegkunde.json untouched', async ({ page }) => {
+    const overlay = join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json');
+    const extra: string[] = [];
+    try {
+      await page.goto('editor.html');
+      await page.getByTestId('editor-module-nursing').click();
+      await fillSavableNursing(page, 'Vraag voor extra casus');
+      await saveStepPlaceholder(page);
+      await page.getByTestId('nursing-title').fill('Extra verpleegkunde-casus');
+      await page.getByTestId('btn-save-as-case').click();
+      await expect(page.getByTestId('editor-save-ok')).toContainText('nieuwe casus');
+      expect(existsSync(overlay)).toBe(false);
+      const dir = join(process.cwd(), 'resources', 'scenarios');
+      for (const name of readdirSync(dir)) {
+        if (name.startsWith('verpleegkunde-') && name.endsWith('.json')) {
+          extra.push(join(dir, name));
+        }
+      }
+      expect(extra.length).toBeGreaterThan(0);
+    } finally {
+      for (const file of extra) {
+        if (existsSync(file)) {
+          unlinkSync(file);
+        }
+        const distCopy = join(
+          process.cwd(),
+          'dist',
+          'resources',
+          'scenarios',
+          file.split(/[/\\]/).pop() ?? '',
+        );
+        if (existsSync(distCopy)) {
+          unlinkSync(distCopy);
+        }
+      }
     }
   });
 
@@ -551,7 +661,12 @@ test.describe('verpleegkunde scenario editor', () => {
     try {
       await page.goto('editor.html');
       await page.getByTestId('editor-module-nursing').click();
+      await fillSavableNursing(page, 'Vraag met vervangen stapvideo.');
       await expect(page.getByTestId('nursing-step-video')).toBeVisible();
+      await page.getByTestId('nursing-step-mode-video').click();
+      const airwayRel = `verpleegkunde/${airwayName}`;
+      await expect(page.getByTestId('nursing-step-choose-video')).toContainText(airwayName);
+      await page.getByTestId('nursing-step-choose-video').selectOption(airwayRel);
       await expect(page.getByTestId('nursing-step-video-path')).toContainText('verpleegkunde/');
       await page.getByTestId('input-nursing-step-replace').setInputFiles({
         name: airwayName,
@@ -587,5 +702,146 @@ test.describe('verpleegkunde scenario editor', () => {
     } finally {
       restore();
     }
+  });
+
+  test('opens a read-only node overview and leaves the form unchanged', async ({ page }) => {
+    await page.goto('editor.html');
+    await page.getByTestId('editor-module-nursing').click();
+    await page.getByTestId('nursing-title').fill('Opnamecasus');
+    await page.getByTestId('nursing-step-name').fill('Eerste vraag');
+    await page.getByTestId('nursing-phase').fill('Ademhaling');
+    await page.getByTestId('nursing-question').fill('Wat zie je?');
+    await page.getByTestId('nursing-answer-mode-placeholder-partial').click();
+    await page.getByTestId('nursing-answer-placeholder-partial').fill('Nog filmen: de ademhaling.');
+    await page.getByTestId('btn-nursing-answer-placeholder-save-partial').click();
+    await page.getByTestId('btn-nodes').click();
+    await expect(page.getByTestId('node-overview')).toBeVisible();
+    await expect(page.getByText('Scenario input').first()).toBeVisible();
+    await expect(page.getByText('Eerste vraag').first()).toBeVisible();
+    await expect(page.getByText('Nog filmen: de ademhaling.')).toBeVisible();
+    await expect(page.getByText('Goed antwoord').first()).toBeVisible();
+    await expect(page.getByText('Deels goed antwoord').first()).toBeVisible();
+    await expect(page.getByText('Verkeerd antwoord').first()).toBeVisible();
+    await expect(page.locator('.node-overview input, .node-overview textarea, .node-overview select')).toHaveCount(0);
+    const board = await page.getByTestId('node-overview').evaluate((element) => {
+      const style = getComputedStyle(element);
+      const card = element.querySelector('.node-card');
+      const head = card?.querySelector('.node-card-head');
+      const path = element.querySelector('path');
+      return {
+        background: style.backgroundColor,
+        card: card ? getComputedStyle(card).backgroundColor : '',
+        head: head ? getComputedStyle(head).backgroundColor : '',
+        d: path?.getAttribute('d') ?? '',
+        dash: path?.getAttribute('stroke-dasharray') ?? '',
+      };
+    });
+    expect(board.background).toBe('rgb(26, 35, 50)');
+    expect(board.card).toBe('rgb(255, 255, 255)');
+    expect(board.head).toBe('rgb(36, 48, 68)');
+    expect(board.dash).toBe('7 6');
+    expect(board.d).toMatch(/C /);
+    expect(board.d).not.toBe('M 0 0 C 48 -32 -48 -32 0 0');
+    await page.getByTestId('btn-nodes-back').click();
+    await expect(page.getByTestId('nursing-title')).toHaveValue('Opnamecasus');
+    await expect(page.getByTestId('nursing-step-name')).toHaveValue('Eerste vraag');
+    await expect(page.getByTestId('nursing-question')).toHaveValue('Wat zie je?');
+    await expect(page.getByTestId('nursing-answer-placeholder-partial')).toHaveValue('Nog filmen: de ademhaling.');
+  });
+
+  test('drags good forward, wrong back to the same question, and keeps the partial line', async ({
+    page,
+  }) => {
+    const folder = join(process.cwd(), 'resources', 'verpleegkunde');
+    const videoName = readdirSync(folder).find((name) => /\.(mp4|webm|mov|m4v)$/i.test(name));
+    expect(videoName).toBeTruthy();
+    if (!videoName) {
+      throw new Error('Verpleegkunde-video ontbreekt.');
+    }
+    const jsonPath = join(process.cwd(), 'resources', 'scenarios', 'verpleegkunde.json');
+
+    async function dragPort(from: string, to: string) {
+      const source = page.locator(`[data-port="${from}"]`);
+      const target = page.locator(`[data-port="${to}"]`);
+      await source.scrollIntoViewIfNeeded();
+      await target.scrollIntoViewIfNeeded();
+      const start = await source.boundingBox();
+      const end = await target.boundingBox();
+      if (!start || !end) {
+        throw new Error(`Poort niet zichtbaar: ${from} -> ${to}`);
+      }
+      await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 16 });
+      await page.mouse.up();
+    }
+
+    await page.goto('editor.html');
+    await page.getByTestId('editor-module-nursing').click();
+    await fillSavableNursing(page, 'Wat zie je?');
+    await page.getByTestId('nursing-title').fill('Opnamecasus');
+    await page.getByTestId('nursing-step-name').fill('Eerste vraag');
+    await page.getByTestId('nursing-phase').fill('Ademhaling');
+    await page.getByTestId('nursing-answer-mode-placeholder-partial').click();
+    await page.getByTestId('nursing-answer-placeholder-partial').fill('Nog filmen: de ademhaling.');
+    await page.getByTestId('btn-nursing-answer-placeholder-save-partial').click();
+    await page.getByTestId('nursing-answer-mode-video-high').click();
+    await page.getByTestId('nursing-answer-choose-high').selectOption(`verpleegkunde/${videoName}`);
+    await page.getByTestId('btn-add-nursing-step').click();
+    await page.getByTestId('nursing-step-tab-n-1').click();
+    await page.getByTestId('btn-nodes').click();
+    await expect(page.getByTestId('node-answer-n-1-partial')).toContainText('Nog filmen: de ademhaling.');
+    await expect(page.getByTestId('node-answer-n-1-high')).toContainText(videoName);
+    await expect(page.getByTestId('node-question-n-extra-1')).toBeVisible();
+
+    await dragPort('a-out-n-1-partial', 'q-in-n-extra-1');
+    await dragPort('a-out-n-1-high', 'q-in-n-extra-1');
+    await dragPort('q-out-n-1-inappropriate', 'q-in-n-1');
+    await expect(page.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toHaveCount(1);
+    await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(1);
+    await expect(page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toHaveCount(1);
+    await expect(page.locator('[data-wire-to="q-in-n-extra-1"]')).toHaveCount(2);
+    const loop = await page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1').getAttribute('d');
+    expect(loop).toMatch(/C /);
+    expect(loop).not.toContain(' L ');
+
+    await page.getByTestId('btn-delete-wire-a-out-n-1-partial').click();
+    await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(0);
+    await expect(page.getByTestId('node-answer-n-1-partial')).toBeVisible();
+    await expect(page.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toHaveCount(1);
+    await dragPort('a-out-n-1-partial', 'q-in-n-extra-1');
+    await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(1);
+
+    await page.getByTestId('btn-nodes-back').click();
+    await expect(page.getByTestId('nursing-question')).toHaveValue('Wat zie je?');
+    await expect(page.getByTestId('nursing-answer-placeholder-partial')).toHaveValue('Nog filmen: de ademhaling.');
+    await page.getByTestId('nursing-question').fill('Wat zie je nu?');
+    await page.getByTestId('btn-nodes').click();
+    await expect(page.getByTestId('node-question-n-1')).toContainText('Wat zie je nu?');
+    await expect(page.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toHaveCount(1);
+    await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(1);
+    await expect(page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toHaveCount(1);
+    await page.getByTestId('btn-nodes-back').click();
+    await page.getByTestId('btn-save-json').click();
+    await expect(page.getByTestId('editor-save-ok')).toBeVisible();
+
+    const saved = JSON.parse(readFileSync(jsonPath, 'utf8')) as {
+      steps: { id: string; options: { quality: string; nextStepId: string }[] }[];
+    };
+    const first = saved.steps.find((step) => step.id === 'n-1');
+    expect(first?.options.find((option) => option.quality === 'high')?.nextStepId).toBe('n-extra-1');
+    expect(first?.options.find((option) => option.quality === 'partial')?.nextStepId).toBe('n-extra-1');
+    expect(first?.options.find((option) => option.quality === 'inappropriate')?.nextStepId).toBe('n-1');
+
+    await page.goto('editor.html');
+    await page.getByTestId('editor-module-nursing').click();
+    await expect(page.getByTestId('nursing-question')).toHaveValue('Wat zie je nu?');
+    await page.getByTestId('btn-nodes').click();
+    await expect(page.getByTestId('node-answer-n-1-partial')).toContainText('Nog filmen: de ademhaling.');
+    await expect(page.getByTestId('node-answer-n-1-high')).toContainText(videoName);
+    await expect(page.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toHaveCount(1);
+    await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(1);
+    await expect(page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toHaveCount(1);
+    await expect(page.locator('.node-overview input, .node-overview textarea, .node-overview select')).toHaveCount(0);
   });
 });

@@ -42,6 +42,18 @@ export function NursingSimulationScreen() {
     scaleCorrection: teacher.scaleCorrection,
   };
   const last = nursingSession.history.at(-1);
+  const answeredOption = last
+    ? steps
+        .find((item) => item.id === last.stepId)
+        ?.options.find((item) => item.id === last.optionId)
+    : undefined;
+  const placeholderText = answeredOption
+    ? answeredOption.answerVideoMode === 'placeholder'
+      ? (answeredOption.videoPlaceholder ?? '')
+      : ''
+    : step?.stepVideoMode === 'placeholder'
+      ? (step.stepVideoPlaceholder ?? '')
+      : '';
   const mediaSlotId = last
     ? (steps
         .find((item) => item.id === last.stepId)
@@ -71,6 +83,7 @@ export function NursingSimulationScreen() {
         replayToken={replayToken}
         onAudioBlocked={() => setAudioBlocked(true)}
         slots={nursingScenario.mediaSlots}
+        placeholderText={placeholderText}
       />
       <aside className="question-panel" data-testid="question-panel" id="inhoud" lang="nl">
         <SideAppMenu />

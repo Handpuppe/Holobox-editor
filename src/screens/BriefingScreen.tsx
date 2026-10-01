@@ -35,7 +35,7 @@ export function BriefingScreen() {
         <h2>Cliënt</h2>
         <p>
           <strong>
-            {scenario.client.name}, {String(scenario.client.age)} jaar
+            {scenario.client.name}
           </strong>{' '}
           <span className="badge">{copy.clientFictional}</span>
         </p>

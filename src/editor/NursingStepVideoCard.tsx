@@ -6,6 +6,8 @@ import {
   assignStepPrimaryMedia,
   isNursingMediaPath,
   nursingRelativePathForFile,
+  saveStepVideoPlaceholder,
+  setStepVideoMode,
   stepPrimaryMediaPath,
   unlinkDeletedNursingMedia,
   type StagedNursingMediaOp,
@@ -48,7 +50,19 @@ export function NursingStepVideoCard({
     return publicResourceUrl(path);
   }, [path, stagedOp]);
   const linkedPath = stagedOp?.type === 'delete' ? null : path;
+  const mode = step.stepVideoMode ?? (linkedPath ? 'video' : null);
+  const storedPlaceholder = step.stepVideoPlaceholder ?? '';
+  const [placeholderState, setPlaceholderState] = useState({
+    stepId: step.id,
+    text: storedPlaceholder,
+    saved: false,
+  });
+  if (placeholderState.stepId !== step.id) {
+    setPlaceholderState({ stepId: step.id, text: storedPlaceholder, saved: false });
+  }
   const chooseOptions = catalog.filter((item) => isNursingMediaPath(item));
+  const placeholderDraft = placeholderState.text;
+  const savedNote = placeholderState.saved;
 
   function stageFile(relativePath: string, file: File, replace: boolean) {
     onStage({
@@ -70,6 +84,7 @@ export function NursingStepVideoCard({
       }
       setError(null);
       stageFile(linkedPath, file, true);
+      onChange(setStepVideoMode(draft, step.id, 'video'));
       return;
     }
     uploadNew(file);
@@ -87,12 +102,83 @@ export function NursingStepVideoCard({
     setError(null);
     const exists = chooseOptions.includes(relativePath) || Boolean(linkedPath === relativePath);
     stageFile(relativePath, file, exists);
-    onChange(assignStepPrimaryMedia(draft, step.id, relativePath));
+    onChange(
+      setStepVideoMode(assignStepPrimaryMedia(draft, step.id, relativePath), step.id, 'video'),
+    );
   }
 
   return (
     <section className="editor-card" data-testid="nursing-step-video">
-      <h2>Video van deze stap</h2>
+      <h2>Start video van deze vraag</h2>
+      <fieldset className="face-picker">
+        <legend>Video of placeholder</legend>
+        <div className="face-options">
+          <label className="face-option">
+            <input
+              type="radio"
+              name={`step-video-mode-${step.id}`}
+              checked={mode === 'video'}
+              data-testid="nursing-step-mode-video"
+              onChange={() => {
+                setError(null);
+                onChange(setStepVideoMode(draft, step.id, 'video'));
+              }}
+            />
+            Video
+          </label>
+          <label className="face-option">
+            <input
+              type="radio"
+              name={`step-video-mode-${step.id}`}
+              checked={mode === 'placeholder'}
+              data-testid="nursing-step-mode-placeholder"
+              onChange={() => {
+                setError(null);
+                onChange(setStepVideoMode(draft, step.id, 'placeholder'));
+              }}
+            />
+            Placeholder
+          </label>
+        </div>
+      </fieldset>
+      {mode === 'placeholder' ? (
+        <div className="field">
+          <label htmlFor="nursing-step-placeholder">Welke video moet nog komen?</label>
+          <textarea
+            id="nursing-step-placeholder"
+            data-testid="nursing-step-placeholder"
+            rows={3}
+            value={placeholderDraft}
+            onChange={(event) =>
+              setPlaceholderState({ stepId: step.id, text: event.target.value, saved: false })
+            }
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            data-testid="btn-nursing-step-placeholder-save"
+            onClick={() => {
+              onChange(saveStepVideoPlaceholder(draft, step.id, placeholderDraft));
+              setPlaceholderState({ stepId: step.id, text: placeholderDraft, saved: true });
+            }}
+          >
+            Opslaan
+          </button>
+          {savedNote ? (
+            <p className="editor-save-ok" data-testid="nursing-step-placeholder-saved">
+              Placeholdertekst staat in deze stap.
+            </p>
+          ) : null}
+          <div
+            className="editor-media-preview video-placeholder-stage"
+            data-testid="nursing-step-placeholder-preview"
+          >
+            <p>{placeholderDraft.trim()}</p>
+          </div>
+        </div>
+      ) : null}
+      {mode === 'video' ? (
+        <>
       <p className="muted">
         Alleen resources/verpleegkunde/. Logopedie-bestanden blijven ongewijzigd.
       </p>
@@ -145,7 +231,13 @@ export function NursingStepVideoCard({
           onChange={(event) => {
             const next = event.target.value;
             setError(null);
-            onChange(assignStepPrimaryMedia(draft, step.id, next || null));
+            onChange(
+              setStepVideoMode(
+                assignStepPrimaryMedia(draft, step.id, next || null),
+                step.id,
+                'video',
+              ),
+            );
           }}
         >
           <option value="">Geen</option>
@@ -219,6 +311,13 @@ export function NursingStepVideoCard({
           }}
         />
       </div>
+        </>
+      ) : null}
+      {mode == null ? (
+        <p className="muted" data-testid="nursing-step-video-missing">
+          Geen video. Kies Placeholder of Video.
+        </p>
+      ) : null}
 
       {pendingDelete && linkedPath ? (
         <Dialog

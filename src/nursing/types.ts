@@ -32,11 +32,17 @@ export interface NursingOption {
   delayedFeedback: string;
   educationalRationale: string;
   mediaSlotId?: string;
+  /** Editor: video of placeholder bij dit antwoord. Oude scenario's laten dit weg. */
+  answerVideoMode?: 'video' | 'placeholder';
+  /** Tekst die beschrijft welke video nog moet komen. */
+  videoPlaceholder?: string;
   nextStepId: string;
 }
 
 export interface NursingStep {
   id: string;
+  /** Bewerkbare naam in de editor. Oude scenario's laten dit weg. */
+  stepName?: string;
   phaseLabel: string;
   question: string;
   help: string;
@@ -44,6 +50,10 @@ export interface NursingStep {
   scoredCompetencies: NursingCompetency[];
   kind: 'choice' | 'sbar-text';
   sbarField?: keyof NursingSbar;
+  /** Editor: video of placeholder bij deze stap. Oude scenario's laten dit weg. */
+  stepVideoMode?: 'video' | 'placeholder';
+  /** Tekst die beschrijft welke stapvideo nog moet komen. */
+  stepVideoPlaceholder?: string;
   options: [NursingOption, NursingOption, NursingOption];
 }
 
@@ -71,6 +81,8 @@ export interface NursingScenarioMeta {
   title: string;
   estimatedDuration: string;
   startStepId: string;
+  /** Vrij tekstveld in de editor. Oude scenario's laten dit weg. */
+  educationType?: string;
 }
 
 export interface NursingScenario {

@@ -37,7 +37,7 @@ export function NursingBriefingScreen() {
         <h2>Patiënt</h2>
         <p>
           <strong>
-            {patient.name}, {String(patient.age)} jaar
+            {patient.name}
           </strong>{' '}
           <span className="badge">{copy.clientFictional}</span>
         </p>

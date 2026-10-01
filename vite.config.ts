@@ -1,21 +1,29 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   createReadStream,
   cpSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+import {
+  EDITOR_SAVE_AS_CASE_PATH,
+  newCaseFileName,
+  overlayScenarioFileName,
+} from './src/editor/newCaseFile';
 import { zipStore, type ZipEntry } from './src/editor/zipStore';
 
 const packageJson = JSON.parse(
@@ -81,9 +89,139 @@ function isEditorImportMediaPath(url: string | undefined): boolean {
   return path === '/editor-api/import-media' || path.includes('/editor-api/import-media');
 }
 
+const STOP_HOLOBOX_SCRIPT = 'D:\\GrokBuild\\HoloBox2\\Stop-Holobox.ps1';
+const STOP_HOLOBOX_LOCK = join(tmpdir(), 'holobox-stop-holobox.lock');
+const STOP_HOLOBOX_LOCK_MS = 20_000;
+
+let quitDeadline = 0;
+let lastEditorActivity = 0;
+let quitTimer: ReturnType<typeof setInterval> | null = null;
+
+function claimStopLock(): boolean {
+  try {
+    if (existsSync(STOP_HOLOBOX_LOCK)) {
+      const age = Date.now() - statSync(STOP_HOLOBOX_LOCK).mtimeMs;
+      if (age >= 0 && age < STOP_HOLOBOX_LOCK_MS) {
+        return false;
+      }
+      unlinkSync(STOP_HOLOBOX_LOCK);
+    }
+    const fd = openSync(STOP_HOLOBOX_LOCK, 'wx');
+    closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function launchVisibleStopScript(): void {
+  if (!claimStopLock()) {
+    return;
+  }
+  const child = spawn(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      `Start-Process -FilePath powershell.exe -ArgumentList '-ExecutionPolicy','Bypass','-File','${STOP_HOLOBOX_SCRIPT}'`,
+    ],
+    { stdio: 'ignore', windowsHide: true },
+  );
+  child.unref();
+}
+
+function ensureQuitWatcher(): void {
+  if (quitTimer) {
+    return;
+  }
+  const timer = setInterval(() => {
+    if (quitDeadline === 0 || Date.now() < quitDeadline) {
+      return;
+    }
+    quitDeadline = 0;
+    if (Date.now() - lastEditorActivity < 1_800) {
+      return;
+    }
+    launchVisibleStopScript();
+  }, 250);
+  timer.unref();
+  quitTimer = timer;
+}
+
+function noteEditorAlive(): void {
+  lastEditorActivity = Date.now();
+}
+
+function requestEditorQuit(immediate: boolean): void {
+  if (immediate) {
+    quitDeadline = 0;
+    launchVisibleStopScript();
+    return;
+  }
+  quitDeadline = Date.now() + 2_500;
+  ensureQuitWatcher();
+}
+
+function isEditorQuitPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/quit' || path.endsWith('/editor-api/quit');
+}
+
+function isEditorAlivePath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/editor-alive' || path.endsWith('/editor-api/editor-alive');
+}
+
+function editorQuitMiddleware() {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (isEditorQuitPath(req.url)) {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+        return;
+      }
+      requestEditorQuit((req.url ?? '').includes('immediate=1'));
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    noteEditorAlive();
+    if (isEditorAlivePath(req.url) && (req.method ?? 'GET') === 'POST') {
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    next();
+  };
+}
+
+function isEditorSaveAsPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === EDITOR_SAVE_AS_CASE_PATH || path.endsWith(EDITOR_SAVE_AS_CASE_PATH);
+}
+
 function isScenarioTilesPath(url: string | undefined): boolean {
   const path = requestPath(url);
   return path === '/app-api/scenario-tiles' || path.includes('/app-api/scenario-tiles');
+}
+
+function safeNewCaseFileName(
+  moduleId: 'logopedie' | 'verpleegkunde',
+  requested: string,
+  title: string,
+): string {
+  const base = basename(requested.replaceAll('\\', '/'));
+  const overlay = overlayScenarioFileName(moduleId);
+  if (
+    base &&
+    base.toLowerCase().endsWith('.json') &&
+    !base.includes('..') &&
+    base !== overlay &&
+    base !== overlayScenarioFileName('logopedie') &&
+    base !== overlayScenarioFileName('verpleegkunde')
+  ) {
+    return base;
+  }
+  return newCaseFileName(moduleId, title);
 }
 
 function isScenarioEnvelopePath(url: string | undefined): boolean {
@@ -247,6 +385,96 @@ function isVerpleegkundeEnvelope(data: unknown): boolean {
     Array.isArray((data as { steps?: unknown }).steps) &&
     Array.isArray((data as { mediaSlots?: unknown }).mediaSlots)
   );
+}
+
+function editorSaveAsMiddleware(resourcesRoot: string, distResourcesRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (!isEditorSaveAsPath(req.url)) {
+      next();
+      return;
+    }
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+      return;
+    }
+    void readRequestBody(req, MAX_EDITOR_BODY_BYTES)
+      .then((body) => {
+        let data: { module?: unknown; envelopeText?: unknown; fileName?: unknown };
+        try {
+          data = JSON.parse(body) as typeof data;
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'Dit bestand is geen geldige JSON.' });
+          return;
+        }
+        const moduleId =
+          data.module === 'logopedie' || data.module === 'verpleegkunde' ? data.module : null;
+        if (!moduleId || typeof data.envelopeText !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'module en envelopeText zijn verplicht.' });
+          return;
+        }
+        let envelope: unknown;
+        try {
+          envelope = JSON.parse(data.envelopeText);
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'envelopeText is geen geldige JSON.' });
+          return;
+        }
+        const valid =
+          moduleId === 'logopedie'
+            ? isLogopedieEnvelope(envelope)
+            : isVerpleegkundeEnvelope(envelope);
+        if (!valid) {
+          sendJson(res, 400, {
+            ok: false,
+            error:
+              moduleId === 'logopedie'
+                ? 'Alleen een Logopedie-envelope met schemaVersion 1 kan worden opgeslagen.'
+                : 'Alleen een Verpleegkunde-envelope met schemaVersion 1 kan worden opgeslagen.',
+          });
+          return;
+        }
+        const title =
+          moduleId === 'logopedie'
+            ? String((envelope as { scenario?: { title?: unknown } }).scenario?.title ?? '')
+            : String((envelope as { meta?: { title?: unknown } }).meta?.title ?? '');
+        const filename = safeNewCaseFileName(
+          moduleId,
+          typeof data.fileName === 'string' ? data.fileName : '',
+          title,
+        );
+        if (
+          filename === overlayScenarioFileName('logopedie') ||
+          filename === overlayScenarioFileName('verpleegkunde')
+        ) {
+          sendJson(res, 400, {
+            ok: false,
+            error:
+              'Opslaan als nieuwe casus mag logopedie.json of verpleegkunde.json niet overschrijven.',
+          });
+          return;
+        }
+        const pretty = data.envelopeText.endsWith('\n')
+          ? data.envelopeText
+          : `${data.envelopeText}\n`;
+        const target = join(resourcesRoot, 'scenarios', filename);
+        writeScenarioJson(target, pretty, existsSync(target));
+        const distDir = join(distResourcesRoot, 'scenarios');
+        if (existsSync(dirname(distResourcesRoot)) || existsSync(distResourcesRoot)) {
+          writeScenarioJson(join(distDir, filename), pretty, false);
+        }
+        sendJson(res, 200, {
+          ok: true,
+          file: `resources/scenarios/${filename}`,
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'Het JSON-bestand is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'Opslaan als nieuwe casus is mislukt.' });
+      });
+  };
 }
 
 function editorSaveMiddleware(resourcesRoot: string, distResourcesRoot: string) {
@@ -910,6 +1138,8 @@ function resourcesPlugin(): Plugin {
         rewriteLegacyBase(req);
         next();
       });
+      server.middlewares.use(editorQuitMiddleware());
+      server.middlewares.use(editorSaveAsMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(
@@ -924,6 +1154,8 @@ function resourcesPlugin(): Plugin {
         rewriteLegacyBase(req);
         next();
       });
+      server.middlewares.use(editorQuitMiddleware());
+      server.middlewares.use(editorSaveAsMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(

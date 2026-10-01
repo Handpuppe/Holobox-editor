@@ -51,7 +51,8 @@ describe('editor scenario package', () => {
     if (!parsed.ok) {
       return;
     }
-    expect(editorPackageIssues(parsed).some((item) => item.includes('zonder video'))).toBe(true);
+    expect(editorPackageIssues(parsed).some((item) => item.includes('zonder video'))).toBe(false);
+    expect(editorPackageIssues(parsed)).toEqual([]);
   });
 
   it('opens a save-as picker and still treats cancel as keeping the exports copy', async () => {

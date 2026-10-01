@@ -1,10 +1,9 @@
 import { validateScenario } from '../domain/scenarioValidation';
-import { CONCLUSION_NODE_ID, type Scenario } from '../domain/types';
-import { validateNursingScenario } from '../nursing/validateNursing';
-import type { NursingScenario } from '../nursing/types';
+import type { Scenario } from '../domain/types';
+import type { NursingScenario, NursingStep } from '../nursing/types';
 import { envelopeJson } from './envelope';
 import { nursingEnvelopeJson } from './nursingEnvelope';
-import { stepPrimaryMediaPath, type StagedNursingMediaOp } from './nursingMedia';
+import type { StagedNursingMediaOp } from './nursingMedia';
 
 function uniqueIssues(issues: string[]): string[] {
   return [...new Set(issues)];
@@ -19,6 +18,18 @@ function envelopeLooksValid(text: string, moduleId: 'logopedie' | 'verpleegkunde
   }
 }
 
+function editorSkipsIssue(issue: string): boolean {
+  const text = issue.toLowerCase();
+  return (
+    text.includes('volgende stap') ||
+    text.includes('onbekende node') ||
+    text.includes('competent') ||
+    text.includes('gewicht') ||
+    text.includes('veilig') ||
+    text.includes('mist een score')
+  );
+}
+
 export function logopedieSaveIssues(scenario: Scenario): string[] {
   const issues: string[] = [];
   try {
@@ -31,9 +42,8 @@ export function logopedieSaveIssues(scenario: Scenario): string[] {
   if (!Array.isArray(scenario.nodes) || scenario.nodes.length === 0) {
     issues.push('Ongeldige JSON-structuur: scenario mist stappen.');
   }
-  const nodeIds = new Set((scenario.nodes ?? []).map((node) => node.id));
-  for (const node of scenario.nodes ?? []) {
-    const label = node.phaseLabel?.trim() || node.id;
+  for (const [index, node] of (scenario.nodes ?? []).entries()) {
+    const label = node.phaseLabel?.trim() || `Vraag ${index + 1}`;
     if (!node.prompt?.text?.trim()) {
       issues.push(`${label}: stap zonder vraagtekst.`);
     }
@@ -41,45 +51,33 @@ export function logopedieSaveIssues(scenario: Scenario): string[] {
       (option) => option.quality === 'high' && option.text.trim(),
     );
     if (!hasGood) {
-      issues.push(`${label}: geen goed (high) antwoord.`);
-    }
-    for (const option of node.options ?? []) {
-      const next = option.nextNodeId?.trim() ?? '';
-      if (!next) {
-        issues.push(`${label}: ontbrekende volgende stap.`);
-        continue;
-      }
-      if (next !== CONCLUSION_NODE_ID && !nodeIds.has(next)) {
-        issues.push(`${label}: ontbrekende volgende stap (${next}).`);
-      }
+      issues.push(`${label}: geen goed antwoord.`);
     }
   }
-  issues.push(...validateScenario(scenario));
+  issues.push(...validateScenario(scenario).filter((issue) => !editorSkipsIssue(issue)));
   return uniqueIssues(issues);
 }
 
-function stepHasVideo(
-  scenario: NursingScenario,
-  stepId: string,
-  staged: StagedNursingMediaOp[],
-): boolean {
-  const step = scenario.steps.find((item) => item.id === stepId);
-  if (!step) {
-    return false;
-  }
-  const path = stepPrimaryMediaPath(scenario, step);
-  if (!path) {
-    return false;
-  }
-  if (staged.some((op) => op.type === 'delete' && op.relativePath === path)) {
-    return false;
-  }
-  return true;
+function isBlankNursingStep(step: NursingStep): boolean {
+  return (
+    !step.stepName?.trim() &&
+    !step.phaseLabel?.trim() &&
+    !step.question?.trim() &&
+    (step.options ?? []).every((option) => !option.text?.trim())
+  );
+}
+
+function stepNameMissing(step: NursingStep): boolean {
+  return typeof step.stepName === 'string' && !step.stepName.trim();
+}
+
+function nursingStepLabel(step: NursingStep, index: number): string {
+  return step.stepName?.trim() || step.phaseLabel?.trim() || `Stap ${index + 1}`;
 }
 
 export function nursingSaveIssues(
   scenario: NursingScenario,
-  staged: StagedNursingMediaOp[] = [],
+  _staged: StagedNursingMediaOp[] = [],
 ): string[] {
   const issues: string[] = [];
   try {
@@ -92,9 +90,20 @@ export function nursingSaveIssues(
   if (!Array.isArray(scenario.steps) || scenario.steps.length === 0) {
     issues.push('Ongeldige JSON-structuur: scenario mist stappen.');
   }
-  const stepIds = new Set((scenario.steps ?? []).map((step) => step.id));
-  for (const step of scenario.steps ?? []) {
-    const label = step.phaseLabel?.trim() || step.id;
+  if (!scenario.patient?.name?.trim()) {
+    issues.push('Patiëntnaam ontbreekt.');
+  }
+  for (const [index, step] of (scenario.steps ?? []).entries()) {
+    if (index > 0 && isBlankNursingStep(step)) {
+      continue;
+    }
+    const label = nursingStepLabel(step, index);
+    if (stepNameMissing(step)) {
+      issues.push(`${label}: stap zonder naam.`);
+    }
+    if (!step.phaseLabel?.trim()) {
+      issues.push(`${label}: situatiebeschrijving ontbreekt.`);
+    }
     if (!step.question?.trim()) {
       issues.push(`${label}: stap zonder vraagtekst.`);
     }
@@ -102,22 +111,16 @@ export function nursingSaveIssues(
       (option) => option.quality === 'high' && option.text.trim(),
     );
     if (!hasGood) {
-      issues.push(`${label}: geen goed (high) antwoord.`);
+      issues.push(`${label}: geen goed antwoord.`);
     }
     for (const option of step.options ?? []) {
-      const next = option.nextStepId?.trim() ?? '';
-      if (!next) {
-        issues.push(`${label}: ontbrekende volgende stap.`);
-        continue;
+      if (!option.text?.trim() && option.quality === 'partial') {
+        issues.push(`${label}: geen deels goed antwoord.`);
       }
-      if (next !== 'completed' && !stepIds.has(next)) {
-        issues.push(`${label}: ontbrekende volgende stap (${next}).`);
+      if (!option.text?.trim() && option.quality === 'inappropriate') {
+        issues.push(`${label}: geen verkeerd antwoord.`);
       }
-    }
-    if (!stepHasVideo(scenario, step.id, staged)) {
-      issues.push(`${label}: Verpleegkunde-stap zonder video.`);
     }
   }
-  issues.push(...validateNursingScenario(scenario));
   return uniqueIssues(issues);
 }

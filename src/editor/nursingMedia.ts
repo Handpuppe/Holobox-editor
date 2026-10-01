@@ -155,6 +155,34 @@ function makeStepSlot(
   };
 }
 
+export function setStepVideoMode(
+  scenario: NursingScenario,
+  stepId: string,
+  mode: 'video' | 'placeholder',
+): NursingScenario {
+  return {
+    ...scenario,
+    steps: scenario.steps.map((step) =>
+      step.id === stepId ? { ...step, stepVideoMode: mode } : step,
+    ),
+  };
+}
+
+export function saveStepVideoPlaceholder(
+  scenario: NursingScenario,
+  stepId: string,
+  text: string,
+): NursingScenario {
+  return {
+    ...scenario,
+    steps: scenario.steps.map((step) =>
+      step.id === stepId
+        ? { ...step, stepVideoMode: 'placeholder', stepVideoPlaceholder: text }
+        : step,
+    ),
+  };
+}
+
 export function assignStepPrimaryMedia(
   scenario: NursingScenario,
   stepId: string,

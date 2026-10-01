@@ -33,6 +33,27 @@ describe('verpleegkunde editor envelope', () => {
     expect(builtInNursingScenario.meta.title).not.toBe('Niet de bron');
   });
 
+  it('keeps a typed education type and still opens a scenario without that field', () => {
+    const draft = cloneNursingScenario();
+    draft.meta.educationType = 'Observatieoefening';
+    const parsed = parseVerpleegkundeEnvelope(nursingEnvelopeJson(draft));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.scenario.meta.educationType).toBe('Observatieoefening');
+    expect(parsed.scenario.steps[0]?.options.some((option) => option.criticalError)).toBe(true);
+
+    const legacy = toVerpleegkundeEnvelope(cloneNursingScenario());
+    delete legacy.meta.educationType;
+    const opened = parseVerpleegkundeEnvelope(JSON.stringify(legacy));
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) {
+      return;
+    }
+    expect(opened.scenario.meta.educationType).toBeUndefined();
+  });
+
   it('rejects invalid JSON, the wrong module, and an incomplete scenario', () => {
     expect(parseVerpleegkundeEnvelope('{')).toEqual({
       ok: false,

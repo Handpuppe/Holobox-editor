@@ -8,7 +8,7 @@ import type {
   NursingScenarioMeta,
   NursingStep,
 } from '../nursing/types';
-import { isMediaSlotConfig, validateNursingScenario } from '../nursing/validateNursing';
+import { isMediaSlotConfig } from '../nursing/validateNursing';
 
 export const VERPLEEGKUNDE_ENVELOPE_SCHEMA_VERSION = 1;
 export const VERPLEEGKUNDE_ENVELOPE_MODULE = 'verpleegkunde';
@@ -106,7 +106,7 @@ function parseMeta(value: unknown): NursingScenarioMeta | string {
   ) {
     return 'meta mist identificatie, titel of startstap.';
   }
-  return {
+  const meta: NursingScenarioMeta = {
     id: value.id,
     version: value.version,
     rubricVersion: value.rubricVersion,
@@ -114,6 +114,10 @@ function parseMeta(value: unknown): NursingScenarioMeta | string {
     estimatedDuration: value.estimatedDuration,
     startStepId: value.startStepId,
   };
+  if (typeof value.educationType === 'string') {
+    meta.educationType = value.educationType;
+  }
+  return meta;
 }
 
 function parsePatient(value: unknown): NursingPatient | string {
@@ -129,6 +133,21 @@ function parsePatient(value: unknown): NursingPatient | string {
     background: typeof value.background === 'string' ? value.background : '',
     studentRole: typeof value.studentRole === 'string' ? value.studentRole : '',
   };
+}
+
+function editorOpenError(scenario: NursingScenario): string | null {
+  if (!scenario.steps.some((step) => step.id === scenario.meta.startStepId)) {
+    return 'De startstap bestaat niet.';
+  }
+  for (const step of scenario.steps) {
+    if (!step || typeof step.id !== 'string' || step.id.length === 0) {
+      return 'Een stap mist een id.';
+    }
+    if (!Array.isArray(step.options) || step.options.length !== 3) {
+      return 'Elke stap moet precies drie antwoorden hebben.';
+    }
+  }
+  return null;
 }
 
 export function parseVerpleegkundeEnvelope(text: string): NursingEnvelopeParseResult {
@@ -180,9 +199,9 @@ export function parseVerpleegkundeEnvelope(text: string): NursingEnvelopeParseRe
       steps: data.steps as NursingStep[],
       mediaSlots: data.mediaSlots,
     }) as NursingScenario;
-    const issues = validateNursingScenario(scenario);
-    if (issues.length > 0) {
-      return { ok: false, error: issues[0] ?? 'Het scenario is ongeldig.' };
+    const openError = editorOpenError(scenario);
+    if (openError) {
+      return { ok: false, error: openError };
     }
     return { ok: true, scenario };
   } catch {

@@ -29,6 +29,7 @@ interface PatientStageProps {
   replayToken?: number;
   onAudioBlocked?: () => void;
   slots?: MediaSlotConfig[];
+  placeholderText?: string;
 }
 
 export function PatientStage({
@@ -47,6 +48,7 @@ export function PatientStage({
   replayToken = 0,
   onAudioBlocked,
   slots,
+  placeholderText = '',
 }: PatientStageProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -124,8 +126,8 @@ export function PatientStage({
         ) : isLogopedie ? (
           <LogopedieAvatar emotion={emotion} heightPx={heightPx} name={name} />
         ) : (
-          <div className="nursing-video-fallback" data-testid="nursing-video-fallback">
-            Video ontbreekt
+          <div className="nursing-video-fallback video-placeholder-stage" data-testid="nursing-video-fallback">
+            {placeholderText.trim() ? <p>{placeholderText.trim()}</p> : null}
           </div>
         )}
         {showVideo ? (

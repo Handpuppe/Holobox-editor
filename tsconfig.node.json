@@ -22,6 +22,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
-    "src/editor/zipStore.ts"
+    "src/editor/zipStore.ts",
+    "src/editor/newCaseFile.ts"
   ]
 }

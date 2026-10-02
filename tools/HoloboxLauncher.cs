@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Management;
 using System.Net;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -21,9 +22,10 @@ internal static class Program
         var editor = IsEditorMode(args);
         var windowed = editor || Array.Exists(args, a => string.Equals(a, "windowed", StringComparison.OrdinalIgnoreCase));
         var port = editor ? EditorPort : StudentPort;
+        var appBase = AppBasePath(root);
         var url = editor
-            ? "http://127.0.0.1:" + port + AppBase + "editor.html"
-            : "http://127.0.0.1:" + port + AppBase;
+            ? "http://127.0.0.1:" + port + appBase + "editor.html"
+            : "http://127.0.0.1:" + port + appBase;
         var title = editor ? "Holobox Logopedie-scenariobewerker" : "Holobox Zorgsimulator";
         var npmPreview = editor ? "run preview:editor" : "run preview";
         var distFile = Path.Combine(root, "dist", editor ? "editor.html" : "index.html");
@@ -95,13 +97,16 @@ internal static class Program
         }
         finally
         {
-            if (editor && browser != null)
+            if (browser != null)
             {
-                StartStopScriptOnce();
+                StartStopScriptOnce(root);
             }
             KillTree(browser);
             KillTree(server);
-            KillListeners(port);
+            KillListeners(4173);
+            KillListeners(5173);
+            KillListeners(4174);
+            KillListeners(5174);
         }
 
         return 0;
@@ -361,7 +366,70 @@ internal static class Program
         return null;
     }
 
-    private static void StartStopScriptOnce()
+    private static string AppBasePath(string root)
+    {
+        var vitePath = Path.Combine(root, "vite.config.ts");
+        if (File.Exists(vitePath))
+        {
+            var text = File.ReadAllText(vitePath);
+            var literal = Regex.Match(text, "base\\s*:\\s*'([^']+)'");
+            if (literal.Success)
+            {
+                return NormalizeBase(literal.Groups[1].Value);
+            }
+            var constant = Regex.Match(text, "APP_BASE\\s*=\\s*'([^']+)'");
+            if (constant.Success)
+            {
+                return NormalizeBase(constant.Groups[1].Value);
+            }
+        }
+
+        var batPath = Path.Combine(root, "start-holobox.bat");
+        if (File.Exists(batPath))
+        {
+            var text = File.ReadAllText(batPath);
+            var url = Regex.Match(
+                text,
+                "set\\s+\"URL=http://127\\.0\\.0\\.1:%PORT%([^\"]*)\"",
+                RegexOptions.IgnoreCase);
+            if (url.Success)
+            {
+                return NormalizeBase(url.Groups[1].Value);
+            }
+        }
+
+        return AppBase;
+    }
+
+    private static string NormalizeBase(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/";
+        }
+        path = path.Trim();
+        if (!path.StartsWith("/"))
+        {
+            path = "/" + path;
+        }
+        if (!path.EndsWith("/"))
+        {
+            path += "/";
+        }
+        return path;
+    }
+
+    private static string StopScriptPath(string root)
+    {
+        var local = Path.Combine(root, "Stop-Holobox.ps1");
+        if (File.Exists(local))
+        {
+            return local;
+        }
+        return @"D:\GrokBuild\HoloBox2\Stop-Holobox.ps1";
+    }
+
+    private static void StartStopScriptOnce(string root)
     {
         var lockPath = Path.Combine(Path.GetTempPath(), "holobox-stop-holobox.lock");
         try
@@ -385,10 +453,11 @@ internal static class Program
         }
         try
         {
+            var script = StopScriptPath(root);
             Process.Start(new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = "-ExecutionPolicy Bypass -File \"D:\\GrokBuild\\HoloBox2\\Stop-Holobox.ps1\"",
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"",
                 UseShellExecute = true,
                 WindowStyle = ProcessWindowStyle.Normal,
             });

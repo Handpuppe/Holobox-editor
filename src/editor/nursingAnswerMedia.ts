@@ -155,6 +155,41 @@ export function setAnswerVideoMode(
   });
 }
 
+export function setAnswerCardMode(
+  scenario: NursingScenario,
+  stepId: string,
+  quality: AnswerVideoQuality,
+  mode: 'video' | 'placeholder',
+): NursingScenario {
+  const step = scenario.steps.find((item) => item.id === stepId);
+  const option = step ? optionForQuality(step, quality) : undefined;
+  if (!step || !option) {
+    return scenario;
+  }
+  return replaceStepOption(scenario, stepId, quality, {
+    ...option,
+    answerCardMode: mode,
+  });
+}
+
+export function saveAnswerCardPlaceholder(
+  scenario: NursingScenario,
+  stepId: string,
+  quality: AnswerVideoQuality,
+  text: string,
+): NursingScenario {
+  const step = scenario.steps.find((item) => item.id === stepId);
+  const option = step ? optionForQuality(step, quality) : undefined;
+  if (!step || !option) {
+    return scenario;
+  }
+  return replaceStepOption(scenario, stepId, quality, {
+    ...option,
+    answerCardMode: 'placeholder',
+    answerCardPlaceholder: text,
+  });
+}
+
 export function saveAnswerPlaceholder(
   scenario: NursingScenario,
   stepId: string,

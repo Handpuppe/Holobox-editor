@@ -34,8 +34,12 @@ export interface NursingOption {
   mediaSlotId?: string;
   /** Editor: video of placeholder bij dit antwoord. Oude scenario's laten dit weg. */
   answerVideoMode?: 'video' | 'placeholder';
-  /** Tekst die beschrijft welke video nog moet komen. */
+  /** Tekst die beschrijft welke play-video nog moet komen. */
   videoPlaceholder?: string;
+  /** Editor: video of placeholder in de antwoordkaart, los van de play-video. */
+  answerCardMode?: 'video' | 'placeholder';
+  /** Opgeslagen voorbeeldtekst in de antwoordkaart. */
+  answerCardPlaceholder?: string;
   nextStepId: string;
 }
 

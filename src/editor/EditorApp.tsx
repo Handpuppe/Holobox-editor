@@ -17,7 +17,11 @@ import { downloadEnvelope, parseLogopedieEnvelope, saveEnvelopeToCopy } from './
 import { EDITOR_FACES, faceLabel } from './faces';
 import { readLastOpenedModule, writeLastOpenedModule } from './lastOpened';
 import { editorSourceLabel, loadEditorStartupScenario } from './loadSavedScenario';
-import { loadEditorStartupNursing, nursingEditorSourceLabel } from './loadSavedNursing';
+import {
+  isBundledNursingExample,
+  loadEditorStartupNursing,
+  nursingEditorSourceLabel,
+} from './loadSavedNursing';
 import { overlayScenarioFileName } from './newCaseFile';
 import { saveEnvelopeAsNewCase } from './saveAsCase';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
@@ -357,6 +361,10 @@ export function EditorApp() {
           setOpenError(parsed.error);
           return;
         }
+        if (isBundledNursingExample(parsed.scenario)) {
+          setOpenError('De voorbeeldcasus ABCDE/SBAR wordt niet geopend.');
+          return;
+        }
         markNursingDirty();
         setNursingDraft(parsed.scenario);
         setSelectedStepId(parsed.scenario.meta.startStepId);
@@ -654,27 +662,6 @@ export function EditorApp() {
     );
   }
 
-  if (nodesOpen) {
-    const overview =
-      editorModule === 'verpleegkunde'
-        ? nursingNodeOverview(nursingDraft)
-        : logopedieNodeOverview(scenario);
-    return (
-      <div
-        className="scenario-editor node-overview-page"
-        data-testid="screen-scenario-editor"
-        lang="nl"
-      >
-        <NodeOverview
-          model={overview}
-          onClose={() => setNodesOpen(false)}
-          onConnect={connectNodes}
-          onDisconnect={disconnectNodes}
-        />
-      </div>
-    );
-  }
-
   if (printListOpen) {
     const list =
       editorModule === 'verpleegkunde'
@@ -691,6 +678,28 @@ export function EditorApp() {
           steps={list.steps}
           onPrint={() => window.print()}
           onClose={() => setPrintListOpen(false)}
+        />
+      </div>
+    );
+  }
+
+  if (nodesOpen) {
+    const overview =
+      editorModule === 'verpleegkunde'
+        ? nursingNodeOverview(nursingDraft)
+        : logopedieNodeOverview(scenario);
+    return (
+      <div
+        className="scenario-editor node-overview-page"
+        data-testid="screen-scenario-editor"
+        lang="nl"
+      >
+        <NodeOverview
+          model={overview}
+          onClose={() => setNodesOpen(false)}
+          onConnect={connectNodes}
+          onDisconnect={disconnectNodes}
+          onOpenTasks={() => setPrintListOpen(true)}
         />
       </div>
     );
@@ -736,14 +745,6 @@ export function EditorApp() {
             <button
               type="button"
               className="btn btn-secondary"
-              data-testid="btn-print-list"
-              onClick={() => setPrintListOpen(true)}
-            >
-              Printlijst
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
               data-testid="btn-nodes"
               onClick={() => setNodesOpen(true)}
             >
@@ -755,7 +756,7 @@ export function EditorApp() {
               data-testid="btn-start-test"
               onClick={() => setTestOpen(true)}
             >
-              Start test
+              Test modus
             </button>
             <button
               type="button"
@@ -771,7 +772,7 @@ export function EditorApp() {
               data-testid="btn-open-json"
               onClick={() => fileInputRef.current?.click()}
             >
-              Open JSON
+              Casus openen
             </button>
             <input
               ref={fileInputRef}
@@ -795,7 +796,7 @@ export function EditorApp() {
                   : downloadNursingEnvelope(nursingDraft)
               }
             >
-              Download JSON
+              Casus downloaden
             </button>
             {saveOnThisPc ? (
               <button
@@ -877,13 +878,13 @@ export function EditorApp() {
       </nav>
 
       <p className="editor-notice" data-testid="editor-demo-notice">
-        Dit is een demo-editor, geen les-app. Open JSON en Download JSON werken in de browser.
+        Dit is een demo-editor, geen les-app. Casus openen en Casus downloaden werken in de browser.
         Opslaan naar schijf kan alleen lokaal via Editor.exe.
       </p>
       <p className="editor-notice">
         {editorModule === 'logopedie'
           ? 'Bij openen wordt het laatst geopende scenario geladen. Was er nog geen scenario geopend, dan de startkopie. De avatar is een stilstaande still, zonder zoom.'
-          : 'Bij openen wordt het laatst geopende scenario geladen. Was er nog geen scenario geopend, dan de startkopie. Geen zoom, geen animatie.'}
+          : 'Bij openen wordt het laatst zelf gemaakte scenario geladen. Anders start Verpleegkunde leeg. Geen zoom, geen animatie.'}
       </p>
 
       {activeLoadNotice ? (

@@ -6,6 +6,7 @@ import {
   isNursingMediaPath,
   nursingMediaRowTestId,
   nursingRelativePathForFile,
+  resetNursingStep,
   stepPrimaryMediaPath,
   unlinkDeletedNursingMedia,
 } from './nursingMedia';
@@ -85,5 +86,38 @@ describe('nursing editor media paths', () => {
 
     const deleted = unlinkDeletedNursingMedia(draft, originalPath ?? '');
     expect(deleted.mediaSlots.some((slot) => slot.primaryMedia === originalPath)).toBe(false);
+  });
+
+  it('clears one step and leaves the other step and its lines', () => {
+    const draft = cloneNursingScenario();
+    const first = draft.steps[0]!;
+    const second = draft.steps[1]!;
+    const nextIds = first.options.map((option) => option.nextStepId);
+    const secondQuestion = second.question;
+    const secondVideo = stepPrimaryMediaPath(draft, second);
+    first.question = 'Welke ademhaling zie je?';
+    first.stepVideoMode = 'placeholder';
+    first.stepVideoPlaceholder = 'Film de start.';
+    first.options[0] = {
+      ...first.options[0]!,
+      text: 'Ik tel de ademhaling.',
+      answerVideoMode: 'placeholder',
+      videoPlaceholder: 'Film het goede antwoord.',
+    };
+
+    const reset = resetNursingStep(draft, first.id);
+    const cleared = reset.steps.find((step) => step.id === first.id);
+    const kept = reset.steps.find((step) => step.id === second.id);
+    expect(cleared?.question).toBe('');
+    expect(cleared?.stepVideoPlaceholder ?? '').toBe('');
+    expect(cleared?.stepVideoMode).toBe('video');
+    expect(cleared?.options.map((option) => option.text)).toEqual(['', '', '']);
+    expect(cleared?.options.map((option) => option.videoPlaceholder ?? '')).toEqual(['', '', '']);
+    expect(cleared?.options.every((option) => !option.mediaSlotId)).toBe(true);
+    expect(cleared?.options.map((option) => option.nextStepId)).toEqual(nextIds);
+    expect(stepPrimaryMediaPath(reset, cleared!)).toBeNull();
+    expect(kept?.question).toBe(secondQuestion);
+    expect(stepPrimaryMediaPath(reset, kept!)).toBe(secondVideo);
+    expect(draft.steps[0]?.question).toBe('Welke ademhaling zie je?');
   });
 });

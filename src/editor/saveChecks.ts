@@ -58,9 +58,14 @@ export function logopedieSaveIssues(scenario: Scenario): string[] {
   return uniqueIssues(issues);
 }
 
+function isGeneratedQuestionName(name: string | undefined): boolean {
+  return /^Vraag\.\d+$/.test((name ?? '').trim());
+}
+
 function isBlankNursingStep(step: NursingStep): boolean {
+  const name = step.stepName?.trim() ?? '';
   return (
-    !step.stepName?.trim() &&
+    (name.length === 0 || isGeneratedQuestionName(name)) &&
     !step.phaseLabel?.trim() &&
     !step.question?.trim() &&
     (step.options ?? []).every((option) => !option.text?.trim())
@@ -72,7 +77,7 @@ function stepNameMissing(step: NursingStep): boolean {
 }
 
 function nursingStepLabel(step: NursingStep, index: number): string {
-  return step.stepName?.trim() || step.phaseLabel?.trim() || `Stap ${index + 1}`;
+  return step.stepName?.trim() || step.phaseLabel?.trim() || `Vraag ${index + 1}`;
 }
 
 export function nursingSaveIssues(
@@ -99,7 +104,7 @@ export function nursingSaveIssues(
     }
     const label = nursingStepLabel(step, index);
     if (stepNameMissing(step)) {
-      issues.push(`${label}: stap zonder naam.`);
+      issues.push(`${label}: vraag zonder naam.`);
     }
     if (!step.phaseLabel?.trim()) {
       issues.push(`${label}: situatiebeschrijving ontbreekt.`);

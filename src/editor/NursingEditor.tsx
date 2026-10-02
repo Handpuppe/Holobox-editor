@@ -8,12 +8,14 @@ import {
   type NursingScenario,
   type NursingStep,
 } from '../nursing/types';
-import { saveAnswerPlaceholder, setAnswerVideoMode } from './nursingAnswerMedia';
+import { saveAnswerCardPlaceholder, setAnswerCardMode } from './nursingAnswerMedia';
+import { placeholderDraft, syncPlaceholderDraft } from './placeholderDraft';
 import { nursingSaveIssues } from './saveChecks';
 import { NursingAnswerVideos } from './NursingAnswerVideos';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
 import {
   applyStagedNursingMedia,
+  resetNursingStep,
   type NursingMediaItem,
   type StagedNursingMediaOp,
 } from './nursingMedia';
@@ -91,7 +93,7 @@ function createStep(existing: NursingStep[]): NursingStep {
   const scored: NursingCompetency[] = ['observation'];
   return {
     id,
-    stepName: '',
+    stepName: `Vraag.${existing.length + 1}`,
     phaseLabel: '',
     question: '',
     help: '',
@@ -108,7 +110,7 @@ function createStep(existing: NursingStep[]): NursingStep {
 
 function nursingStepTitle(step: NursingStep, index: number): string {
   const name = step.stepName?.trim();
-  return name || `Stap ${index + 1}`;
+  return name || `Vraag ${index + 1}`;
 }
 
 function fieldClass(value: string, required: boolean): string {
@@ -151,22 +153,33 @@ function OptionAnswerVideoChoice({
   optionIndex: number;
   onChange: (next: NursingScenario) => void;
 }) {
-  const mode = option.answerVideoMode ?? (option.mediaSlotId ? 'video' : null);
-  const storedPlaceholder = option.videoPlaceholder ?? '';
-  const [placeholderState, setPlaceholderState] = useState({
-    optionKey: option.id,
-    text: storedPlaceholder,
-    saved: false,
-  });
-  if (placeholderState.optionKey !== option.id) {
-    setPlaceholderState({ optionKey: option.id, text: storedPlaceholder, saved: false });
+  const mode = option.answerCardMode ?? null;
+  const storedPlaceholder = option.answerCardPlaceholder ?? '';
+  const [placeholderState, setPlaceholderState] = useState(() =>
+    placeholderDraft(option.id, storedPlaceholder),
+  );
+  const syncedPlaceholder = syncPlaceholderDraft(placeholderState, option.id, storedPlaceholder);
+  if (syncedPlaceholder) {
+    setPlaceholderState(syncedPlaceholder);
   }
+  const placeholderField = syncedPlaceholder ?? placeholderState;
   const quality = option.quality;
   return (
     <div className="field">
       <span className="editor-readonly-label" id={`nursing-option-video-label-${option.id}`}>
         Video bij dit antwoord
       </span>
+      {mode === 'placeholder' &&
+      placeholderField.saved &&
+      storedPlaceholder.trim() &&
+      placeholderField.text.trim() ? (
+        <div
+          className="editor-media-preview video-placeholder-stage"
+          data-testid={`nursing-option-placeholder-preview-${option.id}`}
+        >
+          <p>{storedPlaceholder.trim()}</p>
+        </div>
+      ) : null}
       <fieldset className="face-picker">
         <legend>Video of placeholder</legend>
         <div className="face-options">
@@ -176,7 +189,7 @@ function OptionAnswerVideoChoice({
               name={`option-answer-video-mode-${option.id}`}
               checked={mode === 'video'}
               data-testid={`nursing-option-mode-video-${option.id}`}
-              onChange={() => onChange(setAnswerVideoMode(draft, step.id, quality, 'video'))}
+              onChange={() => onChange(setAnswerCardMode(draft, step.id, quality, 'video'))}
             />
             Video
           </label>
@@ -186,7 +199,7 @@ function OptionAnswerVideoChoice({
               name={`option-answer-video-mode-${option.id}`}
               checked={mode === 'placeholder'}
               data-testid={`nursing-option-mode-placeholder-${option.id}`}
-              onChange={() => onChange(setAnswerVideoMode(draft, step.id, quality, 'placeholder'))}
+              onChange={() => onChange(setAnswerCardMode(draft, step.id, quality, 'placeholder'))}
             />
             Placeholder
           </label>
@@ -201,27 +214,25 @@ function OptionAnswerVideoChoice({
             id={`nursing-option-placeholder-${option.id}`}
             data-testid={`nursing-option-placeholder-${option.id}`}
             rows={3}
-            value={placeholderState.text}
-            onChange={(event) =>
-              setPlaceholderState({ optionKey: option.id, text: event.target.value, saved: false })
-            }
+            value={placeholderField.text}
+            onChange={(event) => {
+              const text = event.target.value;
+              setPlaceholderState((current) => ({ ...current, text, saved: false }));
+              onChange(saveAnswerCardPlaceholder(draft, step.id, quality, text));
+            }}
           />
           <button
             type="button"
             className="btn btn-secondary"
             data-testid={`btn-nursing-option-placeholder-save-${option.id}`}
             onClick={() => {
-              onChange(saveAnswerPlaceholder(draft, step.id, quality, placeholderState.text));
-              setPlaceholderState({
-                optionKey: option.id,
-                text: placeholderState.text,
-                saved: true,
-              });
+              onChange(saveAnswerCardPlaceholder(draft, step.id, quality, placeholderField.text));
+              setPlaceholderState((current) => ({ ...current, saved: true }));
             }}
           >
             Opslaan
           </button>
-          {placeholderState.saved ? (
+          {placeholderField.saved ? (
             <p
               className="editor-save-ok"
               data-testid={`nursing-option-placeholder-saved-${option.id}`}
@@ -243,7 +254,7 @@ function OptionAnswerVideoChoice({
                 ? {
                     ...item,
                     mediaSlotId: event.target.value || undefined,
-                    answerVideoMode: 'video' as const,
+                    answerCardMode: 'video' as const,
                   }
                 : item,
             ) as NursingStep['options'];
@@ -319,8 +330,8 @@ export function NursingEditor({
   const previewSlotId = previewOption?.mediaSlotId ?? step?.mediaSlotId;
   const previewMedia = slotMediaPath(draft, previewSlotId, stagedMedia);
   const previewPlaceholder =
-    (previewOption?.answerVideoMode === 'placeholder'
-      ? previewOption.videoPlaceholder
+    (previewOption?.answerCardMode === 'placeholder'
+      ? previewOption.answerCardPlaceholder
       : step?.stepVideoMode === 'placeholder'
         ? step.stepVideoPlaceholder
         : ''
@@ -380,19 +391,42 @@ export function NursingEditor({
         <nav className="editor-nodes" aria-label="Stappen">
           <h2>Stappen</h2>
           <ol>
-            {draft.steps.map((item, index) => (
+            {draft.steps.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
-                  className={item.id === step?.id ? 'is-active' : undefined}
-                  data-testid={`nursing-step-tab-${item.id}`}
-                  onClick={() => {
-                    onSelectStep(item.id);
-                    onPreviewOption(0);
-                  }}
-                >
-                  {nursingStepTitle(item, index)}
-                </button>
+                <div className="editor-step-row">
+                  <label
+                    className={`editor-step-pick${item.id === step?.id ? ' is-active' : ''}`}
+                    data-testid={`nursing-step-tab-${item.id}`}
+                    htmlFor={`nursing-step-name-${item.id}`}
+                  >
+                    <span className="visually-hidden">Vraagnaam</span>
+                    <input
+                      id={`nursing-step-name-${item.id}`}
+                      data-testid={
+                        item.id === step?.id ? 'nursing-step-name' : `nursing-step-name-${item.id}`
+                      }
+                      className="nursing-step-list-name"
+                      value={item.stepName ?? ''}
+                      onFocus={() => {
+                        onSelectStep(item.id);
+                        onPreviewOption(0);
+                      }}
+                      onChange={(event) =>
+                        onChange(
+                          replaceStep(draft, item.id, { ...item, stepName: event.target.value }),
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary editor-step-reset"
+                    data-testid={`btn-reset-nursing-step-${item.id}`}
+                    onClick={() => onChange(resetNursingStep(draft, item.id))}
+                  >
+                    Resetten
+                  </button>
+                </div>
               </li>
             ))}
           </ol>
@@ -402,7 +436,7 @@ export function NursingEditor({
             data-testid="btn-add-nursing-step"
             onClick={addStep}
           >
-            Stap toevoegen
+            Vraag toevoegen
           </button>
           <button
             type="button"
@@ -508,125 +542,132 @@ export function NursingEditor({
               </div>
             </section>
 
-            <section className="editor-card">
-              <h2>Vraag</h2>
-              <div className="editor-patient-grid">
-                <div className={fieldClass(step.stepName ?? '', step.stepName !== undefined)}>
-                  <label htmlFor="nursing-step-name">Naam</label>
-                  <textarea
-                    id="nursing-step-name"
-                    data-testid="nursing-step-name"
-                    rows={1}
-                    value={step.stepName ?? ''}
-                    onChange={(event) => updateSelected({ ...step, stepName: event.target.value })}
-                  />
-                </div>
-                <div className={fieldClass(step.phaseLabel, true)}>
-                  <label htmlFor="nursing-phase">Situatiebeschrijving</label>
-                  <textarea
-                    id="nursing-phase"
-                    data-testid="nursing-phase"
-                    rows={1}
-                    value={step.phaseLabel}
-                    onChange={(event) =>
-                      updateSelected({ ...step, phaseLabel: event.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <div className={fieldClass(step.question, true)}>
-                <label htmlFor="nursing-question">Vraag aan de student</label>
-                <textarea
-                  id="nursing-question"
-                  data-testid="nursing-question"
-                  rows={2}
-                  value={step.question}
-                  onChange={(event) => updateSelected({ ...step, question: event.target.value })}
+            <section className="editor-card nursing-step-sheet" data-testid="nursing-step-sheet">
+              <p className="nursing-step-name" data-testid="nursing-step-title">
+                {nursingStepTitle(
+                  step,
+                  draft.steps.findIndex((item) => item.id === step.id),
+                )}
+              </p>
+              <div className="nursing-step-top">
+                <NursingStepVideoCard
+                  draft={draft}
+                  step={step}
+                  staged={stagedMedia}
+                  catalog={mediaPathOptions}
+                  onChange={onChange}
+                  onStage={onStage}
                 />
-              </div>
-            </section>
-            <div className="editor-video-grid">
-              <NursingAnswerVideos
-                draft={draft}
-                step={step}
-                staged={stagedMedia}
-                catalog={mediaPathOptions}
-                onChange={onChange}
-                onStage={onStage}
-              />
-            </div>
-            <NursingStepVideoCard
-              draft={draft}
-              step={step}
-              staged={stagedMedia}
-              catalog={mediaPathOptions}
-              onChange={onChange}
-              onStage={onStage}
-            />
-            <div className="editor-option-grid">
-              {step.options.map((option, optionIndex) => (
-                <section
-                  key={option.id}
-                  className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
-                  data-testid={`nursing-option-editor-${option.id}`}
-                >
-                  <div className="option-card-head">
-                    <h2>Antwoord {String(optionIndex + 1)}</h2>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      data-testid={`btn-preview-nursing-option-${String(optionIndex)}`}
-                      onClick={() => onPreviewOption(optionIndex)}
-                    >
-                      Toon voorbeeld
-                    </button>
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`nursing-quality-${option.id}`}>Kwaliteit</label>
-                    <select
-                      id={`nursing-quality-${option.id}`}
-                      data-testid={`nursing-option-quality-${option.id}`}
-                      value={option.quality}
-                      onChange={(event) =>
-                        updateSelected(
-                          replaceOption(step, optionIndex, {
-                            ...option,
-                            quality: event.target.value as OptionQuality,
-                          }),
-                        )
-                      }
-                    >
-                      {QUALITIES.map((quality) => (
-                        <option key={quality} value={quality}>
-                          {QUALITY_LABELS[quality]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className={fieldClass(option.text, true)}>
-                    <label htmlFor={`nursing-option-text-${option.id}`}>Antwoord keuze</label>
+                <div className="editor-card nursing-step-copy">
+                  <div className={fieldClass(step.phaseLabel, true)}>
+                    <label htmlFor="nursing-phase">Situatiebeschrijving</label>
                     <textarea
-                      id={`nursing-option-text-${option.id}`}
-                      data-testid={`nursing-option-text-${option.id}`}
-                      rows={2}
-                      value={option.text}
+                      id="nursing-phase"
+                      data-testid="nursing-phase"
+                      rows={6}
+                      value={step.phaseLabel}
                       onChange={(event) =>
-                        updateSelected(
-                          replaceOption(step, optionIndex, { ...option, text: event.target.value }),
-                        )
+                        updateSelected({ ...step, phaseLabel: event.target.value })
                       }
                     />
                   </div>
-                  <OptionAnswerVideoChoice
-                    draft={draft}
-                    step={step}
-                    option={option}
-                    optionIndex={optionIndex}
-                    onChange={onChange}
-                  />
-                </section>
-              ))}
-            </div>
+                  <div className={fieldClass(step.question, true)}>
+                    <label htmlFor="nursing-question">Vraag voor de student</label>
+                    <textarea
+                      id="nursing-question"
+                      data-testid="nursing-question"
+                      rows={6}
+                      value={step.question}
+                      onChange={(event) =>
+                        updateSelected({ ...step, question: event.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="nursing-step-answers">
+                {step.options.map((option, optionIndex) => {
+                  const columnQuality = QUALITIES[optionIndex];
+                  return (
+                    <div className="nursing-step-answer-col" key={option.id}>
+                      <section
+                        className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
+                        data-testid={`nursing-option-editor-${option.id}`}
+                      >
+                        <div className="option-card-head">
+                          <h2>Antwoord {String(optionIndex + 1)}</h2>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            data-testid={`btn-preview-nursing-option-${String(optionIndex)}`}
+                            onClick={() => onPreviewOption(optionIndex)}
+                          >
+                            Toon voorbeeld
+                          </button>
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`nursing-quality-${option.id}`}>Kwaliteit</label>
+                          <select
+                            id={`nursing-quality-${option.id}`}
+                            data-testid={`nursing-option-quality-${option.id}`}
+                            value={option.quality}
+                            onChange={(event) =>
+                              updateSelected(
+                                replaceOption(step, optionIndex, {
+                                  ...option,
+                                  quality: event.target.value as OptionQuality,
+                                }),
+                              )
+                            }
+                          >
+                            {QUALITIES.map((quality) => (
+                              <option key={quality} value={quality}>
+                                {QUALITY_LABELS[quality]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className={fieldClass(option.text, true)}>
+                          <label htmlFor={`nursing-option-text-${option.id}`}>Antwoord keuze</label>
+                          <textarea
+                            id={`nursing-option-text-${option.id}`}
+                            data-testid={`nursing-option-text-${option.id}`}
+                            rows={2}
+                            value={option.text}
+                            onChange={(event) =>
+                              updateSelected(
+                                replaceOption(step, optionIndex, {
+                                  ...option,
+                                  text: event.target.value,
+                                }),
+                              )
+                            }
+                          />
+                        </div>
+                        <OptionAnswerVideoChoice
+                          draft={draft}
+                          step={step}
+                          option={option}
+                          optionIndex={optionIndex}
+                          onChange={onChange}
+                        />
+                      </section>
+                      {columnQuality ? (
+                        <NursingAnswerVideos
+                          draft={draft}
+                          step={step}
+                          staged={stagedMedia}
+                          catalog={mediaPathOptions}
+                          onChange={onChange}
+                          onStage={onStage}
+                          quality={columnQuality}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           </main>
         ) : null}
 

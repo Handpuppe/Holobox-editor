@@ -15,6 +15,7 @@ import {
   type AnswerVideoQuality,
 } from './nursingAnswerMedia';
 import { isNursingMediaPath, type StagedNursingMediaOp } from './nursingMedia';
+import { placeholderDraft, syncPlaceholderDraft } from './placeholderDraft';
 
 interface NursingAnswerVideosProps {
   draft: NursingScenario;
@@ -23,6 +24,7 @@ interface NursingAnswerVideosProps {
   catalog: string[];
   onChange: (next: NursingScenario) => void;
   onStage: (op: StagedNursingMediaOp) => void;
+  quality?: AnswerVideoQuality;
 }
 
 function isVideoPath(relativePath: string): boolean {
@@ -56,19 +58,19 @@ function AnswerVideoPlace({
   const mode = option?.answerVideoMode ?? (shownPath ? 'video' : null);
   const storedPlaceholder = option?.videoPlaceholder ?? '';
   const optionKey = option?.id ?? quality;
-  const [placeholderState, setPlaceholderState] = useState({
-    optionKey,
-    text: storedPlaceholder,
-    saved: false,
-  });
-  if (placeholderState.optionKey !== optionKey) {
-    setPlaceholderState({ optionKey, text: storedPlaceholder, saved: false });
+  const [placeholderState, setPlaceholderState] = useState(() =>
+    placeholderDraft(optionKey, storedPlaceholder),
+  );
+  const syncedPlaceholder = syncPlaceholderDraft(placeholderState, optionKey, storedPlaceholder);
+  if (syncedPlaceholder) {
+    setPlaceholderState(syncedPlaceholder);
   }
+  const placeholderField = syncedPlaceholder ?? placeholderState;
   const [error, setError] = useState<string | null>(null);
   const folderName = scenarioMediaFolderName(draft.meta.title, draft.meta.id);
   const chooseOptions = catalog.filter((item) => isNursingMediaPath(item));
-  const placeholderDraft = placeholderState.text;
-  const savedNote = placeholderState.saved;
+  const placeholderDraftText = placeholderField.text;
+  const savedNote = placeholderField.saved;
 
   function stageFile(relativePath: string, file: File, replace: boolean) {
     onStage({
@@ -164,9 +166,11 @@ function AnswerVideoPlace({
             id={`nursing-answer-placeholder-${quality}`}
             data-testid={`nursing-answer-placeholder-${quality}`}
             rows={3}
-            value={placeholderDraft}
+            value={placeholderDraftText}
             onChange={(event) => {
-              setPlaceholderState({ optionKey, text: event.target.value, saved: false });
+              const text = event.target.value;
+              setPlaceholderState((current) => ({ ...current, text, saved: false }));
+              onChange(saveAnswerPlaceholder(draft, step.id, quality, text));
             }}
           />
           <button
@@ -174,8 +178,8 @@ function AnswerVideoPlace({
             className="btn btn-secondary"
             data-testid={`btn-nursing-answer-placeholder-save-${quality}`}
             onClick={() => {
-              onChange(saveAnswerPlaceholder(draft, step.id, quality, placeholderDraft));
-              setPlaceholderState({ optionKey, text: placeholderDraft, saved: true });
+              onChange(saveAnswerPlaceholder(draft, step.id, quality, placeholderDraftText));
+              setPlaceholderState((current) => ({ ...current, saved: true }));
             }}
           >
             Opslaan
@@ -192,7 +196,7 @@ function AnswerVideoPlace({
             className="editor-media-preview video-placeholder-stage"
             data-testid={`nursing-answer-placeholder-preview-${quality}`}
           >
-            <p>{placeholderDraft.trim()}</p>
+            <p>{placeholderDraftText.trim()}</p>
           </div>
         </div>
       ) : null}
@@ -305,9 +309,10 @@ function AnswerVideoPlace({
 }
 
 export function NursingAnswerVideos(props: NursingAnswerVideosProps) {
+  const qualities = props.quality ? [props.quality] : ANSWER_VIDEO_QUALITIES;
   return (
     <>
-      {ANSWER_VIDEO_QUALITIES.map((quality) => (
+      {qualities.map((quality) => (
         <AnswerVideoPlace key={`${props.step.id}-${quality}`} {...props} quality={quality} />
       ))}
     </>

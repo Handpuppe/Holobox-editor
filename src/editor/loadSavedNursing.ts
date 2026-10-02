@@ -1,8 +1,20 @@
 import { NURSING_SCENARIO_JSON_PATH } from '../data/loadNursingScenario';
 import { withBaseUrl } from '../media/baseUrl';
+import { NURSING_SCENARIO_ID } from '../media/scenarioMedia';
 import type { NursingScenario } from '../nursing/types';
 import { emptyNursingScenario } from './emptyScenario';
 import { parseVerpleegkundeEnvelope, VERPLEEGKUNDE_ENVELOPE_FILENAME } from './nursingEnvelope';
+
+const EXAMPLE_NURSING_TITLES = new Set([
+  'abcde en sbar bij acute benauwdheid',
+  'sbar bij acute benauwdheid',
+]);
+
+export function isBundledNursingExample(scenario: NursingScenario): boolean {
+  const id = scenario.meta.id.trim().toLowerCase();
+  const title = scenario.meta.title.trim().toLowerCase().replace(/\s+/g, ' ');
+  return id === NURSING_SCENARIO_ID || EXAMPLE_NURSING_TITLES.has(title);
+}
 
 export type NursingEditorStartupSource = 'json' | 'seed';
 
@@ -47,6 +59,14 @@ export async function loadEditorStartupNursing(
         source: 'seed',
         label: nursingEditorSourceLabel('seed'),
         notice: `Opgeslagen verpleegkunde.json is ongeldig: ${parsed.error}`,
+      };
+    }
+    if (isBundledNursingExample(parsed.scenario)) {
+      return {
+        scenario: emptyNursingScenario(),
+        source: 'seed',
+        label: nursingEditorSourceLabel('seed'),
+        notice: null,
       };
     }
     return {

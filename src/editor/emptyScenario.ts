@@ -137,7 +137,7 @@ export function emptyNursingScenario(): NursingScenario {
   const stepId = EMPTY_NURSING_STEP_ID;
   const step: NursingStep = {
     id: stepId,
-    stepName: '',
+    stepName: 'Vraag.1',
     phaseLabel: '',
     question: '',
     help: '',

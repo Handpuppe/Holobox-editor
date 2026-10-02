@@ -96,7 +96,7 @@ describe('editor save checks', () => {
     }
     const extra = structuredClone(draft.steps[0]!);
     extra.id = 'n-extra-1';
-    extra.stepName = '';
+    extra.stepName = 'Vraag.2';
     extra.phaseLabel = '';
     extra.question = '';
     extra.help = '';
@@ -116,6 +116,7 @@ describe('editor save checks', () => {
 
   it('still requires the first step when a later step is blank', () => {
     const draft = emptyNursingScenario();
+    draft.steps[0]!.stepName = '';
     const extra = structuredClone(draft.steps[0]!);
     extra.id = 'n-extra-1';
     extra.mediaSlotId = 'nursing-step-n-extra-1';
@@ -129,7 +130,7 @@ describe('editor save checks', () => {
     expect(issues.some((item) => item.includes('Patiëntnaam'))).toBe(true);
     expect(issues.some((item) => item.includes('situatiebeschrijving'))).toBe(true);
     expect(issues.some((item) => item.includes('stap zonder vraagtekst'))).toBe(true);
-    expect(issues.some((item) => item.includes('stap zonder naam'))).toBe(true);
+    expect(issues.some((item) => item.includes('vraag zonder naam'))).toBe(true);
     expect(issues.some((item) => item.includes('geen goed antwoord'))).toBe(true);
     expect(issues.some((item) => item.includes('zonder video'))).toBe(false);
     expect(issues.some((item) => item.includes('volgende stap'))).toBe(false);

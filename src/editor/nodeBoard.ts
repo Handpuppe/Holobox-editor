@@ -146,7 +146,7 @@ export function nursingNodeOverview(scenario: NursingScenario): NodeOverviewMode
   const title = scenario.meta.title.trim();
   const rows: NodeQuestionView[] = scenario.steps.map((step, index) => ({
     id: step.id,
-    title: step.stepName?.trim() || `Stap ${index + 1}`,
+    title: step.stepName?.trim() || `Vraag ${index + 1}`,
     scenario: title,
     onderdeel: step.phaseLabel.trim(),
     vraag: step.question.trim(),

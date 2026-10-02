@@ -15,6 +15,11 @@
   margin-bottom: 20px;
 }
 
+.node-overview-bar .btn {
+  width: auto;
+  min-width: 8rem;
+}
+
 .node-overview-hint {
   margin: 0;
   color: #d9e2ec;
@@ -31,6 +36,12 @@
   min-height: 0;
   max-height: calc(100vh - 88px);
   overflow: auto;
+}
+
+.node-canvas-sizer {
+  position: relative;
+  min-width: 100%;
+  min-height: 640px;
 }
 
 .node-wires {
@@ -50,6 +61,31 @@
   gap: 96px;
   margin: 0 0 40px;
   padding-left: 132px;
+}
+
+.node-row.is-placed {
+  position: static;
+  display: block;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.node-card.is-placed {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  cursor: grab;
+}
+
+.node-card.is-front {
+  z-index: 5;
+}
+
+.node-card.is-moving {
+  z-index: 6;
+  cursor: grabbing;
 }
 
 .node-answers {

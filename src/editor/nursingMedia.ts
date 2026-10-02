@@ -183,6 +183,37 @@ export function saveStepVideoPlaceholder(
   };
 }
 
+export function resetNursingStep(scenario: NursingScenario, stepId: string): NursingScenario {
+  const step = scenario.steps.find((item) => item.id === stepId);
+  if (!step) {
+    return scenario;
+  }
+  const cleared: NursingScenario = {
+    ...scenario,
+    steps: scenario.steps.map((item) => {
+      if (item.id !== stepId) {
+        return item;
+      }
+      return {
+        ...item,
+        question: '',
+        stepVideoMode: 'video',
+        stepVideoPlaceholder: '',
+        options: item.options.map((option) => ({
+          ...option,
+          text: '',
+          answerVideoMode: 'video',
+          videoPlaceholder: '',
+          answerCardMode: 'video',
+          answerCardPlaceholder: '',
+          mediaSlotId: undefined,
+        })) as NursingStep['options'],
+      };
+    }),
+  };
+  return assignStepPrimaryMedia(cleared, stepId, null);
+}
+
 export function assignStepPrimaryMedia(
   scenario: NursingScenario,
   stepId: string,

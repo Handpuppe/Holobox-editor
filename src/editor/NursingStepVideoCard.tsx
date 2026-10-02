@@ -12,6 +12,7 @@ import {
   unlinkDeletedNursingMedia,
   type StagedNursingMediaOp,
 } from './nursingMedia';
+import { placeholderDraft, syncPlaceholderDraft } from './placeholderDraft';
 
 interface NursingStepVideoCardProps {
   draft: NursingScenario;
@@ -52,17 +53,17 @@ export function NursingStepVideoCard({
   const linkedPath = stagedOp?.type === 'delete' ? null : path;
   const mode = step.stepVideoMode ?? (linkedPath ? 'video' : null);
   const storedPlaceholder = step.stepVideoPlaceholder ?? '';
-  const [placeholderState, setPlaceholderState] = useState({
-    stepId: step.id,
-    text: storedPlaceholder,
-    saved: false,
-  });
-  if (placeholderState.stepId !== step.id) {
-    setPlaceholderState({ stepId: step.id, text: storedPlaceholder, saved: false });
+  const [placeholderState, setPlaceholderState] = useState(() =>
+    placeholderDraft(step.id, storedPlaceholder),
+  );
+  const syncedPlaceholder = syncPlaceholderDraft(placeholderState, step.id, storedPlaceholder);
+  if (syncedPlaceholder) {
+    setPlaceholderState(syncedPlaceholder);
   }
+  const placeholderField = syncedPlaceholder ?? placeholderState;
   const chooseOptions = catalog.filter((item) => isNursingMediaPath(item));
-  const placeholderDraft = placeholderState.text;
-  const savedNote = placeholderState.saved;
+  const placeholderDraftText = placeholderField.text;
+  const savedNote = placeholderField.saved;
 
   function stageFile(relativePath: string, file: File, replace: boolean) {
     onStage({
@@ -148,18 +149,20 @@ export function NursingStepVideoCard({
             id="nursing-step-placeholder"
             data-testid="nursing-step-placeholder"
             rows={3}
-            value={placeholderDraft}
-            onChange={(event) =>
-              setPlaceholderState({ stepId: step.id, text: event.target.value, saved: false })
-            }
+            value={placeholderDraftText}
+            onChange={(event) => {
+              const text = event.target.value;
+              setPlaceholderState((current) => ({ ...current, text, saved: false }));
+              onChange(saveStepVideoPlaceholder(draft, step.id, text));
+            }}
           />
           <button
             type="button"
             className="btn btn-secondary"
             data-testid="btn-nursing-step-placeholder-save"
             onClick={() => {
-              onChange(saveStepVideoPlaceholder(draft, step.id, placeholderDraft));
-              setPlaceholderState({ stepId: step.id, text: placeholderDraft, saved: true });
+              onChange(saveStepVideoPlaceholder(draft, step.id, placeholderDraftText));
+              setPlaceholderState((current) => ({ ...current, saved: true }));
             }}
           >
             Opslaan
@@ -173,7 +176,7 @@ export function NursingStepVideoCard({
             className="editor-media-preview video-placeholder-stage"
             data-testid="nursing-step-placeholder-preview"
           >
-            <p>{placeholderDraft.trim()}</p>
+            <p>{placeholderDraftText.trim()}</p>
           </div>
         </div>
       ) : null}

@@ -46,7 +46,7 @@ describe('nursingPrintList', () => {
     const list = nursingPrintList(draft);
 
     expect(list.steps).toHaveLength(1);
-    expect(list.steps[0]?.stepName).toBe('Stap 1');
+    expect(list.steps[0]?.stepName).toBe('Vraag.1');
     expect(list.steps[0]?.items).toEqual([
       { place: 'Deels goed antwoord', text: 'Nog filmen.' },
     ]);

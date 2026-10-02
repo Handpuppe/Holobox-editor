@@ -39,6 +39,20 @@ function isVideoFile(path: string | null): path is string {
   return Boolean(path && /\.(mp4|webm|mov|m4v)$/i.test(path));
 }
 
+function chosenNursingText(option: NursingStep['options'][number]): string {
+  if (option.answerVideoMode === 'placeholder') {
+    const placeholder = (option.videoPlaceholder ?? '').trim();
+    if (placeholder) {
+      return placeholder;
+    }
+  }
+  return option.text.trim() || QUALITY_LABELS[option.quality];
+}
+
+function chosenLogopedieText(option: { text: string; quality: OptionQuality }): string {
+  return option.text.trim() || QUALITY_LABELS[option.quality];
+}
+
 function stepPlaceholderText(step: NursingStep): string {
   if (step.stepVideoMode !== 'placeholder') {
     return '';
@@ -150,6 +164,7 @@ function NursingScenarioTest({
   );
   const [visit, setVisit] = useState(0);
   const [replay, setReplay] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   if (!session) {
     return null;
   }
@@ -163,14 +178,28 @@ function NursingScenarioTest({
     );
   }
   const step = currentNursingStep(session, scenario.steps);
-  const last = session.history.at(-1);
-  const answered = last
-    ? scenario.steps
-        .find((item) => item.id === last.stepId)
-        ?.options.find((item) => item.id === last.optionId)
-    : undefined;
-  const reactionText =
-    answered?.answerVideoMode === 'placeholder' ? (answered.videoPlaceholder ?? '') : '';
+  const pendingOption = step?.options.find((item) => item.id === pendingId);
+  const reactionText = pendingOption ? chosenNursingText(pendingOption) : '';
+  const continueAfterAnswer = () => {
+    if (!step || !pendingOption) {
+      return;
+    }
+    const followed = followList(
+      scenario.steps.map((item) => item.id),
+      step.id,
+      pendingOption.nextStepId,
+      'completed',
+    );
+    setReplay(!followed.done && followed.id === step.id);
+    dispatch({
+      type: 'select',
+      optionId: pendingOption.id,
+      at: new Date().toISOString(),
+      steps: scenario.steps,
+    });
+    setPendingId(null);
+    setVisit((value) => value + 1);
+  };
   return (
     <div className="scenario-editor" data-testid="screen-scenario-editor" lang="nl">
       <div className="scenario-test" data-testid="screen-scenario-test">
@@ -189,47 +218,46 @@ function NursingScenarioTest({
             {step ? (
               <p className="muted" data-testid="test-step-title">
                 {step.stepName?.trim() ||
-                  `Stap ${scenario.steps.findIndex((item) => item.id === step.id) + 1}`}
+                  `Vraag ${scenario.steps.findIndex((item) => item.id === step.id) + 1}`}
               </p>
             ) : null}
             <p className="panel-question" data-testid="test-question">
               {step?.question}
             </p>
-            <ReplayNote show={replay} />
+            <ReplayNote show={replay && !pendingOption} />
             <div className="option-list">
-              {QUALITIES.map((quality) => {
-                const option = step?.options.find((item) => item.quality === quality);
-                if (!option || !step) {
-                  return null;
-                }
-                const label = option.text.trim() || QUALITY_LABELS[quality];
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className="btn option-btn"
-                    data-testid={`test-option-${quality}`}
-                    onClick={() => {
-                      const followed = followList(
-                        scenario.steps.map((item) => item.id),
-                        step.id,
-                        option.nextStepId,
-                        'completed',
-                      );
-                      setReplay(!followed.done && followed.id === step.id);
-                      dispatch({
-                        type: 'select',
-                        optionId: option.id,
-                        at: new Date().toISOString(),
-                        steps: scenario.steps,
-                      });
-                      setVisit((value) => value + 1);
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+              {pendingOption ? (
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="btn-test-continue"
+                  onClick={continueAfterAnswer}
+                >
+                  Verder
+                </button>
+              ) : (
+                QUALITIES.map((quality) => {
+                  const option = step?.options.find((item) => item.quality === quality);
+                  if (!option || !step) {
+                    return null;
+                  }
+                  const label = option.text.trim() || QUALITY_LABELS[quality];
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className="btn option-btn"
+                      data-testid={`test-option-${quality}`}
+                      onClick={() => {
+                        setReplay(false);
+                        setPendingId(option.id);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })
+              )}
             </div>
             <button
               type="button"
@@ -250,6 +278,7 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
   const [session, dispatch] = useReducer(simulationReducer, null, () => createSession(scenario));
   const [visit, setVisit] = useState(0);
   const [replay, setReplay] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   if (!session) {
     return null;
   }
@@ -260,6 +289,24 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
   }
   const node =
     scenario.nodes.find((item) => item.id === session.currentNodeId) ?? scenario.nodes[0];
+  const pendingOption = node?.options.find((item) => item.id === pendingId);
+  const continueAfterAnswer = () => {
+    if (!node || !pendingOption) {
+      return;
+    }
+    const followed = followList(
+      scenario.nodes.map((item) => item.id),
+      node.id,
+      pendingOption.nextNodeId,
+      CONCLUSION_NODE_ID,
+    );
+    setReplay(!followed.done && followed.id === node.id);
+    const at = new Date().toISOString();
+    dispatch({ type: 'select-option', optionId: pendingOption.id, scenario, at });
+    dispatch({ type: 'complete-transition', scenario });
+    setPendingId(null);
+    setVisit((value) => value + 1);
+  };
   return (
     <div className="scenario-editor" data-testid="screen-scenario-editor" lang="nl">
       <div className="scenario-test" data-testid="screen-scenario-test">
@@ -282,38 +329,45 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
             <p className="panel-question" data-testid="test-question">
               {node?.prompt.text}
             </p>
-            <ReplayNote show={replay} />
+            <ReplayNote show={replay && !pendingOption} />
+            {pendingOption ? (
+              <p className="panel-question" data-testid="test-answer-reaction">
+                {chosenLogopedieText(pendingOption)}
+              </p>
+            ) : null}
             <div className="option-list">
-              {QUALITIES.map((quality) => {
-                const option = node?.options.find((item) => item.quality === quality);
-                if (!option || !node) {
-                  return null;
-                }
-                const label = option.text.trim() || QUALITY_LABELS[quality];
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className="btn option-btn"
-                    data-testid={`test-option-${quality}`}
-                    onClick={() => {
-                      const followed = followList(
-                        scenario.nodes.map((item) => item.id),
-                        node.id,
-                        option.nextNodeId,
-                        CONCLUSION_NODE_ID,
-                      );
-                      setReplay(!followed.done && followed.id === node.id);
-                      const at = new Date().toISOString();
-                      dispatch({ type: 'select-option', optionId: option.id, scenario, at });
-                      dispatch({ type: 'complete-transition', scenario });
-                      setVisit((value) => value + 1);
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+              {pendingOption ? (
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="btn-test-continue"
+                  onClick={continueAfterAnswer}
+                >
+                  Verder
+                </button>
+              ) : (
+                QUALITIES.map((quality) => {
+                  const option = node?.options.find((item) => item.quality === quality);
+                  if (!option || !node) {
+                    return null;
+                  }
+                  const label = option.text.trim() || QUALITY_LABELS[quality];
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className="btn option-btn"
+                      data-testid={`test-option-${quality}`}
+                      onClick={() => {
+                        setReplay(false);
+                        setPendingId(option.id);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })
+              )}
             </div>
             <button
               type="button"

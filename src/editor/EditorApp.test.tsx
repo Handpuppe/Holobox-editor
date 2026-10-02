@@ -1,3 +1,6 @@
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -6,6 +9,7 @@ import { renderApp } from '../test/renderApp';
 import { EditorApp } from './EditorApp';
 import { envelopeJson, LOGOPEDIE_ENVELOPE_FILENAME } from './envelope';
 import { cloneScenario } from './cloneScenario';
+import { parseVerpleegkundeEnvelope } from './nursingEnvelope';
 import { buildEditorPackageZip } from './scenarioPackage';
 
 function fillNursingTexts(question: string) {
@@ -64,6 +68,10 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('editor-preview-stage')).not.toHaveStyle({
       transform: 'scale(1.5)',
     });
+    expect(screen.getByTestId('btn-open-json')).toHaveTextContent('Casus openen');
+    expect(screen.getByTestId('btn-download-json')).toHaveTextContent('Casus downloaden');
+    expect(screen.getByTestId('btn-start-test')).toHaveTextContent('Test modus');
+    expect(screen.queryByRole('button', { name: 'Printlijst' })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId('prompt-text'), {
       target: { value: '' },
@@ -303,7 +311,7 @@ describe('EditorApp', () => {
     expect(screen.queryByText('Onveilig')).not.toBeInTheDocument();
     expect(screen.queryByText('Volgende stap')).not.toBeInTheDocument();
     expect(screen.queryByText(/Stap n-/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Stap 1' })).toBeInTheDocument();
+    expect(screen.getByTestId('nursing-step-name')).toHaveValue('Vraag.1');
     expect(screen.getByTestId('btn-editor-quit')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-patient-name').closest('.field')).toHaveClass('is-empty');
     expect(screen.getByTestId('nursing-title').closest('.field')).not.toHaveClass('is-empty');
@@ -653,7 +661,7 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('nursing-title')).toHaveValue('');
     expect(screen.getByTestId('nursing-education-type')).toHaveValue('');
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Stap 1' })).toBeInTheDocument();
+    expect(screen.getByTestId('nursing-step-name')).toHaveValue('Vraag.1');
     expect(screen.getByTestId('btn-add-nursing-step')).toBeInTheDocument();
     expect(screen.getByTestId('btn-remove-nursing-step')).toBeDisabled();
     expect(screen.getByTestId('nursing-step-video-missing')).toBeInTheDocument();
@@ -669,7 +677,10 @@ describe('EditorApp', () => {
       expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
     });
     await user.click(screen.getByTestId('editor-module-nursing'));
+    expect(screen.getByTestId('nursing-step-name')).toHaveValue('Vraag.1');
+    expect(screen.getByTestId('btn-add-nursing-step')).toHaveTextContent('Vraag toevoegen');
     await user.click(screen.getByTestId('btn-add-nursing-step'));
+    expect(screen.getByTestId('nursing-step-name')).toHaveValue('Vraag.2');
     expect(screen.getByTestId('nursing-step-tab-n-extra-1')).toBeInTheDocument();
     expect(screen.getByTestId('btn-remove-nursing-step')).toBeEnabled();
     await user.click(screen.getByTestId('btn-remove-nursing-step'));
@@ -689,8 +700,252 @@ describe('EditorApp', () => {
     fireEvent.change(screen.getByTestId('nursing-option-placeholder-n-1-high'), {
       target: { value: 'Close-up van de handeling.' },
     });
+    expect(
+      screen.queryByTestId('nursing-option-placeholder-preview-n-1-high'),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByTestId('btn-nursing-option-placeholder-save-n-1-high'));
     expect(screen.getByTestId('nursing-option-placeholder-saved-n-1-high')).toBeInTheDocument();
+    const highCard = screen.getByTestId('nursing-option-editor-n-1-high');
+    const highPreview = screen.getByTestId('nursing-option-placeholder-preview-n-1-high');
+    const highLabel = document.getElementById('nursing-option-video-label-n-1-high');
+    expect(highCard).toContainElement(highPreview);
+    expect(highPreview).toHaveTextContent('Close-up van de handeling.');
+    expect(highLabel).toBeTruthy();
+    expect(
+      highLabel!.compareDocumentPosition(highPreview) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      highPreview.compareDocumentPosition(screen.getByTestId('nursing-answer-video-high')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId('nursing-option-placeholder-n-1-high'), {
+      target: { value: '   ' },
+    });
+    await user.click(screen.getByTestId('btn-nursing-option-placeholder-save-n-1-high'));
+    expect(
+      screen.queryByTestId('nursing-option-placeholder-preview-n-1-high'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('nursing-option-mode-placeholder-n-1-partial'));
+    fireEvent.change(screen.getByTestId('nursing-option-placeholder-n-1-partial'), {
+      target: { value: 'Deels goed filmen.' },
+    });
+    await user.click(screen.getByTestId('btn-nursing-option-placeholder-save-n-1-partial'));
+    expect(screen.getByTestId('nursing-option-editor-n-1-partial')).toContainElement(
+      screen.getByTestId('nursing-option-placeholder-preview-n-1-partial'),
+    );
+    expect(screen.getByTestId('nursing-option-placeholder-preview-n-1-partial')).toHaveTextContent(
+      'Deels goed filmen.',
+    );
+
+    await user.click(screen.getByTestId('nursing-option-mode-placeholder-n-1-inappropriate'));
+    fireEvent.change(screen.getByTestId('nursing-option-placeholder-n-1-inappropriate'), {
+      target: { value: 'Verkeerd filmen.' },
+    });
+    await user.click(screen.getByTestId('btn-nursing-option-placeholder-save-n-1-inappropriate'));
+    expect(screen.getByTestId('nursing-option-editor-n-1-inappropriate')).toContainElement(
+      screen.getByTestId('nursing-option-placeholder-preview-n-1-inappropriate'),
+    );
+    expect(
+      screen.getByTestId('nursing-option-placeholder-preview-n-1-inappropriate'),
+    ).toHaveTextContent('Verkeerd filmen.');
+  });
+
+  it('keeps an answer placeholder separate from the play-video placeholder', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+
+    const cases = [
+      {
+        id: 'n-1-high',
+        quality: 'high',
+        answer: 'Vrouw knikt en ademt uit.',
+        play: 'Close-up: vrouw knikt langzaam en haar schouders zakken.',
+      },
+      {
+        id: 'n-1-partial',
+        quality: 'partial',
+        answer: 'Deels: vrouw ademt oppervlakkig.',
+        play: 'Close-up: deels goed, schouders blijven hoog.',
+      },
+      {
+        id: 'n-1-inappropriate',
+        quality: 'inappropriate',
+        answer: 'Fout: vrouw houdt de adem in.',
+        play: 'Close-up: verkeerd, kin zakt naar de borst.',
+      },
+    ] as const;
+
+    for (const item of cases) {
+      await user.click(screen.getByTestId(`nursing-option-mode-placeholder-${item.id}`));
+      fireEvent.change(screen.getByTestId(`nursing-option-placeholder-${item.id}`), {
+        target: { value: item.answer },
+      });
+      await user.click(screen.getByTestId(`btn-nursing-option-placeholder-save-${item.id}`));
+      expect(screen.getByTestId(`nursing-option-placeholder-preview-${item.id}`)).toHaveTextContent(
+        item.answer,
+      );
+
+      await user.click(screen.getByTestId(`nursing-answer-mode-placeholder-${item.quality}`));
+      fireEvent.change(screen.getByTestId(`nursing-answer-placeholder-${item.quality}`), {
+        target: { value: item.play },
+      });
+      await user.click(screen.getByTestId(`btn-nursing-answer-placeholder-save-${item.quality}`));
+
+      expect(
+        screen.getByTestId(`nursing-answer-placeholder-preview-${item.quality}`),
+      ).toHaveTextContent(item.play);
+      expect(screen.getByTestId(`nursing-answer-placeholder-${item.quality}`)).toHaveValue(item.play);
+      expect(screen.getByTestId(`nursing-option-placeholder-${item.id}`)).toHaveValue(item.answer);
+      expect(screen.getByTestId(`nursing-option-placeholder-preview-${item.id}`)).toHaveTextContent(
+        item.answer,
+      );
+      expect(
+        screen.getByTestId(`nursing-option-placeholder-preview-${item.id}`),
+      ).not.toHaveTextContent(item.play);
+    }
+
+    fireEvent.change(screen.getByTestId('nursing-option-placeholder-n-1-high'), {
+      target: { value: 'Alleen het antwoordvoorbeeld.' },
+    });
+    await user.click(screen.getByTestId('btn-nursing-option-placeholder-save-n-1-high'));
+    expect(screen.getByTestId('nursing-option-placeholder-preview-n-1-high')).toHaveTextContent(
+      'Alleen het antwoordvoorbeeld.',
+    );
+    expect(screen.getByTestId('nursing-answer-placeholder-high')).toHaveValue(
+      'Close-up: vrouw knikt langzaam en haar schouders zakken.',
+    );
+    expect(screen.getByTestId('nursing-answer-placeholder-preview-high')).toHaveTextContent(
+      'Close-up: vrouw knikt langzaam en haar schouders zakken.',
+    );
+    expect(screen.getByTestId('nursing-answer-placeholder-preview-high')).not.toHaveTextContent(
+      'Alleen het antwoordvoorbeeld.',
+    );
+  });
+
+  it('reads placeholder texts back from the written case file after a restart', async () => {
+    const user = userEvent.setup();
+    const caseFile = join(tmpdir(), `verpleegkunde-placeholders-${Date.now()}.json`);
+    const texts = {
+      start: 'Start: vrouw zit rechtop en kijkt langs de student.',
+      highAnswer: 'Vrouw knikt en ademt uit.',
+      partialAnswer: 'Deels: vrouw ademt oppervlakkig.',
+      inappropriateAnswer: 'Fout: vrouw houdt de adem in.',
+      highPlay: 'Close-up: vrouw knikt langzaam en haar schouders zakken.',
+      partialPlay: 'Close-up: deels goed, schouders blijven hoog.',
+      inappropriatePlay: 'Close-up: verkeerd, kin zakt naar de borst.',
+    };
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (init?.method === 'POST' && target.includes('save-verpleegkunde')) {
+        const parsed = JSON.parse(String(init.body)) as unknown;
+        writeFileSync(caseFile, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
+        return new Response(
+          JSON.stringify({ ok: true, file: 'resources/scenarios/verpleegkunde.json' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (target.includes('verpleegkunde.json') && existsSync(caseFile)) {
+        return new Response(readFileSync(caseFile, 'utf8'), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (target.includes('verpleegkunde-media')) {
+        return new Response(JSON.stringify({ ok: true, items: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const first = render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('editor-module-nursing'));
+      fillNursingTexts('Wat zeg je als eerste?');
+
+      await user.click(screen.getByTestId('nursing-step-mode-placeholder'));
+      fireEvent.change(screen.getByTestId('nursing-step-placeholder'), {
+        target: { value: texts.start },
+      });
+      const answers = [
+        ['n-1-high', 'high', texts.highAnswer, texts.highPlay],
+        ['n-1-partial', 'partial', texts.partialAnswer, texts.partialPlay],
+        ['n-1-inappropriate', 'inappropriate', texts.inappropriateAnswer, texts.inappropriatePlay],
+      ] as const;
+      for (const [id, quality, answer, play] of answers) {
+        await user.click(screen.getByTestId(`nursing-option-mode-placeholder-${id}`));
+        fireEvent.change(screen.getByTestId(`nursing-option-placeholder-${id}`), {
+          target: { value: answer },
+        });
+        await user.click(screen.getByTestId(`nursing-answer-mode-placeholder-${quality}`));
+        fireEvent.change(screen.getByTestId(`nursing-answer-placeholder-${quality}`), {
+          target: { value: play },
+        });
+      }
+
+      await user.click(screen.getByTestId('btn-save-json'));
+      expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+        'Opgeslagen in deze kopie',
+      );
+
+      const written = readFileSync(caseFile, 'utf8');
+      const parsed = parseVerpleegkundeEnvelope(written);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) {
+        return;
+      }
+      const step = parsed.scenario.steps[0];
+      expect(step?.stepVideoPlaceholder).toBe(texts.start);
+      expect(step?.options.map((option) => option.answerCardPlaceholder)).toEqual([
+        texts.highAnswer,
+        texts.partialAnswer,
+        texts.inappropriateAnswer,
+      ]);
+      expect(step?.options.map((option) => option.videoPlaceholder)).toEqual([
+        texts.highPlay,
+        texts.partialPlay,
+        texts.inappropriatePlay,
+      ]);
+      expect(step?.options[0]?.answerCardPlaceholder).not.toBe(step?.options[0]?.videoPlaceholder);
+
+      first.unmount();
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('nursing-step-placeholder')).toHaveValue(texts.start);
+      });
+      expect(screen.getByTestId('nursing-step-placeholder-preview')).toHaveTextContent(texts.start);
+      for (const [id, quality, answer, play] of answers) {
+        expect(screen.getByTestId(`nursing-option-placeholder-${id}`)).toHaveValue(answer);
+        expect(screen.getByTestId(`nursing-option-placeholder-preview-${id}`)).toHaveTextContent(
+          answer,
+        );
+        expect(screen.getByTestId(`nursing-option-placeholder-preview-${id}`)).not.toHaveTextContent(
+          play,
+        );
+        expect(screen.getByTestId(`nursing-answer-placeholder-${quality}`)).toHaveValue(play);
+        expect(screen.getByTestId(`nursing-answer-placeholder-preview-${quality}`)).toHaveTextContent(
+          play,
+        );
+        expect(
+          screen.getByTestId(`nursing-answer-placeholder-preview-${quality}`),
+        ).not.toHaveTextContent(answer);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      if (existsSync(caseFile)) {
+        unlinkSync(caseFile);
+      }
+    }
   });
 
   it('reopens the last opened module on the next editor start', async () => {
@@ -761,7 +1016,71 @@ describe('EditorApp', () => {
     expect(screen.getByText('Bij deels goed antwoord play video')).toBeInTheDocument();
     expect(screen.getByText('Bij verkeerd antwoord play video')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-step-video')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vraag voor de student')).toBeInTheDocument();
     expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+
+    const sheet = screen.getByTestId('nursing-step-sheet');
+    const name = screen.getByTestId('nursing-step-name');
+    expect(name).toHaveValue('Vraag.1');
+    expect(name.tagName).toBe('INPUT');
+    expect(name.closest('.editor-nodes')).toBeTruthy();
+    expect(sheet.contains(name)).toBe(false);
+    expect(sheet.querySelector('[data-testid="nursing-step-name"]')).toBeNull();
+    const shown = screen.getByTestId('nursing-step-title');
+    expect(sheet.contains(shown)).toBe(true);
+    expect(shown.tagName).not.toBe('INPUT');
+    expect(shown.tagName).not.toBe('TEXTAREA');
+    expect(shown).toHaveTextContent('Vraag.1');
+    const top = sheet.querySelector('.nursing-step-top');
+    expect(top).toBeTruthy();
+    expect(shown.compareDocumentPosition(top!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(top?.querySelector('[data-testid="nursing-step-video"]')).toBeTruthy();
+    expect(top?.querySelector('#nursing-phase')).toBeTruthy();
+    expect(top?.querySelector('#nursing-question')).toBeTruthy();
+    const columns = sheet.querySelectorAll('.nursing-step-answer-col');
+    expect(columns).toHaveLength(3);
+    expect(columns[0]).toHaveTextContent('Antwoord 1');
+    expect(columns[0]).toHaveTextContent('Bij goed antwoord play video');
+    expect(columns[0]?.querySelector('[data-testid="nursing-answer-video-high"]')).toBeTruthy();
+    expect(columns[1]).toHaveTextContent('Antwoord 2');
+    expect(columns[1]).toHaveTextContent('Bij deels goed antwoord play video');
+    expect(columns[2]).toHaveTextContent('Antwoord 3');
+    expect(columns[2]).toHaveTextContent('Bij verkeerd antwoord play video');
+    const optionCard = columns[0]?.querySelector('[data-testid="nursing-option-editor-n-1-high"]');
+    const answerVideo = columns[0]?.querySelector('[data-testid="nursing-answer-video-high"]');
+    expect(optionCard).toBeTruthy();
+    expect(answerVideo).toBeTruthy();
+    expect(
+      optionCard!.compareDocumentPosition(answerVideo!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('resets one nursing step and leaves the next step filled', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    await waitFor(() => {
+      expect(screen.getByTestId('nursing-question')).toHaveValue('');
+    });
+    expect(screen.queryByDisplayValue(/ABCDE|SBAR/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Vraag een' } });
+    fireEvent.change(screen.getByTestId('nursing-option-text-n-1-high'), {
+      target: { value: 'Antwoord een' },
+    });
+    await user.click(screen.getByTestId('nursing-step-mode-placeholder'));
+    fireEvent.change(screen.getByTestId('nursing-step-placeholder'), {
+      target: { value: 'Film de start' },
+    });
+    await user.click(screen.getByTestId('btn-nursing-step-placeholder-save'));
+    await user.click(screen.getByTestId('btn-add-nursing-step'));
+    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Vraag twee' } });
+    await user.click(screen.getByTestId('nursing-step-tab-n-1'));
+    await user.click(screen.getByTestId('btn-reset-nursing-step-n-1'));
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
+    expect(screen.getByTestId('nursing-option-text-n-1-high')).toHaveValue('');
+    expect(screen.queryByDisplayValue('Film de start')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('nursing-step-tab-n-extra-1'));
+    expect(screen.getByTestId('nursing-question')).toHaveValue('Vraag twee');
   });
 
   it('opens a print list of open placeholders and prints it', async () => {
@@ -787,7 +1106,9 @@ describe('EditorApp', () => {
     });
     await user.click(screen.getByTestId('btn-nursing-answer-placeholder-save-high'));
 
-    await user.click(screen.getByTestId('btn-print-list'));
+    expect(screen.queryByRole('button', { name: 'Printlijst' })).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-nodes'));
+    await user.click(screen.getByTestId('btn-task-list'));
     expect(screen.getByTestId('print-list-title')).toHaveTextContent('Opnamecasus');
     expect(screen.getByRole('heading', { name: 'Eerste vraag' })).toBeInTheDocument();
     expect(screen.getByText('Startvideo van de vraag')).toBeInTheDocument();
@@ -800,6 +1121,8 @@ describe('EditorApp', () => {
     await user.click(screen.getByTestId('btn-print-list-print'));
     expect(print).toHaveBeenCalledOnce();
     await user.click(screen.getByTestId('btn-print-list-close'));
+    expect(screen.getByTestId('node-overview')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-nodes-back'));
     expect(screen.getByTestId('nursing-title')).toHaveValue('Opnamecasus');
   });
 
@@ -1000,22 +1323,29 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder een');
     await user.click(screen.getByTestId('test-option-high'));
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
 
     await user.click(screen.getByTestId('btn-test-back'));
     await user.click(screen.getByTestId('btn-start-test'));
     await user.click(screen.getByTestId('test-option-partial'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag twee');
     await user.click(screen.getByTestId('test-option-partial'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
 
     await user.click(screen.getByTestId('btn-test-back'));
     await user.click(screen.getByTestId('btn-start-test'));
     await user.click(screen.getByTestId('test-option-inappropriate'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
     expect(screen.getByTestId('test-media-stage')).toContainElement(
       screen.getByTestId('test-placeholder'),
     );
+    expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Verkeerd antwoord');
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder een');
     const replay = screen.getByTestId('test-replay');
     expect(replay.tagName).toBe('P');
@@ -1026,9 +1356,12 @@ describe('EditorApp', () => {
     ).not.toBeInTheDocument();
     expect(screen.getByTestId('test-option-high')).toBeEnabled();
     await user.click(screen.getByTestId('test-option-inappropriate'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
     expect(screen.queryByText('Competentie scores')).not.toBeInTheDocument();

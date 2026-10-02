@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { NursingScenario, NursingStep } from '../nursing/types';
 import { cloneScenario } from './cloneScenario';
@@ -47,7 +47,10 @@ describe('node overview model', () => {
       'Deels goed antwoord',
       'Verkeerd antwoord',
     ]);
-    expect(model.rows[0]?.answers[0]).toMatchObject({ mediaLabel: 'Video', mediaText: 'al-opgenomen.mp4' });
+    expect(model.rows[0]?.answers[0]).toMatchObject({
+      mediaLabel: 'Video',
+      mediaText: 'al-opgenomen.mp4',
+    });
     expect(model.rows[0]?.answers[1]).toMatchObject({
       mediaLabel: 'Placeholder',
       mediaText: 'Nog filmen: de ademhaling.',
@@ -75,13 +78,15 @@ describe('node overview model', () => {
       {
         ...first,
         options: first.options.map((option, index) =>
-          index === 0 ? { ...option, nextStepId: secondId } : { ...option, nextStepId: 'completed' },
+          index === 0
+            ? { ...option, nextStepId: secondId }
+            : { ...option, nextStepId: 'completed' },
         ) as NursingStep['options'],
       },
       second,
     ];
     const model = nursingNodeOverview({ ...draft, steps });
-    expect(model.rows.map((row) => row.title)).toEqual(['Stap 1', 'Tweede stap']);
+    expect(model.rows.map((row) => row.title)).toEqual(['Vraag.1', 'Tweede stap']);
     expect(model.wires.filter((wire) => wire.to === `q-in-${secondId}`)).toEqual([
       {
         from: `a-out-${first.id}-high`,
@@ -172,10 +177,9 @@ describe('node overview model', () => {
     expect(removedModel.wires.some((wire) => wire.removable && wire.quality === 'partial')).toBe(
       false,
     );
-    expect(removedModel.wires.filter((wire) => wire.removable).map((wire) => wire.quality)).toEqual([
-      'high',
-      'inappropriate',
-    ]);
+    expect(removedModel.wires.filter((wire) => wire.removable).map((wire) => wire.quality)).toEqual(
+      ['high', 'inappropriate'],
+    );
 
     const restored = connectNursingFlow(removed, `a-out-${firstId}-partial`, `q-in-${secondId}`);
     const reopened = nursingNodeOverview(JSON.parse(JSON.stringify(restored)) as NursingScenario);
@@ -233,7 +237,10 @@ describe('node overview model', () => {
       ...draft,
       steps: [{ ...step, options: [partial, wrong, wrong] }],
     });
-    expect(model.rows[0]?.answers.map((item) => item.quality)).toEqual(['partial', 'inappropriate']);
+    expect(model.rows[0]?.answers.map((item) => item.quality)).toEqual([
+      'partial',
+      'inappropriate',
+    ]);
   });
 
   it('keeps video and placeholder off the logopedie overview', () => {
@@ -257,17 +264,29 @@ describe('NodeOverview', () => {
     const model = nursingNodeOverview({
       ...draft,
       meta: { ...draft.meta, title: 'Opnamecasus' },
-      steps: draft.steps.map((step) => ({ ...step, stepName: 'Eerste vraag', question: 'Wat zie je?' })),
+      steps: draft.steps.map((step) => ({
+        ...step,
+        stepName: 'Eerste vraag',
+        question: 'Wat zie je?',
+      })),
     });
     const onClose = vi.fn();
     render(<NodeOverview model={model} onClose={onClose} />);
 
     expect(screen.getByText('Scenario input')).toBeInTheDocument();
-    expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveTextContent('Eerste vraag');
-    expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveTextContent('Opnamecasus');
-    expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveTextContent('Wat zie je?');
+    expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveTextContent(
+      'Eerste vraag',
+    );
+    expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveTextContent(
+      'Opnamecasus',
+    );
+    expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveTextContent(
+      'Wat zie je?',
+    );
     expect(screen.getByTestId(`node-answer-${draft.steps[0]!.id}-high`)).toBeInTheDocument();
-    expect(screen.getByTestId('node-overview').querySelectorAll('input, textarea, select')).toHaveLength(0);
+    expect(
+      screen.getByTestId('node-overview').querySelectorAll('input, textarea, select'),
+    ).toHaveLength(0);
     const paths = screen.getByTestId('node-wires').querySelectorAll('path');
     expect(paths.length).toBe(model.wires.length);
     expect(paths[0]).toHaveAttribute('stroke-dasharray', '7 6');
@@ -292,7 +311,9 @@ describe('NodeOverview', () => {
     document.elementFromPoint = () => to;
     try {
       fireEvent.pointerDown(from, { clientX: 4, clientY: 4, button: 0 });
-      window.dispatchEvent(new PointerEvent('pointerup', { clientX: 20, clientY: 20, bubbles: true }));
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 20, clientY: 20, bubbles: true }),
+      );
     } finally {
       document.elementFromPoint = previous;
     }
@@ -314,7 +335,9 @@ describe('NodeOverview', () => {
     document.elementFromPoint = () => card;
     try {
       fireEvent.pointerDown(from, { clientX: 4, clientY: 4, button: 0 });
-      window.dispatchEvent(new PointerEvent('pointerup', { clientX: 40, clientY: 40, bubbles: true }));
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 40, clientY: 40, bubbles: true }),
+      );
     } finally {
       document.elementFromPoint = previous;
     }
@@ -336,10 +359,41 @@ describe('NodeOverview', () => {
     document.elementFromPoint = () => card;
     try {
       fireEvent.pointerDown(from, { clientX: 4, clientY: 4, button: 0 });
-      window.dispatchEvent(new PointerEvent('pointerup', { clientX: 40, clientY: 40, bubbles: true }));
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 40, clientY: 40, bubbles: true }),
+      );
     } finally {
       document.elementFromPoint = previous;
     }
     expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it('moves a card without changing the connected ports', () => {
+    const draft = emptyNursingScenario();
+    const stepId = draft.steps[0]!.id;
+    const model = nursingNodeOverview(draft);
+    const onConnect = vi.fn();
+    render(<NodeOverview model={model} onClose={vi.fn()} onConnect={onConnect} />);
+    const card = screen.getByTestId(`node-question-${stepId}`);
+    const wires = [...document.querySelectorAll('[data-wire-from]')].map(
+      (wire) => `${wire.getAttribute('data-wire-from')}->${wire.getAttribute('data-wire-to')}`,
+    );
+    act(() => {
+      fireEvent.pointerDown(card, { clientX: 10, clientY: 12, button: 0 });
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: 80, clientY: 46, bubbles: true }),
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 80, clientY: 46, bubbles: true }),
+      );
+    });
+    expect(card.style.left).toBe('70px');
+    expect(card.style.top).toBe('34px');
+    expect(onConnect).not.toHaveBeenCalled();
+    const after = [...document.querySelectorAll('[data-wire-from]')].map(
+      (wire) => `${wire.getAttribute('data-wire-from')}->${wire.getAttribute('data-wire-to')}`,
+    );
+    expect(after).toEqual(wires);
+    expect(screen.getByTestId('btn-task-list')).toHaveTextContent('Takenlijst');
   });
 });

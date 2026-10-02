@@ -63,7 +63,7 @@ export function nursingPrintList(scenario: NursingScenario): PrintList {
       return;
     }
     steps.push({
-      stepName: step.stepName?.trim() || `Stap ${index + 1}`,
+      stepName: step.stepName?.trim() || `Vraag ${index + 1}`,
       items,
     });
   });

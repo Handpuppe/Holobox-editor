@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "module": "verpleegkunde",
+  "meta": {
+    "id": "editor-leeg",
+    "version": "1.0.1",
+    "rubricVersion": "1.0.0",
+    "title": "Slechtnieuwsgesprek oefenen",
+    "estimatedDuration": "",
+    "startStepId": "n-1",
+    "educationType": "Gesprekstechnieken HBO"
+  },
+  "patient": {
+    "name": "mevrouw De Boer",
+    "age": 0,
+    "fictional": true,
+    "heightCm": 170,
+    "setting": "",
+    "background": "mevrouw De Boer, fictief, wacht op een uitslag. Ze is ongerust en praat snel.",
+    "studentRole": ""
+  },
+  "learningObjectives": [
+    "Een open vraag stellen.",
+    "Een emotie benoemen zonder oordeel.",
+    "Niet te snel adviseren."
+  ],
+  "steps": [
+    {
+      "id": "n-1",
+      "stepName": "test",
+      "phaseLabel": "Mevrouw De Boer zit tegenover je en zegt: ik heb slecht geslapen.",
+      "question": "Wat zeg je als eerste?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-1",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "options": [
+        {
+          "id": "n-1-high",
+          "text": "U hebt slecht geslapen. Wilt u daar iets over vertellen?",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "completed",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Vrouw knikt en ademt uit."
+        },
+        {
+          "id": "n-1-partial",
+          "text": "Hoe laat bent u gaan slapen?",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "completed",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Vrouw aarzelt en kijkt naar haar handen."
+        },
+        {
+          "id": "n-1-inappropriate",
+          "text": "U moet minder piekeren, dan slaapt u vanzelf.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-1",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Vrouw trekt haar schouders op en kijkt weg."
+        }
+      ],
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw zit rechtop, handen in elkaar, kijkt langs de student."
+    }
+  ],
+  "mediaSlots": [
+    {
+      "slotId": "nursing-step-n-1",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    }
+  ]
+}

@@ -113,6 +113,10 @@ describe('ScenarioTest', () => {
     expect(startPlaceholder.querySelector('p')).toHaveTextContent('Plaatshouder een');
 
     await user.click(screen.getByTestId('test-option-high'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Goed antwoord');
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
     expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder drie');
 
@@ -126,9 +130,12 @@ describe('ScenarioTest', () => {
       />,
     );
     await user.click(screen.getByTestId('test-option-partial'));
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag twee');
     expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder twee');
     await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
 
     rerender(
@@ -141,6 +148,10 @@ describe('ScenarioTest', () => {
       />,
     );
     await user.click(screen.getByTestId('test-option-inappropriate'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Verkeerd antwoord');
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder een');
     const replay = screen.getByTestId('test-replay');
@@ -156,10 +167,13 @@ describe('ScenarioTest', () => {
     ).toBeTruthy();
     expect(screen.getByTestId('test-option-inappropriate')).toBeEnabled();
     await user.click(screen.getByTestId('test-option-inappropriate'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.getByTestId('test-option-high')).toBeEnabled();
     await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
     expect(screen.queryByText('Competentie scores')).not.toBeInTheDocument();
@@ -180,7 +194,13 @@ describe('ScenarioTest', () => {
     expect(avatar).toBeInTheDocument();
     expect(avatar).not.toHaveStyle({ transform: 'scale(1.5)' });
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    const wrongText = screen.getByTestId('test-option-inappropriate').textContent ?? '';
     await user.click(screen.getByTestId('test-option-inappropriate'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    expect(screen.getByTestId('test-answer-reaction')).toHaveTextContent(wrongText);
+    expect(screen.getByTestId('logopedie-avatar')).not.toHaveStyle({ transform: 'scale(1.5)' });
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     const replay = screen.getByTestId('test-replay');
     expect(replay.tagName).toBe('P');
@@ -191,11 +211,14 @@ describe('ScenarioTest', () => {
     ).not.toBeInTheDocument();
     expect(screen.getByTestId('test-option-inappropriate')).toBeEnabled();
     await user.click(screen.getByTestId('test-option-inappropriate'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.getByTestId('logopedie-avatar')).not.toHaveStyle({ transform: 'scale(1.5)' });
     await user.click(screen.getByTestId('test-option-partial'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag twee');
     await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
   });
@@ -220,7 +243,11 @@ describe('ScenarioTest', () => {
         onClose={() => undefined}
       />,
     );
-    await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('test-option-inappropriate'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Alleen deze vraag');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Verkeerd antwoord');
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
     expect(screen.queryByText('Competentie scores')).not.toBeInTheDocument();
@@ -260,9 +287,13 @@ describe('ScenarioTest', () => {
       />,
     );
     await user.click(screen.getByTestId('test-option-high'));
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Volgende vraag');
     expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('test-option-partial'));
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
   });
@@ -309,10 +340,14 @@ describe('ScenarioTest', () => {
 
     await user.click(screen.getByTestId('test-option-inappropriate'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
     expect(spot).toContainElement(screen.getByTestId('test-placeholder'));
     expect(screen.getByTestId('test-placeholder').querySelector('p')).toHaveTextContent(
       'Foutfilm nog opnemen',
     );
+    expect(screen.queryByTestId('test-replay')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-continue'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     const replay = screen.getByTestId('test-replay');
     expect(replay.tagName).toBe('P');
     expect(replay.closest('button')).toBeNull();
@@ -322,13 +357,19 @@ describe('ScenarioTest', () => {
     );
 
     await user.click(screen.getByTestId('test-option-inappropriate'));
+    await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.getByTestId('test-option-high')).toBeEnabled();
 
     await user.click(screen.getByTestId('test-option-high'));
-    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.getByTestId('test-placeholder').querySelector('p')).toHaveTextContent(
       'Goede reactie filmen',
+    );
+    await user.click(screen.getByTestId('btn-test-continue'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
+    expect(screen.getByTestId('test-placeholder').querySelector('p')).toHaveTextContent(
+      'Plaatshouder drie',
     );
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
     expect(screen.queryByText('Competentie scores')).not.toBeInTheDocument();

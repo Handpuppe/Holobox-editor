@@ -24,7 +24,7 @@ describe('empty editor scenario', () => {
     expect(empty.meta.title).toBe('');
     expect(empty.meta.educationType).toBe('');
     expect(empty.steps[0]?.question).toBe('');
-    expect(empty.steps[0]?.stepName).toBe('');
+    expect(empty.steps[0]?.stepName).toBe('Vraag.1');
     expect(empty.steps[0]?.phaseLabel).toBe('');
     expect(empty.steps[0]?.options.map((option) => option.text)).toEqual(['', '', '']);
     expect(empty.steps[0]?.options.every((option) => option.criticalError === undefined)).toBe(

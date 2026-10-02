@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { optionIdsByQuality, playOptions } from './playthrough';
 import { createSession } from './session';
+import { CONCLUSION_NODE_ID } from './types';
 import { simulationReducer } from '../state/simulationReducer';
 
 describe('conversation branching and client state', () => {
@@ -27,6 +28,26 @@ describe('conversation branching and client state', () => {
       scenario: aphasiaIntakeScenario,
     });
     expect(next?.currentNodeId).toBe(option.nextNodeId);
+  });
+
+  it('treats a missing line as the next question, and a loop as the same question', () => {
+    const scenario = structuredClone(aphasiaIntakeScenario);
+    const first = scenario.nodes[0];
+    const second = scenario.nodes[1];
+    const high = first?.options.find((item) => item.quality === 'high');
+    const wrong = first?.options.find((item) => item.quality === 'inappropriate');
+    if (!first || !second || !high || !wrong) {
+      throw new Error('Startvraag ontbreekt.');
+    }
+    high.nextNodeId = CONCLUSION_NODE_ID;
+    wrong.nextNodeId = first.id;
+    const start = createSession(scenario, new Date('2026-09-12T10:00:00.000Z'));
+    const forward = playOptions(start, scenario, [high.id]);
+    expect(forward.currentNodeId).toBe(second.id);
+    expect(forward.status).toBe('in_progress');
+    const again = playOptions(start, scenario, [wrong.id]);
+    expect(again.currentNodeId).toBe(first.id);
+    expect(again.status).toBe('in_progress');
   });
 
   it('changes emotion after a confusing double question', () => {

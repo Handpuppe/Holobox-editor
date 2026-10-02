@@ -1,4 +1,5 @@
 import { conclusionScoreEvents, sanitizeConclusion } from '../domain/conclusion';
+import { followList } from '../domain/followLine';
 import { sanitizeNotes } from '../domain/notes';
 import { clampFatigue, resolveEmotion } from '../domain/session';
 import {
@@ -102,8 +103,15 @@ export function simulationReducer(
       if (!session.transitioning) {
         return session;
       }
-      const nextId = session.queuedNodeId ?? session.currentNodeId;
-      const reachedConclusion = nextId === CONCLUSION_NODE_ID;
+      const requested = session.queuedNodeId ?? session.currentNodeId;
+      const followed = followList(
+        action.scenario.nodes.map((node) => node.id),
+        session.currentNodeId,
+        requested,
+        CONCLUSION_NODE_ID,
+      );
+      const nextId = followed.done ? CONCLUSION_NODE_ID : followed.id;
+      const reachedConclusion = followed.done;
       const nextNode = findNode(action.scenario, nextId);
       return {
         ...session,

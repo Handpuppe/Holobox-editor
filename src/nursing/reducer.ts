@@ -1,3 +1,4 @@
+import { followList } from '../domain/followLine';
 import { currentNursingStep } from './session';
 import type { NursingSession, NursingStep } from './types';
 
@@ -73,13 +74,23 @@ export function nursingReducer(
     if (!step || !option) {
       return session;
     }
-    const completed = option.nextStepId === 'completed';
+    const followed = action.steps
+      ? followList(
+          action.steps.map((item) => item.id),
+          step.id,
+          option.nextStepId,
+          'completed',
+        )
+      : {
+          id: option.nextStepId === 'completed' ? step.id : option.nextStepId,
+          done: option.nextStepId === 'completed',
+        };
     return {
       ...session,
       updatedAt: action.at,
-      currentStepId: completed ? step.id : option.nextStepId,
-      status: completed ? 'completed' : session.status,
-      accumulatedActiveMs: completed ? accrue(session, action.at) : session.accumulatedActiveMs,
+      currentStepId: followed.done ? step.id : followed.id,
+      status: followed.done ? 'completed' : session.status,
+      accumulatedActiveMs: followed.done ? accrue(session, action.at) : session.accumulatedActiveMs,
       mediaState: option.unsafe ? 'kritiek' : 'luisteren',
       sbar: step.sbarField ? { ...session.sbar, [step.sbarField]: option.text } : session.sbar,
       criticalErrors: option.criticalError

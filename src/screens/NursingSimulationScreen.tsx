@@ -42,11 +42,13 @@ export function NursingSimulationScreen() {
     scaleCorrection: teacher.scaleCorrection,
   };
   const last = nursingSession.history.at(-1);
-  const answeredOption = last
-    ? steps
-        .find((item) => item.id === last.stepId)
-        ?.options.find((item) => item.id === last.optionId)
-    : undefined;
+  const stayingOnQuestion = Boolean(last && step && last.stepId === step.id);
+  const answeredOption =
+    last && !stayingOnQuestion
+      ? steps
+          .find((item) => item.id === last.stepId)
+          ?.options.find((item) => item.id === last.optionId)
+      : undefined;
   const placeholderText = answeredOption
     ? answeredOption.answerVideoMode === 'placeholder'
       ? (answeredOption.videoPlaceholder ?? '')
@@ -54,11 +56,12 @@ export function NursingSimulationScreen() {
     : step?.stepVideoMode === 'placeholder'
       ? (step.stepVideoPlaceholder ?? '')
       : '';
-  const mediaSlotId = last
-    ? (steps
-        .find((item) => item.id === last.stepId)
-        ?.options.find((item) => item.id === last.optionId)?.mediaSlotId ?? step?.mediaSlotId)
-    : step?.mediaSlotId;
+  const mediaSlotId =
+    last && !stayingOnQuestion
+      ? (steps
+          .find((item) => item.id === last.stepId)
+          ?.options.find((item) => item.id === last.optionId)?.mediaSlotId ?? step?.mediaSlotId)
+      : step?.mediaSlotId;
   const slot = mediaSlotId ? slotById(mediaSlotId, nursingScenario.mediaSlots) : undefined;
   const progress = (nursingSession.history.length / Math.max(1, steps.length)) * 100;
   const override = mediaSlotId ? teacher.mediaOverrides[mediaSlotId] : undefined;
@@ -80,7 +83,7 @@ export function NursingSimulationScreen() {
         muted={audio.muted}
         volume={audio.volume}
         display={display}
-        replayToken={replayToken}
+        replayToken={replayToken + (stayingOnQuestion ? nursingSession.history.length : 0)}
         onAudioBlocked={() => setAudioBlocked(true)}
         slots={nursingScenario.mediaSlots}
         placeholderText={placeholderText}

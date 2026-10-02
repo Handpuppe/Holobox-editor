@@ -73,7 +73,11 @@ function QuestionCard({
   onOutputPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
   return (
-    <article className="node-card node-card-question" data-testid={`node-question-${row.id}`}>
+    <article
+      className="node-card node-card-question"
+      data-testid={`node-question-${row.id}`}
+      data-drop-step={row.id}
+    >
       <span className="node-port-caption">Scenario input</span>
       <span
         className={`node-port node-port-in${dragging ? ' is-target' : ''}`}
@@ -101,6 +105,58 @@ function QuestionCard({
       </div>
     </article>
   );
+}
+
+function portName(element: Element | null): string {
+  if (!(element instanceof Element)) {
+    return '';
+  }
+  return element.closest('[data-port]')?.getAttribute('data-port') ?? '';
+}
+
+function questionInput(element: Element | null): string {
+  if (!(element instanceof Element) || element.closest('.node-card-answer')) {
+    return '';
+  }
+  const stepId = element.closest('[data-drop-step]')?.getAttribute('data-drop-step') ?? '';
+  return stepId ? `q-in-${stepId}` : '';
+}
+
+// De poort is 14px. Een loslating op de vraagkaart telt als Scenario input.
+function resolveDropTarget(clientX: number, clientY: number): string {
+  const hit =
+    typeof document.elementFromPoint === 'function'
+      ? document.elementFromPoint(clientX, clientY)
+      : null;
+  const direct = portName(hit instanceof Element ? hit : null);
+  if (direct.startsWith('q-in-')) {
+    return direct;
+  }
+  if (hit instanceof Element && hit.closest('.node-card-answer')) {
+    return '';
+  }
+  const card = questionInput(hit instanceof Element ? hit : null);
+  if (card) {
+    return card;
+  }
+  const stack =
+    typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(clientX, clientY)
+      : [];
+  for (const element of stack) {
+    if (element.closest('.node-card-answer')) {
+      continue;
+    }
+    const port = portName(element);
+    if (port.startsWith('q-in-')) {
+      return port;
+    }
+    const fromCard = questionInput(element);
+    if (fromCard) {
+      return fromCard;
+    }
+  }
+  return '';
 }
 
 function AnswerCard({
@@ -163,29 +219,50 @@ export function NodeOverview({ model, onClose, onConnect, onDisconnect }: NodeOv
       return;
     }
     event.preventDefault();
-    const origin = canvas.getBoundingClientRect();
+    const contentPoint = (clientX: number, clientY: number) => {
+      const box = canvas.getBoundingClientRect();
+      return {
+        x: clientX - box.left + canvas.scrollLeft,
+        y: clientY - box.top + canvas.scrollTop,
+      };
+    };
     const rect = event.currentTarget.getBoundingClientRect();
-    const x1 = rect.left + rect.width / 2 - origin.left;
-    const y1 = rect.top + rect.height / 2 - origin.top;
-    const preview = (x2: number, y2: number): DragPreview => ({
-      from,
-      d: wirePath(x1, y1, x2, y2),
-      color: NODE_PORT_COLOR[parsed.quality],
-    });
-    setDragPreview(preview(event.clientX - origin.left, event.clientY - origin.top));
+    const start = contentPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const preview = (clientX: number, clientY: number): DragPreview => {
+      const end = contentPoint(clientX, clientY);
+      return {
+        from,
+        d: wirePath(start.x, start.y, end.x, end.y),
+        color: NODE_PORT_COLOR[parsed.quality],
+      };
+    };
+    const scrollWhileDragging = (clientY: number) => {
+      const edge = 72;
+      let delta = 0;
+      if (clientY < edge) {
+        delta = clientY - edge;
+      } else if (clientY > window.innerHeight - edge) {
+        delta = clientY - (window.innerHeight - edge);
+      }
+      if (delta === 0) {
+        return;
+      }
+      const step = Math.max(-36, Math.min(36, delta));
+      if (canvas.scrollHeight > canvas.clientHeight + 1) {
+        canvas.scrollBy(0, step);
+        return;
+      }
+      window.scrollBy(0, step);
+    };
+    setDragPreview(preview(event.clientX, event.clientY));
     stopDrag.current?.();
     const move = (moveEvent: PointerEvent) => {
-      const box = canvas.getBoundingClientRect();
-      setDragPreview(preview(moveEvent.clientX - box.left, moveEvent.clientY - box.top));
+      scrollWhileDragging(moveEvent.clientY);
+      setDragPreview(preview(moveEvent.clientX, moveEvent.clientY));
     };
     const up = (upEvent: PointerEvent) => {
       stop();
-      const hit =
-        typeof document.elementFromPoint === 'function'
-          ? document.elementFromPoint(upEvent.clientX, upEvent.clientY)
-          : null;
-      const port =
-        hit instanceof Element ? (hit.closest('[data-port]')?.getAttribute('data-port') ?? '') : '';
+      const port = resolveDropTarget(upEvent.clientX, upEvent.clientY);
       if (port) {
         onConnectRef.current?.(from, port);
       }
@@ -217,10 +294,10 @@ export function NodeOverview({ model, onClose, onConnect, onDisconnect }: NodeOv
         }
         const start = from.getBoundingClientRect();
         const end = to.getBoundingClientRect();
-        const x1 = start.left + start.width / 2 - origin.left;
-        const y1 = start.top + start.height / 2 - origin.top;
-        const x2 = end.left + end.width / 2 - origin.left;
-        const y2 = end.top + end.height / 2 - origin.top;
+        const x1 = start.left + start.width / 2 - origin.left + canvas.scrollLeft;
+        const y1 = start.top + start.height / 2 - origin.top + canvas.scrollTop;
+        const x2 = end.left + end.width / 2 - origin.left + canvas.scrollLeft;
+        const y2 = end.top + end.height / 2 - origin.top + canvas.scrollTop;
         const mid = wireMidpoint(x1, y1, x2, y2);
         next.push({
           key: `${wire.from}-${wire.to}`,
@@ -236,12 +313,16 @@ export function NodeOverview({ model, onClose, onConnect, onDisconnect }: NodeOv
       setDrawn(next);
     };
     measure();
+    canvas.addEventListener('scroll', measure);
     if (typeof ResizeObserver === 'undefined') {
-      return;
+      return () => canvas.removeEventListener('scroll', measure);
     }
     const observer = new ResizeObserver(measure);
     observer.observe(canvas);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      canvas.removeEventListener('scroll', measure);
+    };
   }, [model]);
 
   return (

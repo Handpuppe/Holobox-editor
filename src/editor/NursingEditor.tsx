@@ -186,9 +186,7 @@ function OptionAnswerVideoChoice({
               name={`option-answer-video-mode-${option.id}`}
               checked={mode === 'placeholder'}
               data-testid={`nursing-option-mode-placeholder-${option.id}`}
-              onChange={() =>
-                onChange(setAnswerVideoMode(draft, step.id, quality, 'placeholder'))
-              }
+              onChange={() => onChange(setAnswerVideoMode(draft, step.id, quality, 'placeholder'))}
             />
             Placeholder
           </label>
@@ -214,13 +212,20 @@ function OptionAnswerVideoChoice({
             data-testid={`btn-nursing-option-placeholder-save-${option.id}`}
             onClick={() => {
               onChange(saveAnswerPlaceholder(draft, step.id, quality, placeholderState.text));
-              setPlaceholderState({ optionKey: option.id, text: placeholderState.text, saved: true });
+              setPlaceholderState({
+                optionKey: option.id,
+                text: placeholderState.text,
+                saved: true,
+              });
             }}
           >
             Opslaan
           </button>
           {placeholderState.saved ? (
-            <p className="editor-save-ok" data-testid={`nursing-option-placeholder-saved-${option.id}`}>
+            <p
+              className="editor-save-ok"
+              data-testid={`nursing-option-placeholder-saved-${option.id}`}
+            >
               Placeholdertekst staat in dit antwoord.
             </p>
           ) : null}
@@ -235,7 +240,11 @@ function OptionAnswerVideoChoice({
           onChange={(event) => {
             const options = step.options.map((item, index) =>
               index === optionIndex
-                ? { ...item, mediaSlotId: event.target.value || undefined, answerVideoMode: 'video' as const }
+                ? {
+                    ...item,
+                    mediaSlotId: event.target.value || undefined,
+                    answerVideoMode: 'video' as const,
+                  }
                 : item,
             ) as NursingStep['options'];
             onChange({
@@ -309,13 +318,13 @@ export function NursingEditor({
   const previewOption = step?.options[previewOptionIndex] ?? step?.options[0];
   const previewSlotId = previewOption?.mediaSlotId ?? step?.mediaSlotId;
   const previewMedia = slotMediaPath(draft, previewSlotId, stagedMedia);
-  const previewPlaceholder = (
-    previewOption?.answerVideoMode === 'placeholder'
+  const previewPlaceholder =
+    (previewOption?.answerVideoMode === 'placeholder'
       ? previewOption.videoPlaceholder
       : step?.stepVideoMode === 'placeholder'
         ? step.stepVideoPlaceholder
         : ''
-  )?.trim() ?? '';
+    )?.trim() ?? '';
 
   function updateSelected(next: NursingStep) {
     onChange(replaceStep(draft, next.id, next));
@@ -519,7 +528,9 @@ export function NursingEditor({
                     data-testid="nursing-phase"
                     rows={1}
                     value={step.phaseLabel}
-                    onChange={(event) => updateSelected({ ...step, phaseLabel: event.target.value })}
+                    onChange={(event) =>
+                      updateSelected({ ...step, phaseLabel: event.target.value })
+                    }
                   />
                 </div>
               </div>
@@ -593,7 +604,7 @@ export function NursingEditor({
                     </select>
                   </div>
                   <div className={fieldClass(option.text, true)}>
-                    <label htmlFor={`nursing-option-text-${option.id}`}>Wat zegt de student?</label>
+                    <label htmlFor={`nursing-option-text-${option.id}`}>Antwoord keuze</label>
                     <textarea
                       id={`nursing-option-text-${option.id}`}
                       data-testid={`nursing-option-text-${option.id}`}
@@ -655,7 +666,10 @@ export function NursingEditor({
                 />
               )
             ) : previewPlaceholder ? (
-              <div className="video-placeholder-stage" data-testid="editor-nursing-placeholder-preview">
+              <div
+                className="video-placeholder-stage"
+                data-testid="editor-nursing-placeholder-preview"
+              >
                 <p>{previewPlaceholder}</p>
               </div>
             ) : (

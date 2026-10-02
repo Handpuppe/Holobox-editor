@@ -58,6 +58,8 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     expect(screen.getByTestId('editor-issues-ok')).toHaveTextContent('Geen validatiefouten.');
     expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+    expect(screen.getAllByText('Antwoord keuze').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Wat zegt de student?')).not.toBeInTheDocument();
     expect(screen.getByTestId('editor-media')).toBeInTheDocument();
     expect(screen.getByTestId('editor-preview-stage')).not.toHaveStyle({
       transform: 'scale(1.5)',
@@ -290,7 +292,9 @@ describe('EditorApp', () => {
     await user.click(screen.getByTestId('editor-module-nursing'));
     expect(screen.getByTestId('nursing-question')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
-    expect(screen.queryByDisplayValue('Wat is nu je eerste actie bij de luchtweg?')).not.toBeInTheDocument();
+    expect(
+      screen.queryByDisplayValue('Wat is nu je eerste actie bij de luchtweg?'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId('nursing-weights-readonly')).not.toBeInTheDocument();
     expect(screen.queryByText(/Scoreformule/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Situatiebeschrijving')).toBeInTheDocument();
@@ -397,7 +401,9 @@ describe('EditorApp', () => {
     fillNursingTexts('Vraag met vervangen video.');
     expect(screen.getByTestId('nursing-step-video')).toBeInTheDocument();
     await user.click(screen.getByTestId('nursing-step-mode-video'));
-    expect(screen.getByTestId('nursing-step-video-path')).toHaveTextContent('Geen video gekoppeld.');
+    expect(screen.getByTestId('nursing-step-video-path')).toHaveTextContent(
+      'Geen video gekoppeld.',
+    );
     const file = new File([new Uint8Array([1, 2, 3, 4])], 'vervanging.mp4', { type: 'video/mp4' });
     await user.upload(screen.getByTestId('input-nursing-step-replace'), file);
     await user.upload(screen.getByTestId('input-nursing-step-replace'), file);
@@ -486,7 +492,9 @@ describe('EditorApp', () => {
     fireEvent.change(screen.getByTestId('nursing-patient-name'), {
       target: { value: 'Testpatiënt' },
     });
-    expect(screen.getByTestId('nursing-patient-name').closest('.field')).not.toHaveClass('is-empty');
+    expect(screen.getByTestId('nursing-patient-name').closest('.field')).not.toHaveClass(
+      'is-empty',
+    );
     await user.click(screen.getByTestId('btn-add-nursing-step'));
     await user.click(screen.getByTestId('btn-save-json'));
     expect(await screen.findByTestId('editor-save-ok')).toBeInTheDocument();
@@ -765,7 +773,9 @@ describe('EditorApp', () => {
     });
     await user.click(screen.getByTestId('editor-module-nursing'));
     fireEvent.change(screen.getByTestId('nursing-title'), { target: { value: 'Opnamecasus' } });
-    fireEvent.change(screen.getByTestId('nursing-step-name'), { target: { value: 'Eerste vraag' } });
+    fireEvent.change(screen.getByTestId('nursing-step-name'), {
+      target: { value: 'Eerste vraag' },
+    });
     await user.click(screen.getByTestId('nursing-step-mode-placeholder'));
     fireEvent.change(screen.getByTestId('nursing-step-placeholder'), {
       target: { value: 'Patiënt zit rechtop.' },
@@ -809,7 +819,9 @@ describe('EditorApp', () => {
 
     await user.click(screen.getByTestId('editor-module-nursing'));
     fireEvent.change(screen.getByTestId('nursing-title'), { target: { value: 'Opnamecasus' } });
-    fireEvent.change(screen.getByTestId('nursing-step-name'), { target: { value: 'Eerste vraag' } });
+    fireEvent.change(screen.getByTestId('nursing-step-name'), {
+      target: { value: 'Eerste vraag' },
+    });
     fireEvent.change(screen.getByTestId('nursing-phase'), { target: { value: 'Ademhaling' } });
     fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Wat zie je?' } });
     await user.click(screen.getByTestId('nursing-answer-mode-placeholder-partial'));
@@ -824,15 +836,22 @@ describe('EditorApp', () => {
     expect(question).toHaveTextContent('Opnamecasus');
     expect(question).toHaveTextContent('Ademhaling');
     expect(question).toHaveTextContent('Wat zie je?');
-    expect(screen.getByTestId('node-answer-n-1-partial')).toHaveTextContent('Nog filmen: de ademhaling.');
+    expect(screen.getByTestId('node-answer-n-1-partial')).toHaveTextContent(
+      'Nog filmen: de ademhaling.',
+    );
     expect(screen.getByTestId('node-answer-n-1-high')).toBeInTheDocument();
-    expect(screen.getByTestId('node-wires').querySelector('path')).toHaveAttribute('stroke-dasharray', '7 6');
+    expect(screen.getByTestId('node-wires').querySelector('path')).toHaveAttribute(
+      'stroke-dasharray',
+      '7 6',
+    );
 
     await user.click(screen.getByTestId('btn-nodes-back'));
     expect(screen.getByTestId('nursing-title')).toHaveValue('Opnamecasus');
     expect(screen.getByTestId('nursing-step-name')).toHaveValue('Eerste vraag');
     expect(screen.getByTestId('nursing-question')).toHaveValue('Wat zie je?');
-    expect(screen.getByTestId('nursing-answer-placeholder-partial')).toHaveValue('Nog filmen: de ademhaling.');
+    expect(screen.getByTestId('nursing-answer-placeholder-partial')).toHaveValue(
+      'Nog filmen: de ademhaling.',
+    );
   });
 
   it('drags good forward, wrong back to the same question, and keeps the partial line', async () => {
@@ -843,7 +862,9 @@ describe('EditorApp', () => {
     });
     await user.click(screen.getByTestId('editor-module-nursing'));
     fireEvent.change(screen.getByTestId('nursing-title'), { target: { value: 'Opnamecasus' } });
-    fireEvent.change(screen.getByTestId('nursing-step-name'), { target: { value: 'Eerste vraag' } });
+    fireEvent.change(screen.getByTestId('nursing-step-name'), {
+      target: { value: 'Eerste vraag' },
+    });
     fireEvent.change(screen.getByTestId('nursing-phase'), { target: { value: 'Ademhaling' } });
     fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Wat zie je?' } });
     await user.click(screen.getByTestId('nursing-answer-mode-placeholder-partial'));
@@ -865,7 +886,9 @@ describe('EditorApp', () => {
       document.elementFromPoint = () => to;
       act(() => {
         fireEvent.pointerDown(from, { clientX: 3, clientY: 3, button: 0 });
-        window.dispatchEvent(new PointerEvent('pointerup', { clientX: 18, clientY: 18, bubbles: true }));
+        window.dispatchEvent(
+          new PointerEvent('pointerup', { clientX: 18, clientY: 18, bubbles: true }),
+        );
       });
     };
     try {
@@ -873,33 +896,146 @@ describe('EditorApp', () => {
       drop('a-out-n-1-high', 'q-in-n-extra-1');
       drop('q-out-n-1-inappropriate', 'q-in-n-1');
       expect(screen.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toBeInTheDocument();
-      expect(screen.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toBeInTheDocument();
-      expect(screen.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toBeInTheDocument();
-      expect(screen.getByTestId('node-overview').querySelectorAll('[data-wire-to="q-in-n-extra-1"]')).toHaveLength(2);
-      expect(screen.getByTestId('node-answer-n-1-partial')).toHaveTextContent('Nog filmen: de ademhaling.');
+      expect(
+        screen.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId('node-overview').querySelectorAll('[data-wire-to="q-in-n-extra-1"]'),
+      ).toHaveLength(2);
+      expect(screen.getByTestId('node-answer-n-1-partial')).toHaveTextContent(
+        'Nog filmen: de ademhaling.',
+      );
       expect(screen.getByTestId('node-answer-n-1-high')).toBeInTheDocument();
 
       await user.click(screen.getByTestId('btn-delete-wire-a-out-n-1-partial'));
-      expect(screen.queryByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1'),
+      ).not.toBeInTheDocument();
       expect(screen.getByTestId('node-answer-n-1-partial')).toBeInTheDocument();
       expect(screen.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toBeInTheDocument();
-      expect(screen.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1'),
+      ).toBeInTheDocument();
 
       drop('a-out-n-1-partial', 'q-in-n-extra-1');
-      expect(screen.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1'),
+      ).toBeInTheDocument();
     } finally {
       document.elementFromPoint = previous;
     }
 
     await user.click(screen.getByTestId('btn-nodes-back'));
     expect(screen.getByTestId('nursing-question')).toHaveValue('Wat zie je?');
-    expect(screen.getByTestId('nursing-answer-placeholder-partial')).toHaveValue('Nog filmen: de ademhaling.');
-    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Wat zie je nu?' } });
+    expect(screen.getByTestId('nursing-answer-placeholder-partial')).toHaveValue(
+      'Nog filmen: de ademhaling.',
+    );
+    fireEvent.change(screen.getByTestId('nursing-question'), {
+      target: { value: 'Wat zie je nu?' },
+    });
     await user.click(screen.getByTestId('btn-nodes'));
     expect(screen.getByTestId('node-question-n-1')).toHaveTextContent('Wat zie je nu?');
     expect(screen.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toBeInTheDocument();
     expect(screen.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toBeInTheDocument();
     expect(screen.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toBeInTheDocument();
-    expect(screen.getByTestId('node-answer-n-1-partial')).toHaveTextContent('Nog filmen: de ademhaling.');
+    expect(screen.getByTestId('node-answer-n-1-partial')).toHaveTextContent(
+      'Nog filmen: de ademhaling.',
+    );
+  });
+
+  it('plays the current nursing lines from Start test and returns to the same form', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('editor-module-nursing'));
+    expect(screen.getAllByText('Antwoord keuze').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Wat zegt de student?')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Vraag een' } });
+    await user.click(screen.getByTestId('nursing-step-mode-placeholder'));
+    fireEvent.change(screen.getByTestId('nursing-step-placeholder'), {
+      target: { value: 'Plaatshouder een' },
+    });
+    await user.click(screen.getByTestId('btn-nursing-step-placeholder-save'));
+    await user.click(screen.getByTestId('btn-add-nursing-step'));
+    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Vraag twee' } });
+    await user.click(screen.getByTestId('btn-add-nursing-step'));
+    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: 'Vraag drie' } });
+    await user.click(screen.getByTestId('btn-nodes'));
+
+    const previous = document.elementFromPoint;
+    const drop = (fromPort: string, toPort: string) => {
+      const from = document.querySelector(`[data-port="${fromPort}"]`);
+      const to = document.querySelector(`[data-port="${toPort}"]`);
+      if (!(from instanceof HTMLElement) || !(to instanceof Element)) {
+        throw new Error(`Poort ontbreekt: ${fromPort} -> ${toPort}`);
+      }
+      document.elementFromPoint = () => to;
+      act(() => {
+        fireEvent.pointerDown(from, { clientX: 3, clientY: 3, button: 0 });
+        window.dispatchEvent(
+          new PointerEvent('pointerup', { clientX: 18, clientY: 18, bubbles: true }),
+        );
+      });
+    };
+    try {
+      drop('a-out-n-1-high', 'q-in-n-extra-2');
+      drop('a-out-n-1-partial', 'q-in-n-extra-1');
+      drop('a-out-n-1-inappropriate', 'q-in-n-1');
+      drop('a-out-n-extra-1-high', 'q-in-n-extra-2');
+    } finally {
+      document.elementFromPoint = previous;
+    }
+
+    await user.click(screen.getByTestId('btn-nodes-back'));
+    await user.click(screen.getByTestId('nursing-step-tab-n-1'));
+    expect(screen.getByTestId('nursing-question')).toHaveValue('Vraag een');
+    expect(screen.getByTestId('nursing-step-placeholder')).toHaveValue('Plaatshouder een');
+
+    await user.click(screen.getByTestId('btn-start-test'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder een');
+    await user.click(screen.getByTestId('test-option-high'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
+
+    await user.click(screen.getByTestId('btn-test-back'));
+    await user.click(screen.getByTestId('btn-start-test'));
+    await user.click(screen.getByTestId('test-option-partial'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag twee');
+    await user.click(screen.getByTestId('test-option-partial'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
+
+    await user.click(screen.getByTestId('btn-test-back'));
+    await user.click(screen.getByTestId('btn-start-test'));
+    await user.click(screen.getByTestId('test-option-inappropriate'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.getByTestId('test-media-stage')).toContainElement(
+      screen.getByTestId('test-placeholder'),
+    );
+    expect(screen.getByTestId('test-placeholder')).toHaveTextContent('Plaatshouder een');
+    const replay = screen.getByTestId('test-replay');
+    expect(replay.tagName).toBe('P');
+    expect(replay.closest('button')).toBeNull();
+    expect(replay).toHaveTextContent('Deze vraag komt opnieuw.');
+    expect(
+      screen.queryByRole('button', { name: 'Deze vraag komt opnieuw.' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('test-option-high')).toBeEnabled();
+    await user.click(screen.getByTestId('test-option-inappropriate'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('test-option-high'));
+    expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
+    expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
+    expect(screen.queryByText('Competentie scores')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('btn-test-back'));
+    await user.click(screen.getByTestId('nursing-step-tab-n-1'));
+    expect(screen.getByTestId('nursing-question')).toHaveValue('Vraag een');
+    expect(screen.getByTestId('nursing-step-placeholder')).toHaveValue('Plaatshouder een');
   });
 });

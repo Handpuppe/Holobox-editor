@@ -298,4 +298,48 @@ describe('NodeOverview', () => {
     }
     expect(onConnect).toHaveBeenCalledWith(`q-out-${stepId}-inappropriate`, `q-in-${stepId}`);
   });
+
+  it('drops a dragged output on the question card itself', () => {
+    const draft = emptyNursingScenario();
+    const stepId = draft.steps[0]!.id;
+    const model = nursingNodeOverview(draft);
+    const onConnect = vi.fn();
+    render(<NodeOverview model={model} onClose={vi.fn()} onConnect={onConnect} />);
+    const from = document.querySelector(`[data-port="q-out-${stepId}-high"]`);
+    const card = document.querySelector(`[data-testid="node-question-${stepId}"]`);
+    if (!(from instanceof HTMLElement) || !(card instanceof Element)) {
+      throw new Error('Vraagkaart ontbreekt.');
+    }
+    const previous = document.elementFromPoint;
+    document.elementFromPoint = () => card;
+    try {
+      fireEvent.pointerDown(from, { clientX: 4, clientY: 4, button: 0 });
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: 40, clientY: 40, bubbles: true }));
+    } finally {
+      document.elementFromPoint = previous;
+    }
+    expect(onConnect).toHaveBeenCalledWith(`q-out-${stepId}-high`, `q-in-${stepId}`);
+  });
+
+  it('ignores a drop on an answer card', () => {
+    const draft = emptyNursingScenario();
+    const stepId = draft.steps[0]!.id;
+    const model = nursingNodeOverview(draft);
+    const onConnect = vi.fn();
+    render(<NodeOverview model={model} onClose={vi.fn()} onConnect={onConnect} />);
+    const from = document.querySelector(`[data-port="q-out-${stepId}-partial"]`);
+    const card = document.querySelector(`[data-testid="node-answer-${stepId}-partial"]`);
+    if (!(from instanceof HTMLElement) || !(card instanceof Element)) {
+      throw new Error('Antwoordkaart ontbreekt.');
+    }
+    const previous = document.elementFromPoint;
+    document.elementFromPoint = () => card;
+    try {
+      fireEvent.pointerDown(from, { clientX: 4, clientY: 4, button: 0 });
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: 40, clientY: 40, bubbles: true }));
+    } finally {
+      document.elementFromPoint = previous;
+    }
+    expect(onConnect).not.toHaveBeenCalled();
+  });
 });

@@ -32,6 +32,7 @@ import {
   nursingNodeOverview,
 } from './nodeBoard';
 import { PrintListView } from './PrintListView';
+import { ScenarioTest } from './ScenarioTest';
 import { nursingPrintList } from './printList';
 import {
   downloadNursingEnvelope,
@@ -134,6 +135,7 @@ export function EditorApp() {
   const [saving, setSaving] = useState(false);
   const [printListOpen, setPrintListOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
   const [saveBlockIssues, setSaveBlockIssues] = useState<string[] | null>(null);
   const [blockKind, setBlockKind] = useState<'save' | 'import'>('save');
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
@@ -190,7 +192,9 @@ export function EditorApp() {
     let timer = 0;
     if (import.meta.env.MODE !== 'test' && canSaveToThisCopy()) {
       const ping = () => {
-        void fetch(withBaseUrl('/editor-api/editor-alive'), { method: 'POST' }).catch(() => undefined);
+        void fetch(withBaseUrl('/editor-api/editor-alive'), { method: 'POST' }).catch(
+          () => undefined,
+        );
       };
       ping();
       timer = window.setInterval(ping, 800);
@@ -249,38 +253,42 @@ export function EditorApp() {
 
   function connectNodes(from: string, to: string) {
     if (editorModule === 'verpleegkunde') {
-      const next = connectNursingFlow(nursingDraft, from, to);
-      if (next === nursingDraft) {
-        return;
+      setNursingDraft((current) => {
+        const next = connectNursingFlow(current, from, to);
+        if (next !== current) {
+          markNursingDirty();
+        }
+        return next;
+      });
+      return;
+    }
+    setScenario((current) => {
+      const next = connectLogopedieFlow(current, from, to);
+      if (next !== current) {
+        markDirty();
       }
-      markNursingDirty();
-      setNursingDraft(next);
-      return;
-    }
-    const next = connectLogopedieFlow(scenario, from, to);
-    if (next === scenario) {
-      return;
-    }
-    markDirty();
-    setScenario(next);
+      return next;
+    });
   }
 
   function disconnectNodes(from: string) {
     if (editorModule === 'verpleegkunde') {
-      const next = disconnectNursingFlow(nursingDraft, from);
-      if (next === nursingDraft) {
-        return;
+      setNursingDraft((current) => {
+        const next = disconnectNursingFlow(current, from);
+        if (next !== current) {
+          markNursingDirty();
+        }
+        return next;
+      });
+      return;
+    }
+    setScenario((current) => {
+      const next = disconnectLogopedieFlow(current, from);
+      if (next !== current) {
+        markDirty();
       }
-      markNursingDirty();
-      setNursingDraft(next);
-      return;
-    }
-    const next = disconnectLogopedieFlow(scenario, from);
-    if (next === scenario) {
-      return;
-    }
-    markDirty();
-    setScenario(next);
+      return next;
+    });
   }
 
   function resetToSeed() {
@@ -635,13 +643,28 @@ export function EditorApp() {
     setScenario((current) => replaceNode(current, next.id, next));
   }
 
+  if (testOpen) {
+    return (
+      <ScenarioTest
+        module={editorModule}
+        scenario={scenario}
+        nursing={nursingDraft}
+        onClose={() => setTestOpen(false)}
+      />
+    );
+  }
+
   if (nodesOpen) {
     const overview =
       editorModule === 'verpleegkunde'
         ? nursingNodeOverview(nursingDraft)
         : logopedieNodeOverview(scenario);
     return (
-      <div className="scenario-editor node-overview-page" data-testid="screen-scenario-editor" lang="nl">
+      <div
+        className="scenario-editor node-overview-page"
+        data-testid="screen-scenario-editor"
+        lang="nl"
+      >
         <NodeOverview
           model={overview}
           onClose={() => setNodesOpen(false)}
@@ -658,7 +681,11 @@ export function EditorApp() {
         ? nursingPrintList(nursingDraft)
         : { title: scenario.title.trim(), steps: [] };
     return (
-      <div className="scenario-editor print-list-page" data-testid="screen-scenario-editor" lang="nl">
+      <div
+        className="scenario-editor print-list-page"
+        data-testid="screen-scenario-editor"
+        lang="nl"
+      >
         <PrintListView
           title={list.title}
           steps={list.steps}
@@ -690,134 +717,142 @@ export function EditorApp() {
         </div>
         <div className="editor-header-side">
           <div className="editor-actions">
-          <button
-            type="button"
-            className="btn"
-            data-testid="btn-editor-quit"
-            onClick={() => quitEditor()}
-          >
-            Afsluiten
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            data-testid="btn-new-scenario"
-            onClick={startNewScenario}
-          >
-            Nieuw scenario
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            data-testid="btn-print-list"
-            onClick={() => setPrintListOpen(true)}
-          >
-            Printlijst
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            data-testid="btn-nodes"
-            onClick={() => setNodesOpen(true)}
-          >
-            Nodes
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            data-testid="btn-reset-seed"
-            onClick={editorModule === 'logopedie' ? resetToSeed : resetNursingToSeed}
-          >
-            Herstel startkopie
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            data-testid="btn-open-json"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Open JSON
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json,.json"
-            className="visually-hidden"
-            data-testid="input-open-json"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              void openJsonFile(file);
-            }}
-          />
-          <button
-            type="button"
-            className="btn"
-            data-testid="btn-download-json"
-            onClick={() =>
-              editorModule === 'logopedie'
-                ? downloadEnvelope(scenario)
-                : downloadNursingEnvelope(nursingDraft)
-            }
-          >
-            Download JSON
-          </button>
-          {saveOnThisPc ? (
             <button
               type="button"
               className="btn"
-              data-testid="btn-save-json"
-              onClick={() => requestSave()}
-              disabled={saving}
+              data-testid="btn-editor-quit"
+              onClick={() => quitEditor()}
             >
-              Opslaan
+              Afsluiten
             </button>
-          ) : null}
-          {saveOnThisPc ? (
             <button
               type="button"
               className="btn btn-secondary"
-              data-testid="btn-save-as-case"
-              onClick={() => requestSaveAsNewCase()}
-              disabled={saving}
+              data-testid="btn-new-scenario"
+              onClick={startNewScenario}
             >
-              Opslaan als nieuwe casus
+              Nieuw scenario
             </button>
-          ) : null}
-          {saveOnThisPc ? (
             <button
               type="button"
               className="btn btn-secondary"
-              data-testid="btn-export-package"
-              onClick={() => void exportPackage()}
-              disabled={saving}
+              data-testid="btn-print-list"
+              onClick={() => setPrintListOpen(true)}
             >
-              Exporteren
+              Printlijst
             </button>
-          ) : null}
-          {saveOnThisPc ? (
             <button
               type="button"
               className="btn btn-secondary"
-              data-testid="btn-import-package"
-              onClick={() => void importPackageFromPicker()}
-              disabled={saving}
+              data-testid="btn-nodes"
+              onClick={() => setNodesOpen(true)}
             >
-              Importeren
+              Nodes
             </button>
-          ) : null}
-          <input
-            ref={importPackageRef}
-            type="file"
-            accept="application/zip,.zip"
-            className="visually-hidden"
-            data-testid="input-import-package"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              void importPackageFile(file);
-            }}
-          />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-start-test"
+              onClick={() => setTestOpen(true)}
+            >
+              Start test
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-reset-seed"
+              onClick={editorModule === 'logopedie' ? resetToSeed : resetNursingToSeed}
+            >
+              Herstel startkopie
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-open-json"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Open JSON
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="visually-hidden"
+              data-testid="input-open-json"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                void openJsonFile(file);
+              }}
+            />
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-download-json"
+              onClick={() =>
+                editorModule === 'logopedie'
+                  ? downloadEnvelope(scenario)
+                  : downloadNursingEnvelope(nursingDraft)
+              }
+            >
+              Download JSON
+            </button>
+            {saveOnThisPc ? (
+              <button
+                type="button"
+                className="btn"
+                data-testid="btn-save-json"
+                onClick={() => requestSave()}
+                disabled={saving}
+              >
+                Opslaan
+              </button>
+            ) : null}
+            {saveOnThisPc ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-save-as-case"
+                onClick={() => requestSaveAsNewCase()}
+                disabled={saving}
+              >
+                Opslaan als nieuwe casus
+              </button>
+            ) : null}
+            {saveOnThisPc ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-export-package"
+                onClick={() => void exportPackage()}
+                disabled={saving}
+              >
+                Exporteren
+              </button>
+            ) : null}
+            {saveOnThisPc ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-import-package"
+                onClick={() => void importPackageFromPicker()}
+                disabled={saving}
+              >
+                Importeren
+              </button>
+            ) : null}
+            <input
+              ref={importPackageRef}
+              type="file"
+              accept="application/zip,.zip"
+              className="visually-hidden"
+              data-testid="input-import-package"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                void importPackageFile(file);
+              }}
+            />
           </div>
         </div>
       </header>
@@ -1035,110 +1070,112 @@ export function EditorApp() {
                 </section>
 
                 <div className="editor-option-grid">
-                {node.options.map((option, optionIndex) => (
-                  <section
-                    key={option.id}
-                    className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
-                    data-testid={`option-editor-${option.id}`}
-                  >
-                    <div className="option-card-head">
-                      <h2>Antwoord {String(optionIndex + 1)}</h2>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        data-testid={`btn-preview-option-${String(optionIndex)}`}
-                        onClick={() => setPreviewOptionIndex(optionIndex)}
-                      >
-                        Toon gezicht
-                      </button>
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`quality-${option.id}`}>Kwaliteit</label>
-                      <select
-                        id={`quality-${option.id}`}
-                        data-testid={`option-quality-${option.id}`}
-                        value={option.quality}
-                        onChange={(event) =>
-                          updateSelected(
-                            replaceOption(node, optionIndex, {
-                              ...option,
-                              quality: event.target.value as OptionQuality,
-                            }),
-                          )
-                        }
-                      >
-                        {QUALITIES.map((quality) => (
-                          <option key={quality} value={quality}>
-                            {QUALITY_LABELS[quality]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className={fieldClass(option.text)}>
-                      <label htmlFor={`option-text-${option.id}`}>Wat zegt de student?</label>
-                      <textarea
-                        id={`option-text-${option.id}`}
-                        data-testid={`option-text-${option.id}`}
-                        rows={3}
-                        value={option.text}
-                        onChange={(event) =>
-                          updateSelected(
-                            replaceOption(node, optionIndex, {
-                              ...option,
-                              text: event.target.value,
-                            }),
-                          )
-                        }
-                      />
-                    </div>
-                    <div className={fieldClass(option.clientResponse.text)}>
-                      <label htmlFor={`client-response-${option.id}`}>Reactie van de cliënt</label>
-                      <textarea
-                        id={`client-response-${option.id}`}
-                        data-testid={`client-response-${option.id}`}
-                        rows={2}
-                        value={option.clientResponse.text}
-                        onChange={(event) =>
-                          updateSelected(
-                            replaceOption(node, optionIndex, {
-                              ...option,
-                              clientResponse: {
-                                ...option.clientResponse,
-                                text: event.target.value,
-                              },
-                            }),
-                          )
-                        }
-                      />
-                    </div>
-                    <fieldset className="face-picker">
-                      <legend>Gezicht na dit antwoord</legend>
-                      <div className="face-options">
-                        {EDITOR_FACES.map((face) => (
-                          <label key={face.emotion} className="face-option">
-                            <input
-                              type="radio"
-                              name={`face-${option.id}`}
-                              value={face.emotion}
-                              checked={option.emotion === face.emotion}
-                              data-testid={`option-face-${option.id}-${face.emotion}`}
-                              onChange={() => {
-                                setPreviewOptionIndex(optionIndex);
-                                updateSelected(
-                                  replaceOption(node, optionIndex, {
-                                    ...option,
-                                    emotion: face.emotion,
-                                  }),
-                                );
-                              }}
-                            />
-                            {face.label}
-                          </label>
-                        ))}
+                  {node.options.map((option, optionIndex) => (
+                    <section
+                      key={option.id}
+                      className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
+                      data-testid={`option-editor-${option.id}`}
+                    >
+                      <div className="option-card-head">
+                        <h2>Antwoord {String(optionIndex + 1)}</h2>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          data-testid={`btn-preview-option-${String(optionIndex)}`}
+                          onClick={() => setPreviewOptionIndex(optionIndex)}
+                        >
+                          Toon gezicht
+                        </button>
                       </div>
-                    </fieldset>
-                  </section>
-                ))}
+                      <div className="field">
+                        <label htmlFor={`quality-${option.id}`}>Kwaliteit</label>
+                        <select
+                          id={`quality-${option.id}`}
+                          data-testid={`option-quality-${option.id}`}
+                          value={option.quality}
+                          onChange={(event) =>
+                            updateSelected(
+                              replaceOption(node, optionIndex, {
+                                ...option,
+                                quality: event.target.value as OptionQuality,
+                              }),
+                            )
+                          }
+                        >
+                          {QUALITIES.map((quality) => (
+                            <option key={quality} value={quality}>
+                              {QUALITY_LABELS[quality]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className={fieldClass(option.text)}>
+                        <label htmlFor={`option-text-${option.id}`}>Antwoord keuze</label>
+                        <textarea
+                          id={`option-text-${option.id}`}
+                          data-testid={`option-text-${option.id}`}
+                          rows={3}
+                          value={option.text}
+                          onChange={(event) =>
+                            updateSelected(
+                              replaceOption(node, optionIndex, {
+                                ...option,
+                                text: event.target.value,
+                              }),
+                            )
+                          }
+                        />
+                      </div>
+                      <div className={fieldClass(option.clientResponse.text)}>
+                        <label htmlFor={`client-response-${option.id}`}>
+                          Reactie van de cliënt
+                        </label>
+                        <textarea
+                          id={`client-response-${option.id}`}
+                          data-testid={`client-response-${option.id}`}
+                          rows={2}
+                          value={option.clientResponse.text}
+                          onChange={(event) =>
+                            updateSelected(
+                              replaceOption(node, optionIndex, {
+                                ...option,
+                                clientResponse: {
+                                  ...option.clientResponse,
+                                  text: event.target.value,
+                                },
+                              }),
+                            )
+                          }
+                        />
+                      </div>
+                      <fieldset className="face-picker">
+                        <legend>Gezicht na dit antwoord</legend>
+                        <div className="face-options">
+                          {EDITOR_FACES.map((face) => (
+                            <label key={face.emotion} className="face-option">
+                              <input
+                                type="radio"
+                                name={`face-${option.id}`}
+                                value={face.emotion}
+                                checked={option.emotion === face.emotion}
+                                data-testid={`option-face-${option.id}-${face.emotion}`}
+                                onChange={() => {
+                                  setPreviewOptionIndex(optionIndex);
+                                  updateSelected(
+                                    replaceOption(node, optionIndex, {
+                                      ...option,
+                                      emotion: face.emotion,
+                                    }),
+                                  );
+                                }}
+                              />
+                              {face.label}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    </section>
+                  ))}
                 </div>
               </main>
             ) : null}

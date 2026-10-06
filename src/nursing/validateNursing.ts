@@ -172,7 +172,7 @@ export function isMediaSlotConfig(value: unknown): value is MediaSlotConfig {
   }
   if (
     value.primaryMedia &&
-    !value.primaryMedia.replaceAll('\\', '/').startsWith('verpleegkunde/')
+    !/^(gesprekstechnieken|verpleegkunde)\//.test(value.primaryMedia.replaceAll('\\', '/'))
   ) {
     return false;
   }

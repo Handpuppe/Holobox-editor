@@ -5,7 +5,8 @@ import type { NursingScenario, NursingStep } from '../nursing/types';
 import {
   assignStepPrimaryMedia,
   isNursingMediaPath,
-  nursingRelativePathForFile,
+  isOwnedQuestionVideo,
+  saveNursingMediaOp,
   saveStepVideoPlaceholder,
   setStepVideoMode,
   stepPrimaryMediaPath,
@@ -13,6 +14,7 @@ import {
   type StagedNursingMediaOp,
 } from './nursingMedia';
 import { placeholderDraft, syncPlaceholderDraft } from './placeholderDraft';
+import { startVideoRelative } from './questionFolder';
 
 interface NursingStepVideoCardProps {
   draft: NursingScenario;
@@ -21,6 +23,8 @@ interface NursingStepVideoCardProps {
   catalog: string[];
   onChange: (next: NursingScenario) => void;
   onStage: (op: StagedNursingMediaOp) => void;
+  /** In Bewerken blijft het bestand staan tot Opslaan. */
+  deferFileDelete?: boolean;
 }
 
 function isVideoPath(relativePath: string): boolean {
@@ -34,10 +38,12 @@ export function NursingStepVideoCard({
   catalog,
   onChange,
   onStage,
+  deferFileDelete = false,
 }: NursingStepVideoCardProps) {
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [pendingPlaceholder, setPendingPlaceholder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const path = stepPrimaryMediaPath(draft, step);
   const stagedOp = path ? staged.find((item) => item.relativePath === path) : undefined;
@@ -62,6 +68,7 @@ export function NursingStepVideoCard({
   }
   const placeholderField = syncedPlaceholder ?? placeholderState;
   const chooseOptions = catalog.filter((item) => isNursingMediaPath(item));
+  const uploadPath = startVideoRelative(draft.meta.title, step.stepName ?? '');
   const placeholderDraftText = placeholderField.text;
   const savedNote = placeholderField.saved;
 
@@ -80,7 +87,7 @@ export function NursingStepVideoCard({
     }
     if (linkedPath) {
       if (!isNursingMediaPath(linkedPath)) {
-        setError('Alleen media in resources/verpleegkunde/ zijn toegestaan.');
+        setError('Alleen media in resources/gesprekstechnieken/ zijn toegestaan.');
         return;
       }
       setError(null);
@@ -91,13 +98,32 @@ export function NursingStepVideoCard({
     uploadNew(file);
   }
 
+  async function confirmPlaceholder() {
+    const path = linkedPath;
+    setPendingPlaceholder(false);
+    if (!path) {
+      onChange(setStepVideoMode(draft, step.id, 'placeholder'));
+      return;
+    }
+    if (isOwnedQuestionVideo(path) && !deferFileDelete) {
+      try {
+        await saveNursingMediaOp({ type: 'delete', relativePath: path });
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Verwijderen van de video is mislukt.');
+        return;
+      }
+    }
+    onStage({ type: 'delete', relativePath: path });
+    onChange(setStepVideoMode(unlinkDeletedNursingMedia(draft, path), step.id, 'placeholder'));
+  }
+
   function uploadNew(file: File | undefined) {
     if (!file) {
       return;
     }
-    const relativePath = nursingRelativePathForFile(file.name);
+    const relativePath = uploadPath;
     if (!relativePath) {
-      setError('Alleen media in resources/verpleegkunde/ zijn toegestaan.');
+      setError('Alleen media in resources/gesprekstechnieken/ zijn toegestaan.');
       return;
     }
     setError(null);
@@ -135,6 +161,10 @@ export function NursingStepVideoCard({
               data-testid="nursing-step-mode-placeholder"
               onChange={() => {
                 setError(null);
+                if (linkedPath) {
+                  setPendingPlaceholder(true);
+                  return;
+                }
                 onChange(setStepVideoMode(draft, step.id, 'placeholder'));
               }}
             />
@@ -182,138 +212,140 @@ export function NursingStepVideoCard({
       ) : null}
       {mode === 'video' ? (
         <>
-      <p className="muted">
-        Alleen resources/verpleegkunde/. Logopedie-bestanden blijven ongewijzigd.
-      </p>
-      <p className="muted" data-testid="nursing-step-video-path">
-        {linkedPath ?? 'Geen video gekoppeld.'}
-      </p>
-      <div className="editor-media-preview" data-testid="nursing-step-video-preview">
-        {linkedPath && previewUrl ? (
-          isVideoPath(linkedPath) ? (
-            <video
-              src={previewUrl}
-              className="editor-media-preview-video"
-              data-testid="nursing-step-video-player"
-              controls
-              playsInline
-              preload="metadata"
-            >
-              <track
-                kind="captions"
-                srcLang="nl"
-                label="Nederlands"
-                src="data:text/vtt,WEBVTT%0A%0A00:00.000%20--%3E%2000:59.000%0AVoorbeeldvideo"
-              />
-            </video>
-          ) : (
-            <img
-              src={previewUrl}
-              alt={linkedPath}
-              className="editor-media-preview-img"
-              data-testid="nursing-step-video-image"
-            />
-          )
-        ) : (
-          <p className="muted" data-testid="nursing-step-video-missing">
-            Geen video. Kies of upload een bestand vóór Opslaan.
+          <p className="muted" data-testid="nursing-step-upload-target">
+            {uploadPath
+              ? `Nieuwe upload: resources/${uploadPath}`
+              : 'Alleen resources/gesprekstechnieken/. Logopedie-bestanden blijven ongewijzigd.'}
           </p>
-        )}
-      </div>
-      {error ? (
-        <p className="editor-open-error" data-testid="nursing-step-video-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <div className="field">
-        <label htmlFor="nursing-step-choose-video">Kies bestaande video</label>
-        <select
-          id="nursing-step-choose-video"
-          data-testid="nursing-step-choose-video"
-          value={linkedPath ?? ''}
-          onChange={(event) => {
-            const next = event.target.value;
-            setError(null);
-            onChange(
-              setStepVideoMode(
-                assignStepPrimaryMedia(draft, step.id, next || null),
-                step.id,
-                'video',
-              ),
-            );
-          }}
-        >
-          <option value="">Geen</option>
-          {chooseOptions.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="editor-media-actions">
-        <button
-          type="button"
-          className="btn btn-secondary"
-          data-testid="btn-nursing-step-replace"
-          onClick={() => replaceInputRef.current?.click()}
-        >
-          {linkedPath ? 'Vervangen' : 'Uploaden'}
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          data-testid="btn-nursing-step-upload"
-          onClick={() => uploadInputRef.current?.click()}
-        >
-          Nieuwe video koppelen
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          data-testid="btn-nursing-step-unlink"
-          disabled={!linkedPath}
-          onClick={() => {
-            setError(null);
-            onChange(assignStepPrimaryMedia(draft, step.id, null));
-          }}
-        >
-          Ontkoppelen
-        </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          data-testid="btn-nursing-step-delete"
-          disabled={!linkedPath}
-          onClick={() => setPendingDelete(true)}
-        >
-          Verwijderen
-        </button>
-        <input
-          ref={replaceInputRef}
-          type="file"
-          accept="video/mp4,video/webm,image/png,image/jpeg,image/webp,.mp4,.webm,.png,.jpg,.jpeg,.webp"
-          className="visually-hidden"
-          data-testid="input-nursing-step-replace"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = '';
-            replaceCurrent(file);
-          }}
-        />
-        <input
-          ref={uploadInputRef}
-          type="file"
-          accept="video/mp4,video/webm,image/png,image/jpeg,image/webp,.mp4,.webm,.png,.jpg,.jpeg,.webp"
-          className="visually-hidden"
-          data-testid="input-nursing-step-upload"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = '';
-            uploadNew(file);
-          }}
-        />
-      </div>
+          <p className="muted" data-testid="nursing-step-video-path">
+            {linkedPath ?? 'Geen video gekoppeld.'}
+          </p>
+          <div className="editor-media-preview" data-testid="nursing-step-video-preview">
+            {linkedPath && previewUrl ? (
+              isVideoPath(linkedPath) ? (
+                <video
+                  src={previewUrl}
+                  className="editor-media-preview-video"
+                  data-testid="nursing-step-video-player"
+                  controls
+                  playsInline
+                  preload="metadata"
+                >
+                  <track
+                    kind="captions"
+                    srcLang="nl"
+                    label="Nederlands"
+                    src="data:text/vtt,WEBVTT%0A%0A00:00.000%20--%3E%2000:59.000%0AVoorbeeldvideo"
+                  />
+                </video>
+              ) : (
+                <img
+                  src={previewUrl}
+                  alt={linkedPath}
+                  className="editor-media-preview-img"
+                  data-testid="nursing-step-video-image"
+                />
+              )
+            ) : (
+              <p className="muted" data-testid="nursing-step-video-missing">
+                Geen video. Kies of upload een bestand vóór Opslaan.
+              </p>
+            )}
+          </div>
+          {error ? (
+            <p className="editor-open-error" data-testid="nursing-step-video-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="field">
+            <label htmlFor="nursing-step-choose-video">Kies bestaande video</label>
+            <select
+              id="nursing-step-choose-video"
+              data-testid="nursing-step-choose-video"
+              value={linkedPath ?? ''}
+              onChange={(event) => {
+                const next = event.target.value;
+                setError(null);
+                onChange(
+                  setStepVideoMode(
+                    assignStepPrimaryMedia(draft, step.id, next || null),
+                    step.id,
+                    'video',
+                  ),
+                );
+              }}
+            >
+              <option value="">Geen</option>
+              {chooseOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="editor-media-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-nursing-step-replace"
+              onClick={() => replaceInputRef.current?.click()}
+            >
+              {linkedPath ? 'Vervangen' : 'Uploaden'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-nursing-step-upload"
+              onClick={() => uploadInputRef.current?.click()}
+            >
+              Nieuwe video koppelen
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-nursing-step-unlink"
+              disabled={!linkedPath}
+              onClick={() => {
+                setError(null);
+                onChange(assignStepPrimaryMedia(draft, step.id, null));
+              }}
+            >
+              Ontkoppelen
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              data-testid="btn-nursing-step-delete"
+              disabled={!linkedPath}
+              onClick={() => setPendingDelete(true)}
+            >
+              Verwijderen
+            </button>
+            <input
+              ref={replaceInputRef}
+              type="file"
+              accept="video/mp4,video/webm,image/png,image/jpeg,image/webp,.mp4,.webm,.png,.jpg,.jpeg,.webp"
+              className="visually-hidden"
+              data-testid="input-nursing-step-replace"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                replaceCurrent(file);
+              }}
+            />
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="video/mp4,video/webm,image/png,image/jpeg,image/webp,.mp4,.webm,.png,.jpg,.jpeg,.webp"
+              className="visually-hidden"
+              data-testid="input-nursing-step-upload"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                uploadNew(file);
+              }}
+            />
+          </div>
         </>
       ) : null}
       {mode == null ? (
@@ -322,6 +354,39 @@ export function NursingStepVideoCard({
         </p>
       ) : null}
 
+      {pendingPlaceholder && linkedPath ? (
+        <Dialog
+          title="Video verwijderen?"
+          testId="dialog-placeholder-delete-step"
+          onClose={() => setPendingPlaceholder(false)}
+        >
+          <p>
+            De video wordt verwijderd
+            {isOwnedQuestionVideo(linkedPath) ? ` uit resources/${linkedPath}` : ''}. Opnieuw een
+            video kiezen betekent opnieuw uploaden.
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-danger"
+              data-testid="btn-confirm-placeholder-delete-step"
+              onClick={() => {
+                void confirmPlaceholder();
+              }}
+            >
+              Verwijderen
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-cancel-placeholder-delete-step"
+              onClick={() => setPendingPlaceholder(false)}
+            >
+              Annuleren
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
       {pendingDelete && linkedPath ? (
         <Dialog
           title="Video verwijderen?"
@@ -330,7 +395,7 @@ export function NursingStepVideoCard({
         >
           <p>
             Verwijder {linkedPath}? Dit geldt pas na Opslaan, blijft binnen
-            resources/verpleegkunde/, en ontkoppelt stappen die dit bestand gebruiken.
+            resources/gesprekstechnieken/, en ontkoppelt stappen die dit bestand gebruiken.
           </p>
           <div className="stack" style={{ marginTop: 24 }}>
             <button

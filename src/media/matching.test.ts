@@ -10,10 +10,16 @@ import { mediaSlots } from './scenarioMedia';
 import { mediaManifest } from './generated/media-manifest';
 
 describe('media matching', () => {
-  it('finds the nine nursing videos', () => {
-    const nursing = mediaManifest.items.filter((item) => item.module === 'verpleegkunde');
-    expect(nursing).toHaveLength(9);
+  it('finds the nursing videos', () => {
+    const items = mediaManifest.items as readonly {
+      module: string;
+      fileType: string;
+      relativePath: string;
+    }[];
+    const nursing = items.filter((item) => item.module === 'verpleegkunde');
+    expect(nursing).toHaveLength(7);
     expect(nursing.every((item) => item.fileType === 'video')).toBe(true);
+    expect(nursing.every((item) => item.relativePath.startsWith('gesprekstechnieken/'))).toBe(true);
   });
 
   it('ranks airway video first for airway keywords', () => {
@@ -28,9 +34,14 @@ describe('media matching', () => {
   });
 
   it('uses an override path when valid', () => {
-    const path = 'verpleegkunde/Staat is pijn.mp4';
+    const path =
+      mediaManifest.items.find((item) => item.relativePath.endsWith('/Staat is pijn.mp4'))
+        ?.relativePath ?? '';
+    expect(path).not.toBe('');
     const picked = pickPrimary('verpleegkunde', ['luchtweg'], path);
     expect(picked.primary?.relativePath).toBe(path);
+    const legacy = pickPrimary('verpleegkunde', ['luchtweg'], 'verpleegkunde/Staat is pijn.mp4');
+    expect(legacy.primary?.relativePath).toBe(path);
   });
 
   it('scores higher when more keywords match', () => {

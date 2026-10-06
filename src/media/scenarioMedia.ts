@@ -1,15 +1,15 @@
 import type { MediaSlotConfig } from './types';
 
-const AIRWAY = 'verpleegkunde/Staat is Mogelijk bedreigde luchtweg – A (Airway).mp4';
-const DYSPNEA = 'verpleegkunde/Staat is benauwd.mp4';
-const OXYGEN = 'verpleegkunde/Staat is zuurstof te kort.mp4';
-const HYPER = 'verpleegkunde/Staat is hyperventileren.mp4';
-const CIRC = 'verpleegkunde/Staat is Bleek en klam.mp4';
-const DISABILITY = 'verpleegkunde/Staat is Verminderde bewustzijn.mp4';
+const AIRWAY = 'gesprekstechnieken/Staat is Mogelijk bedreigde luchtweg – A (Airway).mp4';
+const DYSPNEA = 'gesprekstechnieken/Staat is benauwd.mp4';
+const OXYGEN = 'gesprekstechnieken/Staat is zuurstof te kort.mp4';
+const HYPER = 'gesprekstechnieken/Staat is hyperventileren.mp4';
+const CIRC = 'gesprekstechnieken/Staat is Bleek en klam.mp4';
+const DISABILITY = 'gesprekstechnieken/Staat is Verminderde bewustzijn.mp4';
 const RASH =
-  'verpleegkunde/Staat is Huiduitslag of mogelijke allergische reactie – E (ExposureEnvironment).mp4';
-const FEVER = 'verpleegkunde/Staat is koorts.mp4';
-const PAIN = 'verpleegkunde/Staat is pijn.mp4';
+  'gesprekstechnieken/Staat is Huiduitslag of mogelijke allergische reactie – E (ExposureEnvironment).mp4';
+const FEVER = 'gesprekstechnieken/Staat is koorts.mp4';
+const PAIN = 'gesprekstechnieken/Staat is pijn.mp4';
 
 export const NURSING_SCENARIO_ID = 'abcde-sbar-sara-meijer';
 

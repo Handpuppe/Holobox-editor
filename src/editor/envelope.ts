@@ -1,5 +1,6 @@
 import { withBaseUrl } from '../media/baseUrl';
 import type { Scenario } from '../domain/types';
+import { parseNodeLayout } from './nodeLayout';
 
 export const LOGOPEDIE_ENVELOPE_SCHEMA_VERSION = 1;
 export const LOGOPEDIE_ENVELOPE_MODULE = 'logopedie';
@@ -155,7 +156,14 @@ export function parseLogopedieEnvelope(text: string): EnvelopeParseResult {
     return { ok: false, error: shapeError };
   }
   try {
-    return { ok: true, scenario: structuredClone(data.scenario) as unknown as Scenario };
+    const scenario = structuredClone(data.scenario) as unknown as Scenario;
+    const nodeLayout = parseNodeLayout(scenario.nodeLayout);
+    if (nodeLayout) {
+      scenario.nodeLayout = nodeLayout;
+    } else {
+      delete scenario.nodeLayout;
+    }
+    return { ok: true, scenario };
   } catch {
     return { ok: false, error: 'Het scenario kon niet worden geladen.' };
   }

@@ -1,6 +1,7 @@
 import { withBaseUrl } from '../media/baseUrl';
 import type { MediaSlotConfig } from '../media/types';
 import { builtInNursingScenario } from '../nursing/scenario';
+import type { NodeLayout } from '../domain/types';
 import type {
   NursingOption,
   NursingPatient,
@@ -9,6 +10,7 @@ import type {
   NursingStep,
 } from '../nursing/types';
 import { isMediaSlotConfig } from '../nursing/validateNursing';
+import { parseNodeLayout } from './nodeLayout';
 
 export const VERPLEEGKUNDE_ENVELOPE_SCHEMA_VERSION = 1;
 export const VERPLEEGKUNDE_ENVELOPE_MODULE = 'verpleegkunde';
@@ -23,13 +25,14 @@ export interface VerpleegkundeScenarioEnvelope {
   learningObjectives: string[];
   steps: NursingStep[];
   mediaSlots: MediaSlotConfig[];
+  nodeLayout?: NodeLayout;
 }
 
 export type NursingEnvelopeParseResult =
   { ok: true; scenario: NursingScenario } | { ok: false; error: string };
 
 export function toVerpleegkundeEnvelope(scenario: NursingScenario): VerpleegkundeScenarioEnvelope {
-  return {
+  const envelope: VerpleegkundeScenarioEnvelope = {
     schemaVersion: VERPLEEGKUNDE_ENVELOPE_SCHEMA_VERSION,
     module: VERPLEEGKUNDE_ENVELOPE_MODULE,
     meta: scenario.meta,
@@ -38,6 +41,10 @@ export function toVerpleegkundeEnvelope(scenario: NursingScenario): Verpleegkund
     steps: scenario.steps,
     mediaSlots: scenario.mediaSlots,
   };
+  if (scenario.nodeLayout && Object.keys(scenario.nodeLayout).length > 0) {
+    envelope.nodeLayout = scenario.nodeLayout;
+  }
+  return envelope;
 }
 
 export function nursingEnvelopeJson(scenario: NursingScenario): string {
@@ -186,7 +193,7 @@ export function parseVerpleegkundeEnvelope(text: string): NursingEnvelopeParseRe
   if (!data.mediaSlots.every(isMediaSlotConfig)) {
     return {
       ok: false,
-      error: 'een mediaslot is ongeldig of ligt buiten resources/verpleegkunde/.',
+      error: 'een mediaslot is ongeldig of ligt buiten resources/gesprekstechnieken/.',
     };
   }
   try {
@@ -199,6 +206,10 @@ export function parseVerpleegkundeEnvelope(text: string): NursingEnvelopeParseRe
       steps: data.steps as NursingStep[],
       mediaSlots: data.mediaSlots,
     }) as NursingScenario;
+    const nodeLayout = parseNodeLayout(data.nodeLayout);
+    if (nodeLayout) {
+      scenario.nodeLayout = nodeLayout;
+    }
     const openError = editorOpenError(scenario);
     if (openError) {
       return { ok: false, error: openError };

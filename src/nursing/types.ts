@@ -1,4 +1,4 @@
-import type { AwardValue, OptionQuality } from '../domain/types';
+import type { AwardValue, NodeLayout, OptionQuality } from '../domain/types';
 import type { MediaSlotConfig, PatientMediaState } from '../media/types';
 
 export const NURSING_SCENARIO_VERSION = '1.0.1';
@@ -40,6 +40,8 @@ export interface NursingOption {
   answerCardMode?: 'video' | 'placeholder';
   /** Opgeslagen voorbeeldtekst in de antwoordkaart. */
   answerCardPlaceholder?: string;
+  /** Editor: mediaslot van de optionele video. Oude scenario's laten dit weg. */
+  answerCardSlotId?: string;
   nextStepId: string;
 }
 
@@ -58,6 +60,8 @@ export interface NursingStep {
   stepVideoMode?: 'video' | 'placeholder';
   /** Tekst die beschrijft welke stapvideo nog moet komen. */
   stepVideoPlaceholder?: string;
+  /** Map onder resources voor een nieuw toegevoegde vraag. Oude vragen laten dit weg. */
+  questionFolder?: string;
   options: [NursingOption, NursingOption, NursingOption];
 }
 
@@ -95,6 +99,8 @@ export interface NursingScenario {
   learningObjectives: string[];
   steps: NursingStep[];
   mediaSlots: MediaSlotConfig[];
+  /** Onthouden plaatsing van de nodekaarten. Afwezig bij oudere casussen. */
+  nodeLayout?: NodeLayout;
 }
 
 export interface NursingScoreEvent {

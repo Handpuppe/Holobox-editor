@@ -38,6 +38,17 @@ describe('logopedie editor envelope', () => {
     expect(aphasiaIntakeScenario.title).not.toBe('Niet de bron');
   });
 
+  it('keeps node positions through save and open', () => {
+    const draft = cloneScenario();
+    draft.nodeLayout = { 'q:intro': { x: 40, y: 80 } };
+    const parsed = parseLogopedieEnvelope(envelopeJson(draft));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.scenario.nodeLayout).toEqual({ 'q:intro': { x: 40, y: 80 } });
+  });
+
   it('rejects invalid JSON, the wrong module, and an incomplete scenario', () => {
     expect(parseLogopedieEnvelope('{')).toEqual({
       ok: false,

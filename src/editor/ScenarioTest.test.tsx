@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CONCLUSION_NODE_ID, type Scenario } from '../domain/types';
 import { emptyNursingScenario } from './emptyScenario';
 import { cloneScenario } from './cloneScenario';
@@ -93,6 +93,50 @@ function logopedieWithLines(): Scenario {
 }
 
 describe('ScenarioTest', () => {
+  it('steps one answer back and stays open until Test sluiten', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <ScenarioTest
+        module="verpleegkunde"
+        scenario={cloneScenario()}
+        nursing={nursingWithLines()}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.getByTestId('btn-test-step-back')).toBeDisabled();
+    expect(screen.getByTestId('btn-test-close')).toBeEnabled();
+    await user.click(screen.getByTestId('test-option-high'));
+    expect(screen.getByTestId('btn-test-continue')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-step-back'));
+    expect(screen.getByTestId('screen-scenario-test')).toBeInTheDocument();
+    expect(screen.getByTestId('test-option-high')).toBeInTheDocument();
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
+    await user.click(screen.getByTestId('btn-test-step-back'));
+    expect(screen.getByTestId('screen-scenario-test')).toBeInTheDocument();
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
+    expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
+    await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
+    expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-test-step-back'));
+    expect(screen.getByTestId('screen-scenario-test')).toBeInTheDocument();
+    expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag drie');
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('btn-test-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('follows good, partial and a wrong loop, then ends without scores', async () => {
     const user = userEvent.setup();
     const nursing = nursingWithLines();

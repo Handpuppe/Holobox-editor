@@ -50,7 +50,7 @@ export function answerUploadRelativePath(
     return null;
   }
   const folder = scenarioMediaFolderName(scenarioName, '');
-  const relative = `verpleegkunde/scenarios/${folder}/Antwoorden/${ANSWER_FOLDER_NAMES[quality]}/${base}`;
+  const relative = `gesprekstechnieken/scenarios/${folder}/Antwoorden/${ANSWER_FOLDER_NAMES[quality]}/${base}`;
   return isNursingMediaPath(relative) ? relative : null;
 }
 
@@ -258,6 +258,52 @@ export function assignAnswerVideo(
     stepId,
     quality,
     { ...option, mediaSlotId: slotId, answerVideoMode: 'video' },
+    mediaSlots,
+  );
+}
+
+function answerCardSlotId(stepId: string, quality: AnswerVideoQuality): string {
+  return `nursing-answer-card-${stepId}-${quality}`;
+}
+
+export function assignAnswerCardVideo(
+  scenario: NursingScenario,
+  stepId: string,
+  quality: AnswerVideoQuality,
+  relativePath: string | null,
+): NursingScenario {
+  const step = scenario.steps.find((item) => item.id === stepId);
+  const option = step ? optionForQuality(step, quality) : undefined;
+  if (!step || !option) {
+    return scenario;
+  }
+  if (relativePath && !isNursingMediaPath(relativePath)) {
+    return scenario;
+  }
+  if (!relativePath) {
+    return replaceStepOption(scenario, stepId, quality, {
+      ...option,
+      answerCardSlotId: undefined,
+      answerCardMode: 'video',
+    });
+  }
+  const slotId = answerCardSlotId(step.id, quality);
+  const template =
+    scenario.mediaSlots.find((slot) => slot.slotId === option.answerCardSlotId) ??
+    scenario.mediaSlots[0];
+  if (!template) {
+    return scenario;
+  }
+  const nextSlot = makeAnswerSlot(template, slotId, relativePath, 'Optionele video');
+  const existing = scenario.mediaSlots.some((slot) => slot.slotId === slotId);
+  const mediaSlots = existing
+    ? scenario.mediaSlots.map((slot) => (slot.slotId === slotId ? nextSlot : slot))
+    : [...scenario.mediaSlots, nextSlot];
+  return replaceStepOption(
+    scenario,
+    stepId,
+    quality,
+    { ...option, answerCardSlotId: slotId, answerCardMode: 'video' },
     mediaSlots,
   );
 }

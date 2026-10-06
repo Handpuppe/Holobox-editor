@@ -21,7 +21,7 @@ describe('verpleegkunde answer videos', () => {
     expect(folder).toBe(draft.meta.title);
     const uploaded = answerUploadRelativePath(folder, 'partial', 'ademhaling.mp4');
     expect(uploaded).toBe(
-      `verpleegkunde/scenarios/${folder}/Antwoorden/Deels goed antwoord/ademhaling.mp4`,
+      `gesprekstechnieken/scenarios/${folder}/Antwoorden/Deels goed antwoord/ademhaling.mp4`,
     );
     expect(answerUploadRelativePath(folder, 'high', 'logopedie/erik_basis.png')).toBe(null);
     expect(answerUploadRelativePath(folder, 'inappropriate', '..\\logopedie\\erik.mp4')).toBe(null);

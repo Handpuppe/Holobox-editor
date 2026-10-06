@@ -1,15 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { publicResourceUrl } from '../media/logopedie/resolveAvatar';
 import { mediaItemFromRelativePath } from '../media/matching';
 import type { OptionQuality } from '../domain/types';
-import {
-  type NursingCompetency,
-  type NursingOption,
-  type NursingScenario,
-  type NursingStep,
-} from '../nursing/types';
-import { saveAnswerCardPlaceholder, setAnswerCardMode } from './nursingAnswerMedia';
-import { placeholderDraft, syncPlaceholderDraft } from './placeholderDraft';
+import { type NursingOption, type NursingScenario, type NursingStep } from '../nursing/types';
+import { appendNursingStep } from './nursingSteps';
 import { nursingSaveIssues } from './saveChecks';
 import { NursingAnswerVideos } from './NursingAnswerVideos';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
@@ -57,60 +51,15 @@ function replaceOption(step: NursingStep, optionIndex: number, next: NursingOpti
   return { ...step, options };
 }
 
-function nextCustomStepId(steps: NursingStep[]): string {
-  let n = 1;
-  const ids = new Set(steps.map((step) => step.id));
-  while (ids.has(`n-extra-${String(n)}`)) {
-    n += 1;
-  }
-  return `n-extra-${String(n)}`;
-}
-
-function emptyOption(
-  stepId: string,
-  quality: OptionQuality,
-  nextStepId: string,
-  scored: NursingCompetency[],
-): NursingOption {
-  const awards: NursingOption['competencyAwards'] = {};
-  for (const competency of scored) {
-    awards[competency] = quality === 'high' ? 1 : quality === 'partial' ? 0.5 : 0;
-  }
-  return {
-    id: `${stepId}-${quality}`,
-    text: '',
-    quality,
-    unsafe: quality === 'inappropriate',
-    competencyAwards: awards,
-    delayedFeedback: '',
-    educationalRationale: '',
-    nextStepId,
-  };
-}
-
-function createStep(existing: NursingStep[]): NursingStep {
-  const id = nextCustomStepId(existing);
-  const scored: NursingCompetency[] = ['observation'];
-  return {
-    id,
-    stepName: `Vraag.${existing.length + 1}`,
-    phaseLabel: '',
-    question: '',
-    help: '',
-    mediaSlotId: `nursing-step-${id}`,
-    scoredCompetencies: scored,
-    kind: 'choice',
-    options: [
-      emptyOption(id, 'high', 'completed', scored),
-      emptyOption(id, 'partial', 'completed', scored),
-      emptyOption(id, 'inappropriate', 'completed', scored),
-    ],
-  };
-}
-
 function nursingStepTitle(step: NursingStep, index: number): string {
   const name = step.stepName?.trim();
   return name || `Vraag ${index + 1}`;
+}
+
+export function previewQuestionHeading(step: NursingStep | undefined, index: number): string {
+  const named = step?.stepName?.trim().match(/^Vraag\.(\d+)$/);
+  const number = named?.[1] ?? String(index + 1);
+  return `Voorbeeld - Vraag.${number}`;
 }
 
 function fieldClass(value: string, required: boolean): string {
@@ -140,139 +89,36 @@ function withoutStep(scenario: NursingScenario, stepId: string): NursingScenario
   };
 }
 
-function OptionAnswerVideoChoice({
+export function AnswerColumnMedia({
   draft,
   step,
-  option,
-  optionIndex,
+  columnQuality,
+  catalog,
+  staged,
   onChange,
+  onStage,
+  deferFileDelete,
 }: {
   draft: NursingScenario;
   step: NursingStep;
-  option: NursingOption;
-  optionIndex: number;
+  columnQuality: OptionQuality;
+  catalog: string[];
+  staged: StagedNursingMediaOp[];
   onChange: (next: NursingScenario) => void;
+  onStage: (op: StagedNursingMediaOp) => void;
+  deferFileDelete?: boolean;
 }) {
-  const mode = option.answerCardMode ?? null;
-  const storedPlaceholder = option.answerCardPlaceholder ?? '';
-  const [placeholderState, setPlaceholderState] = useState(() =>
-    placeholderDraft(option.id, storedPlaceholder),
-  );
-  const syncedPlaceholder = syncPlaceholderDraft(placeholderState, option.id, storedPlaceholder);
-  if (syncedPlaceholder) {
-    setPlaceholderState(syncedPlaceholder);
-  }
-  const placeholderField = syncedPlaceholder ?? placeholderState;
-  const quality = option.quality;
   return (
-    <div className="field">
-      <span className="editor-readonly-label" id={`nursing-option-video-label-${option.id}`}>
-        Video bij dit antwoord
-      </span>
-      {mode === 'placeholder' &&
-      placeholderField.saved &&
-      storedPlaceholder.trim() &&
-      placeholderField.text.trim() ? (
-        <div
-          className="editor-media-preview video-placeholder-stage"
-          data-testid={`nursing-option-placeholder-preview-${option.id}`}
-        >
-          <p>{storedPlaceholder.trim()}</p>
-        </div>
-      ) : null}
-      <fieldset className="face-picker">
-        <legend>Video of placeholder</legend>
-        <div className="face-options">
-          <label className="face-option">
-            <input
-              type="radio"
-              name={`option-answer-video-mode-${option.id}`}
-              checked={mode === 'video'}
-              data-testid={`nursing-option-mode-video-${option.id}`}
-              onChange={() => onChange(setAnswerCardMode(draft, step.id, quality, 'video'))}
-            />
-            Video
-          </label>
-          <label className="face-option">
-            <input
-              type="radio"
-              name={`option-answer-video-mode-${option.id}`}
-              checked={mode === 'placeholder'}
-              data-testid={`nursing-option-mode-placeholder-${option.id}`}
-              onChange={() => onChange(setAnswerCardMode(draft, step.id, quality, 'placeholder'))}
-            />
-            Placeholder
-          </label>
-        </div>
-      </fieldset>
-      {mode === 'placeholder' ? (
-        <>
-          <label htmlFor={`nursing-option-placeholder-${option.id}`}>
-            Welke video moet nog komen?
-          </label>
-          <textarea
-            id={`nursing-option-placeholder-${option.id}`}
-            data-testid={`nursing-option-placeholder-${option.id}`}
-            rows={3}
-            value={placeholderField.text}
-            onChange={(event) => {
-              const text = event.target.value;
-              setPlaceholderState((current) => ({ ...current, text, saved: false }));
-              onChange(saveAnswerCardPlaceholder(draft, step.id, quality, text));
-            }}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary"
-            data-testid={`btn-nursing-option-placeholder-save-${option.id}`}
-            onClick={() => {
-              onChange(saveAnswerCardPlaceholder(draft, step.id, quality, placeholderField.text));
-              setPlaceholderState((current) => ({ ...current, saved: true }));
-            }}
-          >
-            Opslaan
-          </button>
-          {placeholderField.saved ? (
-            <p
-              className="editor-save-ok"
-              data-testid={`nursing-option-placeholder-saved-${option.id}`}
-            >
-              Placeholdertekst staat in dit antwoord.
-            </p>
-          ) : null}
-        </>
-      ) : null}
-      {mode === 'video' ? (
-        <select
-          id={`nursing-option-slot-${option.id}`}
-          data-testid={`nursing-option-slot-${option.id}`}
-          aria-labelledby={`nursing-option-video-label-${option.id}`}
-          value={option.mediaSlotId ?? ''}
-          onChange={(event) => {
-            const options = step.options.map((item, index) =>
-              index === optionIndex
-                ? {
-                    ...item,
-                    mediaSlotId: event.target.value || undefined,
-                    answerCardMode: 'video' as const,
-                  }
-                : item,
-            ) as NursingStep['options'];
-            onChange({
-              ...draft,
-              steps: draft.steps.map((item) => (item.id === step.id ? { ...step, options } : item)),
-            });
-          }}
-        >
-          <option value="">Zelfde als de stap</option>
-          {draft.mediaSlots.map((slot) => (
-            <option key={slot.slotId} value={slot.slotId}>
-              {slot.studentLabel.trim() || 'Start video van deze vraag'}
-            </option>
-          ))}
-        </select>
-      ) : null}
-    </div>
+    <NursingAnswerVideos
+      draft={draft}
+      step={step}
+      staged={staged}
+      catalog={catalog}
+      onChange={onChange}
+      onStage={onStage}
+      quality={columnQuality}
+      deferFileDelete={deferFileDelete}
+    />
   );
 }
 
@@ -297,6 +143,85 @@ function slotMediaPath(
     return { path: null, previewUrl: null };
   }
   return { path, previewUrl: publicResourceUrl(path) };
+}
+
+export function NursingPreviewAside({
+  draft,
+  stagedMedia,
+  selectedStepId,
+  previewOptionIndex,
+}: {
+  draft: NursingScenario;
+  stagedMedia: StagedNursingMediaOp[];
+  selectedStepId: string;
+  previewOptionIndex: number;
+}) {
+  const step = draft.steps.find((item) => item.id === selectedStepId) ?? draft.steps[0];
+  const stepIndex = step ? draft.steps.findIndex((item) => item.id === step.id) : 0;
+  const previewOption = step?.options[previewOptionIndex] ?? step?.options[0];
+  const previewSlotId =
+    previewOption?.answerCardSlotId ?? previewOption?.mediaSlotId ?? step?.mediaSlotId;
+  const previewMedia = slotMediaPath(draft, previewSlotId, stagedMedia);
+  const previewPlaceholder =
+    (previewOption?.answerCardMode === 'placeholder'
+      ? previewOption.answerCardPlaceholder
+      : step?.stepVideoMode === 'placeholder'
+        ? step.stepVideoPlaceholder
+        : ''
+    )?.trim() ?? '';
+  return (
+    <aside className="editor-preview editor-header-preview editor-card">
+      <h2 data-testid="preview-nursing-title">
+        {previewQuestionHeading(step, stepIndex < 0 ? 0 : stepIndex)}
+      </h2>
+      <p className="muted" data-testid="preview-nursing-phase">
+        {step?.phaseLabel}
+      </p>
+      <p data-testid="preview-nursing-question">{step?.question}</p>
+      <p className="muted" data-testid="preview-nursing-option">
+        {previewOption?.text}
+      </p>
+      <div className="editor-preview-stage" data-testid="editor-nursing-preview-stage">
+        {previewMedia.previewUrl ? (
+          /\.(mp4|webm|mov|m4v)$/i.test(previewMedia.path ?? '') ? (
+            <video
+              src={previewMedia.previewUrl}
+              className="editor-preview-video"
+              data-testid="editor-nursing-preview-video"
+              controls
+              playsInline
+              preload="metadata"
+            >
+              <track
+                kind="captions"
+                srcLang="nl"
+                label="Nederlands"
+                src="data:text/vtt,WEBVTT%0A%0A00:00.000%20--%3E%2000:59.000%0AVoorbeeldvideo"
+              />
+            </video>
+          ) : (
+            <img
+              src={previewMedia.previewUrl}
+              alt=""
+              className="editor-media-preview-img"
+              data-testid="editor-nursing-preview-image"
+            />
+          )
+        ) : previewPlaceholder ? (
+          <div className="video-placeholder-stage" data-testid="editor-nursing-placeholder-preview">
+            <p>{previewPlaceholder}</p>
+          </div>
+        ) : (
+          <p className="muted">Geen video voor dit antwoord.</p>
+        )}
+      </div>
+      {previewMedia.path ? (
+        <p className="muted">
+          {mediaItemFromRelativePath(previewMedia.path, 'verpleegkunde').relativePath}
+        </p>
+      ) : null}
+    </aside>
+  );
 }
 
 export function NursingEditor({
@@ -326,45 +251,15 @@ export function NursingEditor({
     );
   }, [diskMedia, draft.mediaSlots, stagedMedia]);
   const step = draft.steps.find((item) => item.id === selectedStepId) ?? draft.steps[0];
-  const previewOption = step?.options[previewOptionIndex] ?? step?.options[0];
-  const previewSlotId = previewOption?.mediaSlotId ?? step?.mediaSlotId;
-  const previewMedia = slotMediaPath(draft, previewSlotId, stagedMedia);
-  const previewPlaceholder =
-    (previewOption?.answerCardMode === 'placeholder'
-      ? previewOption.answerCardPlaceholder
-      : step?.stepVideoMode === 'placeholder'
-        ? step.stepVideoPlaceholder
-        : ''
-    )?.trim() ?? '';
 
   function updateSelected(next: NursingStep) {
     onChange(replaceStep(draft, next.id, next));
   }
 
   function addStep() {
-    const next = createStep(draft.steps);
-    const template = draft.mediaSlots[0];
-    const extraSlot = template
-      ? {
-          ...template,
-          slotId: next.mediaSlotId,
-          module: 'verpleegkunde' as const,
-          matchedKeywords: [],
-          primaryMedia: null,
-          idleMedia: null,
-          posterImage: null,
-          alternativeMatches: [],
-          studentLabel: next.phaseLabel,
-          transcript: next.question,
-          captions: '',
-        }
-      : null;
-    onChange({
-      ...draft,
-      steps: [...draft.steps, next],
-      mediaSlots: extraSlot ? [...draft.mediaSlots, extraSlot] : draft.mediaSlots,
-    });
-    onSelectStep(next.id);
+    const added = appendNursingStep(draft);
+    onChange(added.scenario);
+    onSelectStep(added.step.id);
     onPreviewOption(0);
   }
 
@@ -644,25 +539,18 @@ export function NursingEditor({
                             }
                           />
                         </div>
-                        <OptionAnswerVideoChoice
-                          draft={draft}
-                          step={step}
-                          option={option}
-                          optionIndex={optionIndex}
-                          onChange={onChange}
-                        />
+                        {columnQuality ? (
+                          <AnswerColumnMedia
+                            draft={draft}
+                            step={step}
+                            columnQuality={columnQuality}
+                            catalog={mediaPathOptions}
+                            staged={stagedMedia}
+                            onChange={onChange}
+                            onStage={onStage}
+                          />
+                        ) : null}
                       </section>
-                      {columnQuality ? (
-                        <NursingAnswerVideos
-                          draft={draft}
-                          step={step}
-                          staged={stagedMedia}
-                          catalog={mediaPathOptions}
-                          onChange={onChange}
-                          onStage={onStage}
-                          quality={columnQuality}
-                        />
-                      ) : null}
                     </div>
                   );
                 })}
@@ -670,59 +558,6 @@ export function NursingEditor({
             </section>
           </main>
         ) : null}
-
-        <aside className="editor-preview">
-          <h2>Voorbeeld</h2>
-          <p className="muted" data-testid="preview-nursing-phase">
-            {step?.phaseLabel}
-          </p>
-          <p data-testid="preview-nursing-question">{step?.question}</p>
-          <p className="muted" data-testid="preview-nursing-option">
-            {previewOption?.text}
-          </p>
-          <div className="editor-preview-stage" data-testid="editor-nursing-preview-stage">
-            {previewMedia.previewUrl ? (
-              /\.(mp4|webm|mov|m4v)$/i.test(previewMedia.path ?? '') ? (
-                <video
-                  src={previewMedia.previewUrl}
-                  className="editor-preview-video"
-                  data-testid="editor-nursing-preview-video"
-                  controls
-                  playsInline
-                  preload="metadata"
-                >
-                  <track
-                    kind="captions"
-                    srcLang="nl"
-                    label="Nederlands"
-                    src="data:text/vtt,WEBVTT%0A%0A00:00.000%20--%3E%2000:59.000%0AVoorbeeldvideo"
-                  />
-                </video>
-              ) : (
-                <img
-                  src={previewMedia.previewUrl}
-                  alt=""
-                  className="editor-media-preview-img"
-                  data-testid="editor-nursing-preview-image"
-                />
-              )
-            ) : previewPlaceholder ? (
-              <div
-                className="video-placeholder-stage"
-                data-testid="editor-nursing-placeholder-preview"
-              >
-                <p>{previewPlaceholder}</p>
-              </div>
-            ) : (
-              <p className="muted">Geen video voor dit antwoord.</p>
-            )}
-          </div>
-          {previewMedia.path ? (
-            <p className="muted">
-              {mediaItemFromRelativePath(previewMedia.path, 'verpleegkunde').relativePath}
-            </p>
-          ) : null}
-        </aside>
       </div>
     </>
   );

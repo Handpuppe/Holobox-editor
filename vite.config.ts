@@ -19,12 +19,26 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+import { deleteEditorCase } from './src/editor/caseDelete';
 import {
+  EDITOR_DELETE_CASE_PATH,
   EDITOR_SAVE_AS_CASE_PATH,
   newCaseFileName,
   overlayScenarioFileName,
 } from './src/editor/newCaseFile';
+import {
+  caseFileNameForModule,
+  EDITOR_NODE_LAYOUT_PATH,
+  embedNodeLayout,
+  parseStoredNodeLayout,
+} from './src/editor/nodeLayoutFile';
 import { zipStore, type ZipEntry } from './src/editor/zipStore';
+import {
+  removeQuestionFolder,
+  restoreQuestionFolderBackup,
+  writeQuestionFolderFiles,
+  type QuestionFolderBackupFile,
+} from './src/editor/questionFolderWrite';
 
 const packageJson = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
@@ -72,6 +86,11 @@ function isNursingEditorMediaPath(url: string | undefined): boolean {
   return (
     path === '/editor-api/verpleegkunde-media' || path.includes('/editor-api/verpleegkunde-media')
   );
+}
+
+function isQuestionFolderRequest(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/question-folder' || path.endsWith('/editor-api/question-folder');
 }
 
 function isEditorExportPath(url: string | undefined): boolean {
@@ -264,9 +283,12 @@ function safeLogopedieRel(input: string, resourcesRoot: string): string | null {
 }
 
 function safeNursingRel(input: string, resourcesRoot: string): string | null {
-  const normalized = input.replaceAll('\\', '/').replace(/^\/+/, '');
+  let normalized = input.replaceAll('\\', '/').replace(/^\/+/, '');
+  if (normalized.startsWith('verpleegkunde/')) {
+    normalized = `gesprekstechnieken/${normalized.slice('verpleegkunde/'.length)}`;
+  }
   if (
-    !normalized.startsWith('verpleegkunde/') ||
+    !normalized.startsWith('gesprekstechnieken/') ||
     normalized.includes('..') ||
     normalized.includes('logopedie')
   ) {
@@ -276,7 +298,7 @@ function safeNursingRel(input: string, resourcesRoot: string): string | null {
     return null;
   }
   const abs = resolve(resourcesRoot, normalized);
-  const nursingRoot = resolve(resourcesRoot, 'verpleegkunde');
+  const nursingRoot = resolve(resourcesRoot, 'gesprekstechnieken');
   if (abs !== nursingRoot && !abs.startsWith(nursingRoot + sep)) {
     return null;
   }
@@ -477,6 +499,65 @@ function editorSaveAsMiddleware(resourcesRoot: string, distResourcesRoot: string
   };
 }
 
+function isEditorNodeLayoutPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === EDITOR_NODE_LAYOUT_PATH || path.endsWith(EDITOR_NODE_LAYOUT_PATH);
+}
+
+function editorNodeLayoutMiddleware(resourcesRoot: string, distResourcesRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (!isEditorNodeLayoutPath(req.url)) {
+      next();
+      return;
+    }
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+      return;
+    }
+    void readRequestBody(req, MAX_EDITOR_BODY_BYTES)
+      .then((body) => {
+        let data: { module?: unknown; file?: unknown; nodeLayout?: unknown };
+        try {
+          data = JSON.parse(body) as typeof data;
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'Dit bestand is geen geldige JSON.' });
+          return;
+        }
+        const moduleId =
+          data.module === 'logopedie' || data.module === 'verpleegkunde' ? data.module : null;
+        const fileName = moduleId ? caseFileNameForModule(moduleId, String(data.file ?? '')) : null;
+        const layout = parseStoredNodeLayout(data.nodeLayout);
+        if (!moduleId || !fileName || !layout) {
+          sendJson(res, 400, { ok: false, error: 'De nodeposities zijn ongeldig.' });
+          return;
+        }
+        const target = join(resourcesRoot, 'scenarios', fileName);
+        if (!existsSync(target)) {
+          sendJson(res, 404, { ok: false, error: 'Het casusbestand is niet gevonden.' });
+          return;
+        }
+        const embedded = embedNodeLayout(readFileSync(target, 'utf8'), moduleId, layout);
+        if (!embedded.ok) {
+          sendJson(res, 400, { ok: false, error: embedded.error });
+          return;
+        }
+        writeScenarioJson(target, embedded.json, false);
+        const distTarget = join(distResourcesRoot, 'scenarios', fileName);
+        if (existsSync(dirname(distResourcesRoot)) || existsSync(distResourcesRoot)) {
+          writeScenarioJson(distTarget, embedded.json, false);
+        }
+        sendJson(res, 200, { ok: true, file: `resources/scenarios/${fileName}` });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'Het JSON-bestand is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'De nodeposities zijn niet opgeslagen.' });
+      });
+  };
+}
+
 function editorSaveMiddleware(resourcesRoot: string, distResourcesRoot: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const moduleId = editorSaveModule(req.url);
@@ -647,7 +728,7 @@ function editorNursingMediaMiddleware(resourcesRoot: string, projectRoot: string
     if (method === 'GET') {
       sendJson(res, 200, {
         ok: true,
-        items: walkNursingMedia(join(resourcesRoot, 'verpleegkunde'), resourcesRoot),
+        items: walkNursingMedia(join(resourcesRoot, 'gesprekstechnieken'), resourcesRoot),
       });
       return;
     }
@@ -657,7 +738,7 @@ function editorNursingMediaMiddleware(resourcesRoot: string, projectRoot: string
       if (!rel) {
         sendJson(res, 400, {
           ok: false,
-          error: 'Alleen bestanden onder resources/verpleegkunde/ kunnen worden verwijderd.',
+          error: 'Alleen bestanden onder resources/gesprekstechnieken/ kunnen worden verwijderd.',
         });
         return;
       }
@@ -694,7 +775,7 @@ function editorNursingMediaMiddleware(resourcesRoot: string, projectRoot: string
         if (!rel) {
           sendJson(res, 400, {
             ok: false,
-            error: 'Alleen media onder resources/verpleegkunde/ kunnen worden opgeslagen.',
+            error: 'Alleen media onder resources/gesprekstechnieken/ kunnen worden opgeslagen.',
           });
           return;
         }
@@ -731,6 +812,103 @@ function editorNursingMediaMiddleware(resourcesRoot: string, projectRoot: string
   };
 }
 
+function editorQuestionFolderMiddleware(resourcesRoot: string, projectRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (!isQuestionFolderRequest(req.url)) {
+      next();
+      return;
+    }
+    if ((req.method ?? 'GET') !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'POST is toegestaan.' });
+      return;
+    }
+    void readRequestBody(req, MAX_EDITOR_MEDIA_BYTES)
+      .then((body) => {
+        let data: { action?: unknown; folder?: unknown; files?: unknown };
+        try {
+          data = JSON.parse(body) as typeof data;
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'Vraagmap-JSON is ongeldig.' });
+          return;
+        }
+        const folder = typeof data.folder === 'string' ? data.folder : '';
+        const distRoot = join(projectRoot, 'dist', 'resources');
+        if (data.action === 'delete') {
+          const removed = removeQuestionFolder(resourcesRoot, folder);
+          if (!removed.ok) {
+            sendJson(res, 400, { ok: false, error: removed.error });
+            return;
+          }
+          if (existsSync(join(projectRoot, 'dist'))) {
+            removeQuestionFolder(distRoot, folder);
+          }
+          sendJson(res, 200, { ok: true, files: removed.files });
+          return;
+        }
+        if (data.action === 'restore') {
+          if (!Array.isArray(data.files)) {
+            sendJson(res, 400, { ok: false, error: 'Bestanden voor herstel ontbreken.' });
+            return;
+          }
+          const files: QuestionFolderBackupFile[] = [];
+          for (const item of data.files) {
+            if (
+              !item ||
+              typeof item !== 'object' ||
+              typeof (item as { name?: unknown }).name !== 'string' ||
+              typeof (item as { contentBase64?: unknown }).contentBase64 !== 'string'
+            ) {
+              sendJson(res, 400, { ok: false, error: 'Herstelbestand is ongeldig.' });
+              return;
+            }
+            files.push({
+              name: (item as { name: string }).name,
+              contentBase64: (item as { contentBase64: string }).contentBase64,
+            });
+          }
+          const restored = restoreQuestionFolderBackup(resourcesRoot, folder, files);
+          if (!restored.ok) {
+            sendJson(res, 400, { ok: false, error: restored.error });
+            return;
+          }
+          if (existsSync(join(projectRoot, 'dist'))) {
+            restoreQuestionFolderBackup(distRoot, folder, files);
+          }
+          sendJson(res, 200, { ok: true, folder: `resources/${folder}` });
+          return;
+        }
+        if (!data.files || typeof data.files !== 'object' || Array.isArray(data.files)) {
+          sendJson(res, 400, { ok: false, error: 'Placeholderbestanden ontbreken.' });
+          return;
+        }
+        const files: Record<string, string> = {};
+        for (const [key, value] of Object.entries(data.files as Record<string, unknown>)) {
+          if (typeof value !== 'string') {
+            sendJson(res, 400, { ok: false, error: 'Placeholdertekst is ongeldig.' });
+            return;
+          }
+          files[key] = value;
+        }
+        const written = writeQuestionFolderFiles(resourcesRoot, folder, files);
+        if (!written.ok) {
+          sendJson(res, 400, { ok: false, error: written.error });
+          return;
+        }
+        if (existsSync(join(projectRoot, 'dist'))) {
+          writeQuestionFolderFiles(join(projectRoot, 'dist', 'resources'), folder, files);
+        }
+        sendJson(res, 200, { ok: true, folder: `resources/${folder}` });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'De vraagmap is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'Vraagmap opslaan is mislukt.' });
+      });
+  };
+}
+
 function stampPackageName(moduleId: string): string {
   return `${moduleId}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
 }
@@ -762,7 +940,10 @@ function copyModuleMedia(
   moduleId: 'logopedie' | 'verpleegkunde',
   target: string,
 ): void {
-  const source = join(resourcesRoot, moduleId);
+  const source = join(
+    resourcesRoot,
+    moduleId === 'verpleegkunde' ? 'gesprekstechnieken' : moduleId,
+  );
   if (!existsSync(source)) {
     mkdirSync(target, { recursive: true });
     return;
@@ -1054,6 +1235,138 @@ function resolveCatalogFile(
   return null;
 }
 
+function isEditorCasesPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/cases' || path.endsWith('/editor-api/cases');
+}
+
+function isEditorDeleteCasePath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === EDITOR_DELETE_CASE_PATH || path.endsWith(EDITOR_DELETE_CASE_PATH);
+}
+
+function listEditorCaseFiles(
+  moduleId: 'logopedie' | 'verpleegkunde',
+  resourcesRoot: string,
+): Array<{ file: string; title: string; savedAt: string }> {
+  const dir = join(resourcesRoot, 'scenarios');
+  if (!existsSync(dir)) {
+    return [];
+  }
+  const cases: Array<{ file: string; title: string; savedAt: string }> = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.json') || name.endsWith('.bak')) {
+      continue;
+    }
+    if (name !== `${moduleId}.json` && !name.startsWith(`${moduleId}-`)) {
+      continue;
+    }
+    try {
+      const full = join(dir, name);
+      const data = JSON.parse(readFileSync(full, 'utf8')) as {
+        module?: unknown;
+        meta?: { title?: unknown };
+        scenario?: { title?: unknown };
+      };
+      if (data.module !== moduleId) {
+        continue;
+      }
+      const rawTitle = moduleId === 'logopedie' ? data.scenario?.title : data.meta?.title;
+      const title = typeof rawTitle === 'string' && rawTitle.trim() ? rawTitle.trim() : name;
+      cases.push({ file: name, title, savedAt: statSync(full).mtime.toISOString() });
+    } catch {
+      // Sla een onleesbaar bestand over.
+    }
+  }
+  cases.sort((left, right) => {
+    const byTitle = left.title.localeCompare(right.title, 'nl');
+    if (byTitle !== 0) {
+      return byTitle;
+    }
+    const byTime = right.savedAt.localeCompare(left.savedAt);
+    if (byTime !== 0) {
+      return byTime;
+    }
+    return left.file.localeCompare(right.file, 'nl');
+  });
+  return cases;
+}
+
+function editorDeleteCaseMiddleware(resourcesRoot: string, distResourcesRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (!isEditorDeleteCasePath(req.url)) {
+      next();
+      return;
+    }
+    if ((req.method ?? 'GET') !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+      return;
+    }
+    void readRequestBody(req, MAX_EDITOR_BODY_BYTES)
+      .then((body) => {
+        let data: { module?: unknown; file?: unknown; folders?: unknown };
+        try {
+          data = JSON.parse(body) as typeof data;
+        } catch {
+          sendJson(res, 400, { ok: false, error: 'Dit bestand is geen geldige JSON.' });
+          return;
+        }
+        const moduleId =
+          data.module === 'logopedie' || data.module === 'verpleegkunde' ? data.module : null;
+        const file = typeof data.file === 'string' ? data.file : '';
+        const folders = Array.isArray(data.folders)
+          ? data.folders.filter((item): item is string => typeof item === 'string')
+          : [];
+        if (!moduleId) {
+          sendJson(res, 400, { ok: false, error: 'Onbekende module.' });
+          return;
+        }
+        const removed = deleteEditorCase(resourcesRoot, moduleId, file, folders, {
+          requireFile: true,
+        });
+        if (!removed.ok) {
+          sendJson(res, 400, { ok: false, error: removed.error });
+          return;
+        }
+        try {
+          if (existsSync(distResourcesRoot)) {
+            deleteEditorCase(distResourcesRoot, moduleId, file, folders, { requireFile: false });
+          }
+        } catch {
+          // De broncasus is al weg. Een missende dist-kopie houdt het verwijderen niet tegen.
+        }
+        sendJson(res, 200, { ok: true });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'Het verzoek is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'De casus kon niet worden verwijderd.' });
+      });
+  };
+}
+
+function editorCasesMiddleware(resourcesRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (!isEditorCasesPath(req.url)) {
+      next();
+      return;
+    }
+    if ((req.method ?? 'GET') !== 'GET') {
+      sendJson(res, 405, { ok: false, error: 'GET is toegestaan.' });
+      return;
+    }
+    const url = new URL(req.url ?? '', 'http://127.0.0.1');
+    const moduleId = url.searchParams.get('module');
+    if (moduleId !== 'logopedie' && moduleId !== 'verpleegkunde') {
+      sendJson(res, 400, { ok: false, cases: [] });
+      return;
+    }
+    sendJson(res, 200, { ok: true, cases: listEditorCaseFiles(moduleId, resourcesRoot) });
+  };
+}
+
 function scenarioCatalogMiddleware(resourcesRoot: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (isScenarioTilesPath(req.url)) {
@@ -1118,7 +1431,13 @@ function resourcesPlugin(): Plugin {
       next();
       return;
     }
-    const rel = path.slice(index + marker.length);
+    let rel = path.slice(index + marker.length);
+    if (rel.startsWith('verpleegkunde/')) {
+      const mapped = `gesprekstechnieken/${rel.slice('verpleegkunde/'.length)}`;
+      if (existsSync(resolve(resourcesRoot, mapped))) {
+        rel = mapped;
+      }
+    }
     const file = resolve(resourcesRoot, rel);
     if (!file.startsWith(resourcesRoot) || !existsSync(file)) {
       next();
@@ -1141,11 +1460,17 @@ function resourcesPlugin(): Plugin {
       server.middlewares.use(editorQuitMiddleware());
       server.middlewares.use(editorSaveAsMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
+      server.middlewares.use(editorNodeLayoutMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(
         editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
+      server.middlewares.use(
+        editorQuestionFolderMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(editorDeleteCaseMiddleware(resourcesRoot, distResourcesRoot));
+      server.middlewares.use(editorCasesMiddleware(resourcesRoot));
       server.middlewares.use(scenarioCatalogMiddleware(resourcesRoot));
       server.middlewares.use(serveResources);
     },
@@ -1157,11 +1482,17 @@ function resourcesPlugin(): Plugin {
       server.middlewares.use(editorQuitMiddleware());
       server.middlewares.use(editorSaveAsMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorSaveMiddleware(resourcesRoot, distResourcesRoot));
+      server.middlewares.use(editorNodeLayoutMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
       server.middlewares.use(
         editorNursingMediaMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
+      server.middlewares.use(
+        editorQuestionFolderMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(editorDeleteCaseMiddleware(resourcesRoot, distResourcesRoot));
+      server.middlewares.use(editorCasesMiddleware(resourcesRoot));
       server.middlewares.use(scenarioCatalogMiddleware(resourcesRoot));
       server.middlewares.use(serveResources);
       server.middlewares.use((req, res, next) => {

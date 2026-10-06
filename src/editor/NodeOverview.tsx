@@ -1,20 +1,39 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react';
+import type { NodeLayout, OptionQuality } from '../domain/types';
 import {
+  NODE_ANSWER_FALLBACK_HEIGHT,
+  NODE_ANSWER_GAP,
+  NODE_ANSWER_WIDTH,
   NODE_PORT_COLOR,
+  NODE_QUESTION_FALLBACK_HEIGHT,
+  NODE_QUESTION_WIDTH,
+  NODE_ROW_GAP,
+  alignFlowCards,
   parseFlowOutput,
+  placeMissingCards,
   wireMidpoint,
   wirePath,
   type NodeOverviewModel,
   type NodeQuestionView,
+  type WireRect,
 } from './nodeBoard';
+import { sameNodeLayout } from './nodeLayout';
 import { ANSWER_FOLDER_NAMES, ANSWER_VIDEO_QUALITIES } from './nursingAnswerMedia';
 import './nodeOverview.css';
+
+export interface NodeEditTarget {
+  stepId: string;
+  quality: OptionQuality | null;
+}
 
 interface NodeOverviewProps {
   model: NodeOverviewModel;
@@ -22,6 +41,14 @@ interface NodeOverviewProps {
   onConnect?: (from: string, to: string) => void;
   onDisconnect?: (from: string) => void;
   onOpenTasks?: () => void;
+  onCreateQuestion?: () => void;
+  onDeleteQuestion?: (stepId: string) => void;
+  onUndo?: () => void;
+  canUndo?: boolean;
+  savedLayout?: NodeLayout;
+  onLayoutChange?: (layout: NodeLayout) => void;
+  renderQuestionWizard?: (stepId: string, close: () => void) => ReactNode;
+  renderNodeEdit?: (target: NodeEditTarget, close: () => void) => ReactNode;
 }
 
 interface CardPoint {
@@ -71,67 +98,204 @@ function OutputPort({
       data-port-kind="output"
       style={{ background: color }}
       onPointerDown={onPointerDown}
-    />
+    >
+      <span className="node-port-word node-port-word-out">Uit</span>
+    </span>
+  );
+}
+
+function NodeCardMenu({
+  stepId,
+  disabled,
+  onDelete,
+}: {
+  stepId: string;
+  disabled: boolean;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="node-card-menu">
+      <button
+        type="button"
+        className="node-card-menu-button"
+        aria-label="Menu"
+        aria-expanded={open}
+        data-testid={`btn-node-menu-${stepId}`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        ⋯
+      </button>
+      {open ? (
+        <button
+          type="button"
+          className="node-card-menu-item"
+          data-testid={`btn-node-delete-${stepId}`}
+          disabled={disabled}
+          onClick={() => {
+            setOpen(false);
+            if (!disabled) {
+              onDelete();
+            }
+          }}
+        >
+          Verwijderen
+        </button>
+      ) : null}
+    </div>
   );
 }
 
 function QuestionCard({
   row,
+  firstQuestion,
   dragging,
   point,
   moving,
   front,
+  selected,
+  canDelete,
   onOutputPointerDown,
   onCardPointerDown,
   onCardPointerEnter,
+  onOpenEmpty,
+  onDelete,
+  onEdit,
 }: {
   row: NodeQuestionView;
+  firstQuestion: boolean;
   dragging: boolean;
   point: CardPoint | null;
   moving: boolean;
   front: boolean;
+  selected: boolean;
+  canDelete: boolean;
   onOutputPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onCardPointerDown: (cardId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onCardPointerEnter: (cardId: string) => void;
+  onOpenEmpty?: (stepId: string) => void;
+  onDelete?: (stepId: string) => void;
+  onEdit?: (target: NodeEditTarget) => void;
 }) {
   const cardId = `q:${row.id}`;
   return (
     <article
-      className={`node-card node-card-question${point ? ' is-placed' : ''}${moving ? ' is-moving' : ''}${front ? ' is-front' : ''}`}
+      className={`node-card node-card-question${point ? ' is-placed' : ''}${moving ? ' is-moving' : ''}${front ? ' is-front' : ''}${selected ? ' is-selected' : ''}${row.empty ? ' is-empty' : ''}`}
       data-testid={`node-question-${row.id}`}
       data-node-card={cardId}
       data-drop-step={row.id}
+      data-selected={selected ? 'true' : 'false'}
       style={point ? { left: point.x, top: point.y } : undefined}
       onPointerEnter={() => onCardPointerEnter(cardId)}
       onPointerDown={(event) => onCardPointerDown(cardId, event)}
     >
-      <span className="node-port-caption">Scenario input</span>
       <span
         className={`node-port node-port-in${dragging ? ' is-target' : ''}`}
         data-port={row.inPort}
         data-port-kind="input"
         style={{ background: NODE_PORT_COLOR.high }}
-      />
-      <header className="node-card-head">{row.title}</header>
+      >
+        <span className="node-port-word node-port-word-in">
+          {firstQuestion ? 'Scenario In' : 'In'}
+        </span>
+      </span>
+      <header className="node-card-head">
+        <span className="node-card-title">{row.title}</span>
+        <span className="node-card-tools">
+          <button
+            type="button"
+            className="node-card-edit"
+            data-testid={`btn-node-edit-${row.id}`}
+            onClick={() => onEdit?.({ stepId: row.id, quality: null })}
+          >
+            Bewerken
+          </button>
+          {onDelete ? (
+            <NodeCardMenu stepId={row.id} disabled={!canDelete} onDelete={() => onDelete(row.id)} />
+          ) : null}
+        </span>
+      </header>
       <div className="node-card-body">
-        <Field label="Scenario" value={row.scenario} />
-        <Field label="Onderdeel" value={row.onderdeel} />
-        <Field label="Vraag" value={row.vraag} />
-        <ul className="node-exits">
-          {ANSWER_VIDEO_QUALITIES.map((quality) => (
-            <li key={quality}>
-              <span>{ANSWER_FOLDER_NAMES[quality]}</span>
-              <OutputPort
-                port={`q-out-${row.id}-${quality}`}
-                color={NODE_PORT_COLOR[quality]}
-                onPointerDown={onOutputPointerDown}
-              />
-            </li>
-          ))}
-        </ul>
+        {row.empty ? (
+          <button
+            type="button"
+            className="node-empty-mark"
+            data-testid={`btn-node-empty-${row.id}`}
+            onClick={() => onOpenEmpty?.(row.id)}
+          >
+            Leeg
+          </button>
+        ) : (
+          <>
+            <Field label="Scenario" value={row.scenario} />
+            <Field label="Onderdeel" value={row.onderdeel} />
+            <Field label="Vraag" value={row.vraag} />
+            <ul className="node-exits">
+              {ANSWER_VIDEO_QUALITIES.map((quality) => (
+                <li key={quality}>
+                  <span>{ANSWER_FOLDER_NAMES[quality]}</span>
+                  <OutputPort
+                    port={`q-out-${row.id}-${quality}`}
+                    color={NODE_PORT_COLOR[quality]}
+                    onPointerDown={onOutputPointerDown}
+                  />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </article>
   );
+}
+
+function cardHitsMarquee(
+  id: string,
+  point: CardPoint,
+  rect: WireRect,
+  sizer: HTMLElement,
+): boolean {
+  let left = point.x;
+  let top = point.y;
+  let right = point.x + (id.startsWith('a:') ? NODE_ANSWER_WIDTH : NODE_QUESTION_WIDTH);
+  let bottom =
+    point.y + (id.startsWith('a:') ? NODE_ANSWER_FALLBACK_HEIGHT : NODE_QUESTION_FALLBACK_HEIGHT);
+  let card: HTMLElement | null = null;
+  for (const item of sizer.querySelectorAll<HTMLElement>('[data-node-card]')) {
+    if (item.dataset.nodeCard === id) {
+      card = item;
+      break;
+    }
+  }
+  if (card) {
+    const box = card.getBoundingClientRect();
+    if (box.width >= 2 && box.height >= 2) {
+      const origin = sizer.getBoundingClientRect();
+      left = box.left - origin.left;
+      top = box.top - origin.top;
+      right = box.right - origin.left;
+      bottom = box.bottom - origin.top;
+    }
+  }
+  return left < rect.right && right > rect.left && top < rect.bottom && bottom > rect.top;
+}
+
+function readCardRects(sizer: HTMLElement): WireRect[] {
+  const origin = sizer.getBoundingClientRect();
+  const rects: WireRect[] = [];
+  for (const card of sizer.querySelectorAll<HTMLElement>('[data-node-card]')) {
+    const box = card.getBoundingClientRect();
+    if (box.width < 2 || box.height < 2) {
+      continue;
+    }
+    rects.push({
+      left: box.left - origin.left,
+      top: box.top - origin.top,
+      right: box.right - origin.left,
+      bottom: box.bottom - origin.top,
+    });
+  }
+  return rects;
 }
 
 function portName(element: Element | null): string {
@@ -149,7 +313,7 @@ function questionInput(element: Element | null): string {
   return stepId ? `q-in-${stepId}` : '';
 }
 
-// De poort is 14px. Een loslating op de vraagkaart telt als Scenario input.
+// De poort is 14px. Een loslating op de vraagkaart telt als Scenario In.
 function resolveDropTarget(clientX: number, clientY: number): string {
   const hit =
     typeof document.elementFromPoint === 'function'
@@ -192,26 +356,31 @@ function AnswerCard({
   point,
   moving,
   front,
+  selected,
   onOutputPointerDown,
   onCardPointerDown,
   onCardPointerEnter,
+  onEdit,
 }: {
   rowId: string;
   answer: NodeQuestionView['answers'][number];
   point: CardPoint | null;
   moving: boolean;
   front: boolean;
+  selected: boolean;
   onOutputPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onCardPointerDown: (cardId: string, event: ReactPointerEvent<HTMLElement>) => void;
   onCardPointerEnter: (cardId: string) => void;
+  onEdit?: (target: NodeEditTarget) => void;
 }) {
   const color = NODE_PORT_COLOR[answer.quality];
   const cardId = `a:${rowId}:${answer.quality}`;
   return (
     <article
-      className={`node-card node-card-answer${point ? ' is-placed' : ''}${moving ? ' is-moving' : ''}${front ? ' is-front' : ''}`}
+      className={`node-card node-card-answer${point ? ' is-placed' : ''}${moving ? ' is-moving' : ''}${front ? ' is-front' : ''}${selected ? ' is-selected' : ''}`}
       data-testid={`node-answer-${rowId}-${answer.quality}`}
       data-node-card={cardId}
+      data-selected={selected ? 'true' : 'false'}
       style={point ? { left: point.x, top: point.y } : undefined}
       onPointerEnter={() => onCardPointerEnter(cardId)}
       onPointerDown={(event) => onCardPointerDown(cardId, event)}
@@ -221,9 +390,21 @@ function AnswerCard({
         data-port={answer.inPort}
         data-port-kind="input"
         style={{ background: color }}
-      />
+      >
+        <span className="node-port-word node-port-word-in">In</span>
+      </span>
       <OutputPort port={answer.outPort} color={color} onPointerDown={onOutputPointerDown} />
-      <header className="node-card-head">{answer.title}</header>
+      <header className="node-card-head">
+        <span className="node-card-title">{answer.title}</span>
+        <button
+          type="button"
+          className="node-card-edit"
+          data-testid={`btn-node-edit-${rowId}-${answer.quality}`}
+          onClick={() => onEdit?.({ stepId: rowId, quality: answer.quality })}
+        >
+          Bewerken
+        </button>
+      </header>
       <div className="node-card-body">
         <Field label="Scenario" value={answer.scenario} />
         <Field label="Onderdeel" value={answer.onderdeel} />
@@ -239,6 +420,33 @@ function layoutKeyOf(model: NodeOverviewModel): string {
     .join('|');
 }
 
+function cardIdsOf(model: NodeOverviewModel): string[] {
+  const ids: string[] = [];
+  for (const row of model.rows) {
+    ids.push(`q:${row.id}`);
+    if (row.empty) {
+      continue;
+    }
+    for (const answer of row.answers) {
+      ids.push(`a:${row.id}:${answer.quality}`);
+    }
+  }
+  return ids;
+}
+
+function mergeLayout(
+  current: { key: string; cards: Record<string, CardPoint> },
+  layoutKey: string,
+  cardIds: string[],
+  heights: Readonly<Record<string, number>> = {},
+): { key: string; cards: Record<string, CardPoint> } {
+  const cards = placeMissingCards(current.cards, cardIds, heights);
+  if (current.key === layoutKey && sameNodeLayout(current.cards, cards)) {
+    return current;
+  }
+  return { key: layoutKey, cards };
+}
+
 function canvasExtent(
   cards: Record<string, CardPoint> | null,
 ): { width: number; height: number } | null {
@@ -248,8 +456,10 @@ function canvasExtent(
   let width = 720;
   let height = 640;
   for (const [id, point] of Object.entries(cards)) {
-    const cardWidth = id.startsWith('a:') ? 250 : 300;
-    const cardHeight = id.startsWith('a:') ? 200 : 320;
+    const cardWidth = id.startsWith('a:') ? NODE_ANSWER_WIDTH : NODE_QUESTION_WIDTH;
+    const cardHeight = id.startsWith('a:')
+      ? NODE_ANSWER_FALLBACK_HEIGHT
+      : NODE_QUESTION_FALLBACK_HEIGHT;
     width = Math.max(width, point.x + cardWidth + 120);
     height = Math.max(height, point.y + cardHeight + 80);
   }
@@ -262,6 +472,14 @@ export function NodeOverview({
   onConnect,
   onDisconnect,
   onOpenTasks,
+  onCreateQuestion,
+  onDeleteQuestion,
+  onUndo,
+  canUndo = false,
+  savedLayout,
+  onLayoutChange,
+  renderQuestionWizard,
+  renderNodeEdit,
 }: NodeOverviewProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const sizerRef = useRef<HTMLDivElement>(null);
@@ -271,22 +489,81 @@ export function NodeOverview({
   const [drawn, setDrawn] = useState<DrawnWire[]>([]);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [marquee, setMarquee] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [frontCardId, setFrontCardId] = useState<string | null>(null);
+  const [wizardStepId, setWizardStepId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<NodeEditTarget | null>(null);
   const layoutKey = layoutKeyOf(model);
+  const cardIdKey = cardIdsOf(model).join('|');
+  const cardIds = useMemo(() => (cardIdKey ? cardIdKey.split('|') : []), [cardIdKey]);
   const [layoutPositions, setLayoutPositions] = useState<{
     key: string;
     cards: Record<string, CardPoint>;
-  } | null>(null);
-  const positions = layoutPositions?.key === layoutKey ? layoutPositions.cards : null;
+  }>(() => ({
+    key: layoutKeyOf(model),
+    cards: savedLayout ?? {},
+  }));
+  const layoutRef = useRef(layoutPositions);
+  const onLayoutChangeRef = useRef(onLayoutChange);
+  const cardIdsRef = useRef(cardIds);
+  const layoutKeyRef = useRef(layoutKey);
+  const positions = useMemo(() => {
+    if (!layoutPositions) {
+      return null;
+    }
+    return mergeLayout(layoutPositions, layoutKey, cardIds).cards;
+  }, [cardIds, layoutKey, layoutPositions]);
+  const activeWizardId =
+    wizardStepId && model.rows.some((row) => row.id === wizardStepId) ? wizardStepId : null;
+  const activeEdit =
+    editTarget && model.rows.some((row) => row.id === editTarget.stepId) ? editTarget : null;
 
   useEffect(() => {
     onConnectRef.current = onConnect;
+    onLayoutChangeRef.current = onLayoutChange;
+    cardIdsRef.current = cardIds;
+    layoutKeyRef.current = layoutKey;
   });
+
+  function commitLayout(current: { key: string; cards: Record<string, CardPoint> } | null) {
+    if (!current) {
+      return;
+    }
+    const merged = mergeLayout(current, layoutKeyRef.current, cardIdsRef.current).cards;
+    onLayoutChangeRef.current?.(merged);
+  }
+
+  function alignBoard() {
+    const heights: Record<string, number> = {};
+    const sizer = sizerRef.current;
+    if (sizer) {
+      for (const card of sizer.querySelectorAll<HTMLElement>('[data-node-card]')) {
+        const id = card.dataset.nodeCard ?? '';
+        const height = card.getBoundingClientRect().height;
+        if (id && height >= 2) {
+          heights[id] = height;
+        }
+      }
+    }
+    const cards = alignFlowCards(model.rows, heights);
+    const next = { key: layoutKey, cards };
+    layoutRef.current = next;
+    setLayoutPositions(next);
+    setSelectedIds([]);
+    onLayoutChangeRef.current?.(cards);
+  }
 
   useEffect(() => {
     return () => {
       stopDrag.current?.();
       stopCardDrag.current?.();
+      commitLayout(layoutRef.current);
     };
   }, []);
 
@@ -337,7 +614,7 @@ export function NodeOverview({
       const end = contentPoint(clientX, clientY);
       return {
         from,
-        d: wirePath(start.x, start.y, end.x, end.y),
+        d: wirePath(start.x, start.y, end.x, end.y, readCardRects(sizer)),
         color: NODE_PORT_COLOR[parsed.quality],
       };
     };
@@ -355,9 +632,7 @@ export function NodeOverview({
       const step = Math.max(-36, Math.min(36, delta));
       if (canvas.scrollHeight > canvas.clientHeight + 1) {
         canvas.scrollBy(0, step);
-        return;
       }
-      window.scrollBy(0, step);
     };
     setDragPreview(preview(event.clientX, event.clientY));
     stopDrag.current?.();
@@ -399,29 +674,108 @@ export function NodeOverview({
     event.preventDefault();
     const startX = event.clientX;
     const startY = event.clientY;
+    const group = selectedIds.includes(cardId) ? selectedIds : [cardId];
+    const origins: Record<string, CardPoint> = {};
+    for (const id of group) {
+      const point = snapshot[id];
+      if (point) {
+        origins[id] = point;
+      }
+    }
+    if (!origins[cardId]) {
+      return;
+    }
+    if (!selectedIds.includes(cardId)) {
+      setSelectedIds([cardId]);
+    }
+    const initial = { key: layoutKey, cards: snapshot };
+    layoutRef.current = initial;
     setMovingCardId(cardId);
-    setLayoutPositions({ key: layoutKey, cards: snapshot });
+    setLayoutPositions(initial);
     stopCardDrag.current?.();
     const move = (moveEvent: PointerEvent) => {
-      const x = origin.x + (moveEvent.clientX - startX);
-      const y = origin.y + (moveEvent.clientY - startY);
-      setLayoutPositions((current) => {
-        const cards = current?.key === layoutKey ? current.cards : snapshot;
-        return {
-          key: layoutKey,
-          cards: { ...cards, [cardId]: { x, y } },
-        };
-      });
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      const previous = layoutRef.current?.key === layoutKey ? layoutRef.current.cards : snapshot;
+      const cards = { ...previous };
+      for (const [id, start] of Object.entries(origins)) {
+        cards[id] = { x: start.x + dx, y: start.y + dy };
+      }
+      const next = { key: layoutKey, cards };
+      layoutRef.current = next;
+      setLayoutPositions(next);
     };
     const stop = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);
       stopCardDrag.current = null;
+      commitLayout(layoutRef.current);
       setMovingCardId(null);
     };
     stopCardDrag.current = stop;
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', stop);
+  }
+
+  function onBoardPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest('[data-node-card], button, a, .node-port, .node-wire-delete')
+    ) {
+      return;
+    }
+    const sizer = sizerRef.current;
+    if (!sizer) {
+      return;
+    }
+    const box = sizer.getBoundingClientRect();
+    const pointAt = (clientX: number, clientY: number) => ({
+      x: clientX - box.left,
+      y: clientY - box.top,
+    });
+    const start = pointAt(event.clientX, event.clientY);
+    let current = start;
+    const paint = () => {
+      setMarquee({
+        x: Math.min(start.x, current.x),
+        y: Math.min(start.y, current.y),
+        width: Math.abs(current.x - start.x),
+        height: Math.abs(current.y - start.y),
+      });
+    };
+    paint();
+    const move = (moveEvent: PointerEvent) => {
+      current = pointAt(moveEvent.clientX, moveEvent.clientY);
+      paint();
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setMarquee(null);
+      const width = Math.abs(current.x - start.x);
+      const height = Math.abs(current.y - start.y);
+      if (width < 4 && height < 4) {
+        setSelectedIds([]);
+        return;
+      }
+      const rect = {
+        left: Math.min(start.x, current.x),
+        top: Math.min(start.y, current.y),
+        right: Math.max(start.x, current.x),
+        bottom: Math.max(start.y, current.y),
+      };
+      const cards = positions ?? {};
+      const hits = Object.entries(cards)
+        .filter(([id, point]) => cardHitsMarquee(id, point, rect, sizer))
+        .map(([id]) => id);
+      setSelectedIds(hits);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   }
 
   useLayoutEffect(() => {
@@ -434,7 +788,25 @@ export function NodeOverview({
       if (!sizer) {
         return;
       }
+      if (layoutPositions) {
+        const heights: Record<string, number> = {};
+        for (const card of sizer.querySelectorAll<HTMLElement>('[data-node-card]')) {
+          const id = card.dataset.nodeCard ?? '';
+          const height = card.getBoundingClientRect().height;
+          if (id && height >= 2) {
+            heights[id] = height;
+          }
+        }
+        if (Object.keys(heights).length > 0) {
+          const placed = mergeLayout(layoutPositions, layoutKey, cardIds, heights);
+          if (placed !== layoutPositions) {
+            layoutRef.current = placed;
+            setLayoutPositions(placed);
+          }
+        }
+      }
       const origin = sizer.getBoundingClientRect();
+      const obstacles = readCardRects(sizer);
       const next: DrawnWire[] = [];
       for (const wire of model.wires) {
         const from = sizer.querySelector(`[data-port="${wire.from}"]`);
@@ -448,12 +820,12 @@ export function NodeOverview({
         const y1 = start.top + start.height / 2 - origin.top;
         const x2 = end.left + end.width / 2 - origin.left;
         const y2 = end.top + end.height / 2 - origin.top;
-        const mid = wireMidpoint(x1, y1, x2, y2);
+        const mid = wireMidpoint(x1, y1, x2, y2, obstacles);
         next.push({
           key: `${wire.from}-${wire.to}`,
           from: wire.from,
           to: wire.to,
-          d: wirePath(x1, y1, x2, y2),
+          d: wirePath(x1, y1, x2, y2, obstacles),
           color: NODE_PORT_COLOR[wire.quality],
           removable: wire.removable,
           mx: mid.x,
@@ -473,7 +845,7 @@ export function NodeOverview({
       observer.disconnect();
       canvas.removeEventListener('scroll', measure);
     };
-  }, [model, positions]);
+  }, [cardIds, layoutKey, layoutPositions, model, positions]);
 
   const extent = canvasExtent(positions);
 
@@ -481,15 +853,43 @@ export function NodeOverview({
     <div
       className={`node-overview${dragPreview ? ' is-dragging' : ''}${movingCardId ? ' is-moving-card' : ''}`}
       data-testid="node-overview"
+      style={
+        {
+          '--node-row-gap': `${NODE_ROW_GAP}px`,
+          '--node-answer-gap': `${NODE_ANSWER_GAP}px`,
+          '--node-question-head': '#243044',
+          '--node-answer-head': '#6b5200',
+          '--node-board-bg': '#141414',
+        } as CSSProperties
+      }
     >
       <div className="node-overview-bar">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          data-testid="btn-node-undo"
+          onClick={onUndo}
+          disabled={!canUndo}
+        >
+          Undo
+        </button>
+        {onCreateQuestion ? (
+          <button
+            type="button"
+            className="btn"
+            data-testid="btn-node-new-question"
+            onClick={onCreateQuestion}
+          >
+            Nieuwe vraag
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn btn-secondary"
           data-testid="btn-nodes-back"
           onClick={onClose}
         >
-          Terug
+          Terug naar editor
         </button>
         <button
           type="button"
@@ -499,12 +899,25 @@ export function NodeOverview({
         >
           Takenlijst
         </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          data-testid="btn-node-align"
+          onClick={alignBoard}
+        >
+          Uitlijnen
+        </button>
         <p className="node-overview-hint">
-          Sleep een kaart om hem te verplaatsen. Sleep een uitgang naar Scenario input. Het kruisje
-          haalt de lijn weg.
+          Sleep op de lege achtergrond om nodes te selecteren. Sleep een kaart om hem te
+          verplaatsen. Sleep een uitgang naar Scenario In. Het kruisje haalt de lijn weg.
         </p>
       </div>
-      <div className="node-canvas" ref={canvasRef}>
+      <div
+        className="node-canvas"
+        data-testid="node-canvas"
+        ref={canvasRef}
+        onPointerDown={onBoardPointerDown}
+      >
         <div
           className="node-canvas-sizer"
           ref={sizerRef}
@@ -537,7 +950,19 @@ export function NodeOverview({
               />
             ) : null}
           </svg>
-          {model.rows.map((row) => (
+          {marquee && marquee.width > 0 && marquee.height > 0 ? (
+            <div
+              className="node-marquee"
+              data-testid="node-marquee"
+              style={{
+                left: marquee.x,
+                top: marquee.y,
+                width: marquee.width,
+                height: marquee.height,
+              }}
+            />
+          ) : null}
+          {model.rows.map((row, index) => (
             <section
               key={row.id}
               className={`node-row${positions ? ' is-placed' : ''}`}
@@ -545,29 +970,60 @@ export function NodeOverview({
             >
               <QuestionCard
                 row={row}
+                firstQuestion={index === 0}
                 dragging={dragPreview !== null}
                 point={positions?.[`q:${row.id}`] ?? null}
                 moving={movingCardId === `q:${row.id}`}
                 front={frontCardId === `q:${row.id}`}
+                selected={selectedIds.includes(`q:${row.id}`)}
+                canDelete={model.rows.length > 1}
                 onOutputPointerDown={onOutputPointerDown}
                 onCardPointerDown={onCardPointerDown}
                 onCardPointerEnter={setFrontCardId}
+                onOpenEmpty={
+                  renderQuestionWizard
+                    ? (stepId) => {
+                        setEditTarget(null);
+                        setWizardStepId(stepId);
+                      }
+                    : undefined
+                }
+                onDelete={onDeleteQuestion}
+                onEdit={
+                  renderNodeEdit
+                    ? (target) => {
+                        setWizardStepId(null);
+                        setEditTarget(target);
+                      }
+                    : undefined
+                }
               />
-              <div className="node-answers">
-                {row.answers.map((answer) => (
-                  <AnswerCard
-                    key={answer.quality}
-                    rowId={row.id}
-                    answer={answer}
-                    point={positions?.[`a:${row.id}:${answer.quality}`] ?? null}
-                    moving={movingCardId === `a:${row.id}:${answer.quality}`}
-                    front={frontCardId === `a:${row.id}:${answer.quality}`}
-                    onOutputPointerDown={onOutputPointerDown}
-                    onCardPointerDown={onCardPointerDown}
-                    onCardPointerEnter={setFrontCardId}
-                  />
-                ))}
-              </div>
+              {row.empty ? null : (
+                <div className="node-answers">
+                  {row.answers.map((answer) => (
+                    <AnswerCard
+                      key={answer.quality}
+                      rowId={row.id}
+                      answer={answer}
+                      point={positions?.[`a:${row.id}:${answer.quality}`] ?? null}
+                      moving={movingCardId === `a:${row.id}:${answer.quality}`}
+                      front={frontCardId === `a:${row.id}:${answer.quality}`}
+                      selected={selectedIds.includes(`a:${row.id}:${answer.quality}`)}
+                      onOutputPointerDown={onOutputPointerDown}
+                      onCardPointerDown={onCardPointerDown}
+                      onCardPointerEnter={setFrontCardId}
+                      onEdit={
+                        renderNodeEdit
+                          ? (target) => {
+                              setWizardStepId(null);
+                              setEditTarget(target);
+                            }
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </section>
           ))}
           {drawn
@@ -588,6 +1044,10 @@ export function NodeOverview({
             ))}
         </div>
       </div>
+      {activeWizardId && renderQuestionWizard
+        ? renderQuestionWizard(activeWizardId, () => setWizardStepId(null))
+        : null}
+      {activeEdit && renderNodeEdit ? renderNodeEdit(activeEdit, () => setEditTarget(null)) : null}
     </div>
   );
 }

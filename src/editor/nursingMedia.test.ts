@@ -55,7 +55,7 @@ describe('nursing editor media paths', () => {
 
   it('builds a verpleegkunde path from a file name and rejects logopedie names', () => {
     expect(nursingRelativePathForFile('nieuwe-observatie.mp4')).toBe(
-      'verpleegkunde/nieuwe-observatie.mp4',
+      'gesprekstechnieken/nieuwe-observatie.mp4',
     );
     expect(nursingRelativePathForFile('..\\logopedie\\avatar\\erik_basis.png')).toBe(null);
     expect(nursingRelativePathForFile('notes.txt')).toBe(null);

@@ -1,4 +1,5 @@
 export const EDITOR_SAVE_AS_CASE_PATH = '/editor-api/save-as-case';
+export const EDITOR_DELETE_CASE_PATH = '/editor-api/delete-case';
 
 export type EditorCaseModule = 'logopedie' | 'verpleegkunde';
 

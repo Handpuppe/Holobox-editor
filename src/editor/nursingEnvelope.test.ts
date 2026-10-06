@@ -54,6 +54,24 @@ describe('verpleegkunde editor envelope', () => {
     expect(opened.scenario.meta.educationType).toBeUndefined();
   });
 
+  it('keeps node positions through save and open', () => {
+    const draft = cloneNursingScenario();
+    draft.nodeLayout = { 'q:n-1': { x: 180, y: 64 }, 'a:n-1:high': { x: 640, y: 90 } };
+    const parsed = parseVerpleegkundeEnvelope(nursingEnvelopeJson(draft));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.scenario.nodeLayout).toEqual(draft.nodeLayout);
+    delete draft.nodeLayout;
+    const without = parseVerpleegkundeEnvelope(nursingEnvelopeJson(draft));
+    expect(without.ok).toBe(true);
+    if (!without.ok) {
+      return;
+    }
+    expect(without.scenario.nodeLayout).toBeUndefined();
+  });
+
   it('rejects invalid JSON, the wrong module, and an incomplete scenario', () => {
     expect(parseVerpleegkundeEnvelope('{')).toEqual({
       ok: false,

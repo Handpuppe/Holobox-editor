@@ -1,8 +1,20 @@
+.scenario-editor.node-overview-page {
+  box-sizing: border-box;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background: #141414;
+  display: flex;
+  flex-direction: column;
+}
+
 .node-overview {
-  background: #1a2332;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--node-board-bg, #141414);
   color: #d9e2ec;
-  min-height: 70vh;
-  max-height: calc(100vh - 24px);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -34,12 +46,16 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: calc(100vh - 88px);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  background: var(--node-board-bg, #141414);
 }
 
 .node-canvas-sizer {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 100%;
   min-height: 640px;
 }
@@ -59,8 +75,8 @@
   display: flex;
   align-items: flex-start;
   gap: 96px;
-  margin: 0 0 40px;
-  padding-left: 132px;
+  margin: 0 0 var(--node-answer-gap, 56px);
+  padding-left: 168px;
 }
 
 .node-row.is-placed {
@@ -88,10 +104,24 @@
   cursor: grabbing;
 }
 
+.node-card.is-selected {
+  outline: 2px solid #7eb6ff;
+  outline-offset: 2px;
+}
+
+.node-marquee {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  border: 1px solid #9ec5ff;
+  background: rgba(126, 182, 255, 0.18);
+  pointer-events: none;
+}
+
 .node-answers {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--node-answer-gap, 56px);
 }
 
 .node-card {
@@ -108,14 +138,236 @@
   width: 250px;
 }
 
+.node-card-answer .node-card-head {
+  background: var(--node-answer-head, #6b5200);
+}
+
 .node-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 0;
   padding: 12px 14px;
   border-radius: 12px 12px 0 0;
-  background: #243044;
+  background: var(--node-question-head, #243044);
   color: #ffffff;
   font-size: 18px;
   font-weight: 650;
+}
+
+.node-card-title {
+  min-width: 0;
+}
+
+.node-card-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.node-card-edit {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 32px;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.node-edit-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 20, 20, 0.55);
+}
+
+.node-edit {
+  width: min(920px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f2933;
+}
+
+.node-edit h2 {
+  margin: 0 0 12px;
+  color: #1f2933;
+}
+
+.node-edit-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.node-edit-actions .btn {
+  width: auto;
+  min-width: 8rem;
+}
+
+.node-card-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.node-card-menu-button {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 22px;
+  line-height: 32px;
+  cursor: pointer;
+}
+
+.node-card-menu-item {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  z-index: 5;
+  width: max-content;
+  min-width: 9rem;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #9b1c1c;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.node-card-menu-item:disabled {
+  color: #9aa5b1;
+  cursor: not-allowed;
+}
+
+.node-empty-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 180px;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  font-size: 28px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.node-wizard {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: #f7fafc;
+  color: #1f2933;
+  border: 1px solid #9aa5b1;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.node-wizard-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #243044;
+  color: #ffffff;
+  cursor: grab;
+  flex: 0 0 auto;
+}
+
+.node-wizard-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 650;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.node-wizard-side {
+  display: flex;
+  min-width: 6.5rem;
+}
+
+.node-wizard-side-end {
+  justify-content: flex-end;
+}
+
+.node-wizard-side .btn {
+  width: auto;
+  min-width: 6.5rem;
+  min-height: 40px;
+  padding: 8px 14px;
+}
+
+.node-wizard-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.node-wizard-preview-label {
+  margin: 12px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #52606d;
+}
+
+.node-wizard-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: nwse-resize;
+}
+
+.node-wizard-resize::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #52606d;
+  border-bottom: 2px solid #52606d;
 }
 
 .node-card-body {
@@ -218,13 +470,24 @@
   right: -24px;
 }
 
-.node-port-caption {
+.node-port-word {
   position: absolute;
   top: 50%;
-  right: calc(100% + 16px);
   transform: translateY(-50%);
-  color: #d9e2ec;
-  font-size: 14px;
+  color: #f4f7fb;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
   white-space: nowrap;
   pointer-events: none;
+  user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.node-port-word-in {
+  right: calc(100% + 5px);
+}
+
+.node-port-word-out {
+  left: calc(100% + 5px);
 }

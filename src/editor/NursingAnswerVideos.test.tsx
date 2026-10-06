@@ -6,6 +6,7 @@ import type { NursingScenario } from '../nursing/types';
 import { cloneNursingScenario } from './cloneNursing';
 import { NursingAnswerVideos } from './NursingAnswerVideos';
 import { optionForQuality, optionPrimaryMediaPath } from './nursingAnswerMedia';
+import { questionVideoRelative, resolvedQuestionFolder } from './questionFolder';
 import type { StagedNursingMediaOp } from './nursingMedia';
 
 function Harness({
@@ -79,7 +80,10 @@ describe('NursingAnswerVideos', () => {
     await user.upload(screen.getByTestId('input-nursing-answer-upload-inappropriate'), fresh);
     expect(staged[1]?.type).toBe('add');
     expect(staged[1]?.relativePath).toBe(
-      `verpleegkunde/scenarios/${initial.meta.title}/Antwoorden/Verkeerd antwoord/fout.mp4`,
+      questionVideoRelative(resolvedQuestionFolder(initial.meta.title, step), 'inappropriate'),
+    );
+    expect(staged[1]?.relativePath).toBe(
+      'gesprekstechnieken/ABCDE en SBAR bij acute benauwdheid-Vraag1/Videos/antwoord-verkeerd.mp4',
     );
     expect(optionPrimaryMediaPath(initial, optionForQuality(step, 'high'))).toBe(existing);
   });

@@ -3,7 +3,16 @@ import type { MediaSlotConfig } from '../media/types';
 import type { NursingScenario, NursingStep } from '../nursing/types';
 
 export const EDITOR_NURSING_MEDIA_PATH = '/editor-api/verpleegkunde-media';
-export const NURSING_MEDIA_PREFIX = 'verpleegkunde/';
+export const NURSING_MEDIA_PREFIX = 'gesprekstechnieken/';
+export const LEGACY_NURSING_MEDIA_PREFIX = 'verpleegkunde/';
+
+export function canonicalNursingMediaPath(relativePath: string): string {
+  const normalized = relativePath.replaceAll('\\', '/').replace(/^\/+/, '');
+  if (normalized.startsWith(LEGACY_NURSING_MEDIA_PREFIX)) {
+    return `${NURSING_MEDIA_PREFIX}${normalized.slice(LEGACY_NURSING_MEDIA_PREFIX.length)}`;
+  }
+  return normalized;
+}
 export const NURSING_MEDIA_EXTENSIONS = [
   '.mp4',
   '.webm',
@@ -30,8 +39,19 @@ export type StagedNursingMediaOp =
     }
   | { type: 'delete'; relativePath: string };
 
+/** Video die bij één vraag hoort: de antwoordmap of de startvideomap. */
+export function isOwnedQuestionVideo(relativePath: string): boolean {
+  const normalized = canonicalNursingMediaPath(relativePath);
+  if (!isNursingMediaPath(normalized)) {
+    return false;
+  }
+  return (
+    normalized.startsWith(`${NURSING_MEDIA_PREFIX}Startvideos/`) || normalized.includes('/Videos/')
+  );
+}
+
 export function isNursingMediaPath(relativePath: string): boolean {
-  const normalized = relativePath.replaceAll('\\', '/').replace(/^\/+/, '');
+  const normalized = canonicalNursingMediaPath(relativePath);
   if (!normalized.startsWith(NURSING_MEDIA_PREFIX)) {
     return false;
   }

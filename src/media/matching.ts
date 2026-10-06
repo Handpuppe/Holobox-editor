@@ -12,9 +12,27 @@ export function listModuleMedia(moduleId: TrainingModule): MediaManifestItem[] {
     .map((item) => withPublicBase(item as MediaManifestItem));
 }
 
+function canonicalCatalogPath(relativePath: string): string {
+  const normalized = relativePath.replaceAll('\\', '/');
+  if (normalized.startsWith('verpleegkunde/')) {
+    return `gesprekstechnieken/${normalized.slice('verpleegkunde/'.length)}`;
+  }
+  return normalized;
+}
+
+function isModuleMediaPath(moduleId: string, relativePath: string): boolean {
+  const normalized = relativePath.replaceAll('\\', '/');
+  if (normalized.startsWith(`${moduleId}/`)) {
+    return true;
+  }
+  return moduleId === 'verpleegkunde' && normalized.startsWith('gesprekstechnieken/');
+}
+
 export function findByRelativePath(relativePath: string): MediaManifestItem | undefined {
-  const item = mediaManifest.items.find((entry) => entry.relativePath === relativePath) as
-    MediaManifestItem | undefined;
+  const wanted = canonicalCatalogPath(relativePath);
+  const item = mediaManifest.items.find(
+    (entry) => entry.relativePath === relativePath || entry.relativePath === wanted,
+  ) as MediaManifestItem | undefined;
   return item ? withPublicBase(item) : undefined;
 }
 
@@ -132,7 +150,7 @@ export function resolveSlot(
         alternatives: alternativesFor(slot),
       };
     }
-    if (overridePath.replaceAll('\\', '/').startsWith(`${slot.module}/`)) {
+    if (isModuleMediaPath(slot.module, overridePath)) {
       return {
         media: mediaItemFromRelativePath(overridePath, slot.module),
         alternatives: alternativesFor(slot),
@@ -147,7 +165,7 @@ export function resolveSlot(
         alternatives: alternativesFor(slot),
       };
     }
-    if (slot.primaryMedia.replaceAll('\\', '/').startsWith(`${slot.module}/`)) {
+    if (isModuleMediaPath(slot.module, slot.primaryMedia)) {
       return {
         media: mediaItemFromRelativePath(slot.primaryMedia, slot.module),
         alternatives: alternativesFor(slot),

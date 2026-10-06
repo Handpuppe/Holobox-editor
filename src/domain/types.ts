@@ -181,6 +181,14 @@ export interface ScoreSummary {
   competencies: Record<string, CompetencyScore>;
 }
 
+/** Plaats van een nodekaart. De editor bewaart die bij de casus. */
+export interface NodeCardPoint {
+  x: number;
+  y: number;
+}
+
+export type NodeLayout = Record<string, NodeCardPoint>;
+
 export interface Scenario {
   id: string;
   version: ScenarioVersion;
@@ -197,6 +205,8 @@ export interface Scenario {
   startNodeId: string;
   nodes: DecisionNode[];
   conclusionFields: ConclusionField[];
+  /** Onthouden plaatsing van de nodekaarten. Afwezig bij oudere casussen. */
+  nodeLayout?: NodeLayout;
 }
 
 export interface SimulationSession {

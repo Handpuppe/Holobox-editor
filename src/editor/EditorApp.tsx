@@ -4,11 +4,15 @@ import { withBaseUrl } from '../media/baseUrl';
 import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
 import { avatarSourceChain } from '../media/logopedie/resolveAvatar';
 import {
+  APP_VERSION,
   type DecisionNode,
+  type NodeLayout,
   type OptionQuality,
   type Scenario,
   type StudentOption,
 } from '../domain/types';
+import { sameNodeLayout } from './nodeLayout';
+import { saveNodeLayoutToCase } from './saveNodeLayout';
 import { logopedieSaveIssues, nursingSaveIssues } from './saveChecks';
 import { cloneScenario } from './cloneScenario';
 import { EditorMediaPanel } from './EditorMediaPanel';
@@ -22,11 +26,30 @@ import {
   loadEditorStartupNursing,
   nursingEditorSourceLabel,
 } from './loadSavedNursing';
+import {
+  deleteEditorCaseOnDisk,
+  formatCaseSavedAt,
+  listEditorCases,
+  type EditorCaseListItem,
+} from './editorCases';
 import { overlayScenarioFileName } from './newCaseFile';
 import { saveEnvelopeAsNewCase } from './saveAsCase';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
-import { NursingEditor } from './NursingEditor';
+import { NursingEditor, NursingPreviewAside } from './NursingEditor';
+import {
+  deleteQuestionFolder,
+  isQuestionFolderPath,
+  questionFolderOnDisk,
+  questionTextFiles,
+  restoreQuestionFolder,
+  sameQuestionTexts,
+  saveQuestionFolder,
+  type QuestionFolderBackupFile,
+} from './questionFolder';
+import { NodeFieldEditor } from './NodeFieldEditor';
 import { NodeOverview } from './NodeOverview';
+import { NodeQuestionWizard } from './NodeQuestionWizard';
+import { appendNursingStep, removeNursingQuestion } from './nursingSteps';
 import {
   connectLogopedieFlow,
   connectNursingFlow,
@@ -60,6 +83,46 @@ import {
   saveExportedZipAs,
 } from './scenarioPackage';
 import type { NursingScenario } from '../nursing/types';
+
+interface FolderBackup {
+  folder: string;
+  files: QuestionFolderBackupFile[];
+}
+
+interface NodeUndoEntry {
+  scenario: Scenario;
+  nursing: NursingScenario;
+  draftNodeIds: string[];
+  selectedNodeId: string;
+  selectedStepId: string;
+  previewOptionIndex: number;
+  nursingPreviewOptionIndex: number;
+  folders: FolderBackup[];
+}
+
+function keepNodeLayout<T extends { nodeLayout?: NodeLayout }>(
+  restored: T,
+  live: NodeLayout | undefined,
+): T {
+  if (!live || Object.keys(live).length === 0) {
+    return restored;
+  }
+  return { ...restored, nodeLayout: live };
+}
+
+function questionFolders(draft: NursingScenario): string[] {
+  const names: string[] = [];
+  for (const step of draft.steps) {
+    if (!step.questionFolder) {
+      continue;
+    }
+    const disk = questionFolderOnDisk(step.questionFolder);
+    if (isQuestionFolderPath(disk)) {
+      names.push(disk);
+    }
+  }
+  return names;
+}
 
 const QUALITY_LABELS: Record<OptionQuality, string> = {
   high: 'Goed antwoord',
@@ -114,8 +177,8 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 export function EditorApp() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const importPackageRef = useRef<HTMLInputElement>(null);
+  const nodeUndoRef = useRef<NodeUndoEntry[]>([]);
   const dirtyRef = useRef(false);
   const nursingDirtyRef = useRef(false);
   const [editorModule, setEditorModule] = useState<EditorModule>(
@@ -123,6 +186,7 @@ export function EditorApp() {
   );
   const [scenario, setScenario] = useState<Scenario>(() => cloneScenario());
   const [nursingDraft, setNursingDraft] = useState<NursingScenario>(() => emptyNursingScenario());
+  const [draftNodeIds, setDraftNodeIds] = useState<string[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState(scenario.startNodeId);
   const [selectedStepId, setSelectedStepId] = useState(nursingDraft.meta.startStepId);
   const [previewOptionIndex, setPreviewOptionIndex] = useState(0);
@@ -140,6 +204,14 @@ export function EditorApp() {
   const [printListOpen, setPrintListOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  const [nodeUndo, setNodeUndo] = useState<NodeUndoEntry[]>([]);
+  const [caseChooser, setCaseChooser] = useState<EditorCaseListItem[] | null>(null);
+  const [logopedieCaseFile, setLogopedieCaseFile] = useState<string | null>(null);
+  const [nursingCaseFile, setNursingCaseFile] = useState<string | null>(null);
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const [listDelete, setListDelete] = useState<EditorCaseListItem | null>(null);
+  const [listDeleteStep, setListDeleteStep] = useState<0 | 1 | 2>(0);
+  const [deletingCase, setDeletingCase] = useState(false);
   const [saveBlockIssues, setSaveBlockIssues] = useState<string[] | null>(null);
   const [blockKind, setBlockKind] = useState<'save' | 'import'>('save');
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
@@ -160,6 +232,7 @@ export function EditorApp() {
       setPreviewOptionIndex(0);
       setLoadedLabel(result.label);
       setLoadNotice(result.notice);
+      setLogopedieCaseFile(result.source === 'json' ? 'logopedie.json' : null);
     });
     return () => {
       cancelled = true;
@@ -173,10 +246,12 @@ export function EditorApp() {
         return;
       }
       setNursingDraft(result.scenario);
+      setDraftNodeIds([]);
       setSelectedStepId(result.scenario.meta.startStepId);
       setNursingPreviewOptionIndex(0);
       setNursingLoadedLabel(result.label);
       setNursingLoadNotice(result.notice);
+      setNursingCaseFile(result.source === 'json' ? 'verpleegkunde.json' : null);
     });
     return () => {
       cancelled = true;
@@ -255,47 +330,184 @@ export function EditorApp() {
     rememberOpenedModule('verpleegkunde');
   }
 
-  function connectNodes(from: string, to: string) {
-    if (editorModule === 'verpleegkunde') {
-      setNursingDraft((current) => {
-        const next = connectNursingFlow(current, from, to);
-        if (next !== current) {
-          markNursingDirty();
-        }
-        return next;
-      });
+  function stageNursingMedia(op: StagedNursingMediaOp) {
+    markNursingDirty();
+    setNursingStagedMedia((current) => {
+      const without = current.filter((item) => item.relativePath !== op.relativePath);
+      return [...without, op];
+    });
+  }
+
+  function rememberQuestionFolders(previous: NursingScenario, next: NursingScenario) {
+    for (const step of next.steps) {
+      if (!step.questionFolder) {
+        continue;
+      }
+      const before = previous.steps.find((item) => item.id === step.id);
+      if (
+        before?.questionFolder === step.questionFolder &&
+        before &&
+        sameQuestionTexts(before, step)
+      ) {
+        continue;
+      }
+      void saveQuestionFolder(step.questionFolder, questionTextFiles(step));
+    }
+  }
+
+  function rememberUndo(entry: NodeUndoEntry) {
+    const next = [...nodeUndoRef.current, entry].slice(-40);
+    nodeUndoRef.current = next;
+    setNodeUndo(next);
+  }
+
+  function clearNodeUndo() {
+    nodeUndoRef.current = [];
+    setNodeUndo([]);
+  }
+
+  function snapshotNodeUndo(folders: FolderBackup[] = []): NodeUndoEntry {
+    return {
+      scenario,
+      nursing: nursingDraft,
+      draftNodeIds,
+      selectedNodeId,
+      selectedStepId,
+      previewOptionIndex,
+      nursingPreviewOptionIndex,
+      folders,
+    };
+  }
+
+  function pushNodeUndo() {
+    rememberUndo(snapshotNodeUndo());
+  }
+
+  async function undoNodeAction() {
+    const entry = nodeUndoRef.current[nodeUndoRef.current.length - 1];
+    if (!entry) {
       return;
     }
-    setScenario((current) => {
-      const next = connectLogopedieFlow(current, from, to);
-      if (next !== current) {
-        markDirty();
+    const nextStack = nodeUndoRef.current.slice(0, -1);
+    nodeUndoRef.current = nextStack;
+    setNodeUndo(nextStack);
+    const restored = new Set(questionFolders(entry.nursing));
+    for (const folder of questionFolders(nursingDraft)) {
+      if (restored.has(folder)) {
+        continue;
       }
-      return next;
-    });
+      try {
+        await deleteQuestionFolder(folder);
+      } catch {
+        setSaveError('De vraag is teruggezet. Een nieuwe vraagmap bleef staan.');
+      }
+    }
+    for (const backup of entry.folders) {
+      try {
+        await restoreQuestionFolder(backup.folder, backup.files);
+      } catch {
+        setSaveError('De vraag is teruggezet. De map kon niet worden hersteld.');
+      }
+    }
+    setScenario(keepNodeLayout(entry.scenario, scenario.nodeLayout));
+    setNursingDraft(keepNodeLayout(entry.nursing, nursingDraft.nodeLayout));
+    setDraftNodeIds(entry.draftNodeIds);
+    setSelectedNodeId(entry.selectedNodeId);
+    setSelectedStepId(entry.selectedStepId);
+    setPreviewOptionIndex(entry.previewOptionIndex);
+    setNursingPreviewOptionIndex(entry.nursingPreviewOptionIndex);
+    rememberQuestionFolders(nursingDraft, entry.nursing);
+  }
+
+  function addNodeQuestion() {
+    pushNodeUndo();
+    const added = appendNursingStep(nursingDraft);
+    markNursingDirty();
+    rememberQuestionFolders(nursingDraft, added.scenario);
+    setNursingDraft(added.scenario);
+    setDraftNodeIds((ids) => [...ids, added.step.id]);
+    setSelectedStepId(added.step.id);
+    setNursingPreviewOptionIndex(0);
+  }
+
+  function deleteNodeQuestion(stepId: string) {
+    const step = nursingDraft.steps.find((item) => item.id === stepId);
+    const next = removeNursingQuestion(nursingDraft, stepId);
+    if (next === nursingDraft) {
+      return;
+    }
+    const folder = step?.questionFolder ? questionFolderOnDisk(step.questionFolder) : '';
+    rememberUndo(snapshotNodeUndo());
+    markNursingDirty();
+    setNursingDraft(next);
+    setDraftNodeIds((ids) => ids.filter((id) => id !== stepId));
+    if (!next.steps.some((item) => item.id === selectedStepId)) {
+      setSelectedStepId(next.meta.startStepId);
+      setNursingPreviewOptionIndex(0);
+    }
+    if (!folder || !isQuestionFolderPath(folder)) {
+      return;
+    }
+    const entryIndex = nodeUndoRef.current.length - 1;
+    void deleteQuestionFolder(folder)
+      .then((files) => {
+        const stack = nodeUndoRef.current;
+        if (!stack[entryIndex]) {
+          return;
+        }
+        const patched = stack.map((item, index) =>
+          index === entryIndex ? { ...item, folders: [{ folder, files }] } : item,
+        );
+        nodeUndoRef.current = patched;
+        setNodeUndo(patched);
+      })
+      .catch(() => {
+        setSaveError('De vraag is weg. De map kon niet worden verwijderd.');
+      });
+  }
+
+  function connectNodes(from: string, to: string) {
+    if (editorModule === 'verpleegkunde') {
+      const next = connectNursingFlow(nursingDraft, from, to);
+      if (next === nursingDraft) {
+        return;
+      }
+      pushNodeUndo();
+      markNursingDirty();
+      setNursingDraft(next);
+      return;
+    }
+    const next = connectLogopedieFlow(scenario, from, to);
+    if (next === scenario) {
+      return;
+    }
+    pushNodeUndo();
+    markDirty();
+    setScenario(next);
   }
 
   function disconnectNodes(from: string) {
     if (editorModule === 'verpleegkunde') {
-      setNursingDraft((current) => {
-        const next = disconnectNursingFlow(current, from);
-        if (next !== current) {
-          markNursingDirty();
-        }
-        return next;
-      });
+      const next = disconnectNursingFlow(nursingDraft, from);
+      if (next === nursingDraft) {
+        return;
+      }
+      pushNodeUndo();
+      markNursingDirty();
+      setNursingDraft(next);
       return;
     }
-    setScenario((current) => {
-      const next = disconnectLogopedieFlow(current, from);
-      if (next !== current) {
-        markDirty();
-      }
-      return next;
-    });
+    const next = disconnectLogopedieFlow(scenario, from);
+    if (next === scenario) {
+      return;
+    }
+    pushNodeUndo();
+    markDirty();
+    setScenario(next);
   }
 
   function resetToSeed() {
+    clearNodeUndo();
     markDirty();
     const seeded = cloneScenario();
     setScenario(seeded);
@@ -304,34 +516,41 @@ export function EditorApp() {
     setOpenError(null);
     setLoadNotice(null);
     setLoadedLabel(editorSourceLabel('seed'));
+    setLogopedieCaseFile(null);
     setSaveMessage(null);
     setSaveError(null);
     setStagedMedia([]);
   }
 
   function resetNursingToSeed() {
+    clearNodeUndo();
     markNursingDirty();
     const seeded = emptyNursingScenario();
     setNursingDraft(seeded);
+    setDraftNodeIds([]);
     setSelectedStepId(seeded.meta.startStepId);
     setNursingPreviewOptionIndex(0);
     setOpenError(null);
     setNursingLoadNotice(null);
     setNursingLoadedLabel(nursingEditorSourceLabel('seed'));
+    setNursingCaseFile(null);
     setSaveMessage(null);
     setSaveError(null);
     setNursingStagedMedia([]);
   }
 
   function startNewScenario() {
+    clearNodeUndo();
     setOpenError(null);
     setSaveError(null);
     setSaveMessage(null);
     setSaveBlockIssues(null);
     if (editorModule === 'verpleegkunde') {
+      setNursingCaseFile(null);
       markNursingDirty();
       const empty = emptyNursingScenario();
       setNursingDraft(empty);
+      setDraftNodeIds([]);
       setSelectedStepId(empty.meta.startStepId);
       setNursingPreviewOptionIndex(0);
       setNursingLoadNotice(null);
@@ -339,6 +558,7 @@ export function EditorApp() {
       setNursingStagedMedia([]);
       return;
     }
+    setLogopedieCaseFile(null);
     markDirty();
     const empty = emptyLogopedieScenario();
     setScenario(empty);
@@ -349,45 +569,173 @@ export function EditorApp() {
     setStagedMedia([]);
   }
 
-  async function openJsonFile(file: File | undefined) {
-    if (!file) {
-      return;
-    }
-    try {
-      const text = await file.text();
-      if (editorModule === 'verpleegkunde') {
-        const parsed = parseVerpleegkundeEnvelope(text);
-        if (!parsed.ok) {
-          setOpenError(parsed.error);
-          return;
-        }
-        if (isBundledNursingExample(parsed.scenario)) {
-          setOpenError('De voorbeeldcasus ABCDE/SBAR wordt niet geopend.');
-          return;
-        }
-        markNursingDirty();
-        setNursingDraft(parsed.scenario);
-        setSelectedStepId(parsed.scenario.meta.startStepId);
-        setNursingPreviewOptionIndex(0);
-        setOpenError(null);
-        setNursingLoadNotice(null);
-        setNursingLoadedLabel(nursingEditorSourceLabel('json', file.name));
-        return;
-      }
-      const parsed = parseLogopedieEnvelope(text);
+  function openEnvelopeText(text: string, fileName: string) {
+    if (editorModule === 'verpleegkunde') {
+      const parsed = parseVerpleegkundeEnvelope(text);
       if (!parsed.ok) {
         setOpenError(parsed.error);
         return;
       }
-      markDirty();
-      setScenario(parsed.scenario);
-      setSelectedNodeId(parsed.scenario.startNodeId);
-      setPreviewOptionIndex(0);
+      if (isBundledNursingExample(parsed.scenario)) {
+        setOpenError('De voorbeeldcasus ABCDE/SBAR wordt niet geopend.');
+        return;
+      }
+      clearNodeUndo();
+      markNursingDirty();
+      setNursingDraft(parsed.scenario);
+      setDraftNodeIds([]);
+      setSelectedStepId(parsed.scenario.meta.startStepId);
+      setNursingPreviewOptionIndex(0);
       setOpenError(null);
-      setLoadNotice(null);
-      setLoadedLabel(editorSourceLabel('json', file.name));
+      setNursingLoadNotice(null);
+      setNursingLoadedLabel(nursingEditorSourceLabel('json', fileName));
+      rememberOpenCaseFile(fileName);
+      return;
+    }
+    const parsed = parseLogopedieEnvelope(text);
+    if (!parsed.ok) {
+      setOpenError(parsed.error);
+      return;
+    }
+    clearNodeUndo();
+    markDirty();
+    setScenario(parsed.scenario);
+    setSelectedNodeId(parsed.scenario.startNodeId);
+    setPreviewOptionIndex(0);
+    setOpenError(null);
+    setLoadNotice(null);
+    setLoadedLabel(editorSourceLabel('json', fileName));
+    rememberOpenCaseFile(fileName);
+  }
+
+  function rememberOpenCaseFile(fileName: string) {
+    const base = fileName.replaceAll('\\', '/').split('/').pop() || fileName;
+    if (editorModule === 'logopedie') {
+      setLogopedieCaseFile(base);
+    } else {
+      setNursingCaseFile(base);
+    }
+  }
+
+  async function showCaseChooser(moduleId: EditorModule = editorModule) {
+    setOpenError(null);
+    try {
+      setCaseChooser(await listEditorCases(moduleId));
+    } catch (error) {
+      setCaseChooser(null);
+      setOpenError(
+        error instanceof Error ? error.message : 'De casussen konden niet worden geladen.',
+      );
+    }
+  }
+
+  function rememberNodeLayout(layout: NodeLayout) {
+    const moduleId = editorModule;
+    const fileName = moduleId === 'verpleegkunde' ? nursingCaseFile : logopedieCaseFile;
+    if (moduleId === 'verpleegkunde') {
+      markNursingDirty();
+      setNursingDraft((current) =>
+        sameNodeLayout(current.nodeLayout, layout) ? current : { ...current, nodeLayout: layout },
+      );
+    } else {
+      markDirty();
+      setScenario((current) =>
+        sameNodeLayout(current.nodeLayout, layout) ? current : { ...current, nodeLayout: layout },
+      );
+    }
+    if (!fileName) {
+      return;
+    }
+    void saveNodeLayoutToCase(moduleId, fileName, layout).then((result) => {
+      if (!result.ok) {
+        setSaveError(result.error);
+      }
+    });
+  }
+
+  function closeListDelete() {
+    setListDeleteStep(0);
+    setListDelete(null);
+  }
+
+  async function deleteListedCase() {
+    const item = listDelete;
+    if (!item) {
+      closeListDelete();
+      return;
+    }
+    const moduleId = editorModule;
+    const openFile = moduleId === 'logopedie' ? logopedieCaseFile : nursingCaseFile;
+    const folders =
+      moduleId === 'verpleegkunde' && openFile === item.file ? questionFolders(nursingDraft) : [];
+    setDeletingCase(true);
+    setSaveError(null);
+    const result = await deleteEditorCaseOnDisk(moduleId, item.file, folders);
+    setDeletingCase(false);
+    if (!result.ok) {
+      closeListDelete();
+      setSaveError(result.error);
+      return;
+    }
+    if (openFile === item.file) {
+      clearNodeUndo();
+      if (moduleId === 'logopedie') {
+        setLogopedieCaseFile(null);
+        setLoadedLabel('Niet opgeslagen');
+      } else {
+        setNursingCaseFile(null);
+        setNursingLoadedLabel('Niet opgeslagen');
+      }
+    }
+    closeListDelete();
+    setCaseChooser((current) => current?.filter((entry) => entry.file !== item.file) ?? current);
+    setSaveMessage(null);
+    await showCaseChooser(moduleId);
+  }
+
+  async function deleteOpenCase() {
+    const moduleId = editorModule;
+    const file = moduleId === 'logopedie' ? logopedieCaseFile : nursingCaseFile;
+    const folders = moduleId === 'verpleegkunde' ? questionFolders(nursingDraft) : [];
+    setDeleteStep(0);
+    if (!file) {
+      setSaveError('Deze casus is niet opgeslagen. Er is niets verwijderd.');
+      return;
+    }
+    setDeletingCase(true);
+    setSaveError(null);
+    const result = await deleteEditorCaseOnDisk(moduleId, file, folders);
+    setDeletingCase(false);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
+    }
+    clearNodeUndo();
+    if (moduleId === 'logopedie') {
+      setLogopedieCaseFile(null);
+      setLoadedLabel('Niet opgeslagen');
+    } else {
+      setNursingCaseFile(null);
+      setNursingLoadedLabel('Niet opgeslagen');
+    }
+    setSaveMessage(null);
+    await showCaseChooser(moduleId);
+  }
+
+  async function openListedCase(item: EditorCaseListItem) {
+    setCaseChooser(null);
+    try {
+      const response = await fetch(
+        withBaseUrl(`/resources/scenarios/${encodeURIComponent(item.file)}`),
+        { cache: 'no-store' },
+      );
+      if (!response.ok) {
+        setOpenError('De casus kon niet worden geladen.');
+        return;
+      }
+      openEnvelopeText(await response.text(), item.file);
     } catch {
-      setOpenError('Het bestand kon niet worden gelezen.');
+      setOpenError('De casus kon niet worden geladen.');
     }
   }
 
@@ -446,6 +794,7 @@ export function EditorApp() {
           // catalog refresh is optional; JSON and files are already written
         }
         setNursingLoadedLabel(nursingEditorSourceLabel('json'));
+        setNursingCaseFile(overlayScenarioFileName('verpleegkunde'));
         setNursingLoadNotice(null);
         setSaveMessage(
           'Opgeslagen in deze kopie. Start de simulator opnieuw om de wijziging te zien.',
@@ -469,6 +818,7 @@ export function EditorApp() {
       }
       setStagedMedia([]);
       setLoadedLabel(editorSourceLabel('json'));
+      setLogopedieCaseFile(overlayScenarioFileName('logopedie'));
       setLoadNotice(null);
       setSaveMessage(
         'Opgeslagen in deze kopie. Start de simulator opnieuw om de wijziging te zien.',
@@ -499,9 +849,11 @@ export function EditorApp() {
     rememberOpenedModule(editorModule);
     const fileName = result.file.replaceAll('\\', '/').split('/').pop() ?? result.file;
     if (editorModule === 'verpleegkunde') {
+      setNursingCaseFile(fileName);
       setNursingLoadedLabel(`Geladen: ${fileName}`);
       setNursingLoadNotice(null);
     } else {
+      setLogopedieCaseFile(fileName);
       setLoadedLabel(`Geladen: ${fileName}`);
       setLoadNotice(null);
     }
@@ -612,15 +964,18 @@ export function EditorApp() {
         setSelectedNodeId(parsed.scenario.startNodeId);
         setPreviewOptionIndex(0);
         setStagedMedia([]);
+        setLogopedieCaseFile(null);
         setLoadedLabel(`Geladen: ${file.name}`);
         setLoadNotice(null);
       } else {
         markNursingDirty();
         setEditorModule('verpleegkunde');
         setNursingDraft(parsed.scenario);
+        setDraftNodeIds([]);
         setSelectedStepId(parsed.scenario.meta.startStepId);
         setNursingPreviewOptionIndex(0);
         setNursingStagedMedia([]);
+        setNursingCaseFile(null);
         setNursingLoadedLabel(`Geladen: ${file.name}`);
         setNursingLoadNotice(null);
         try {
@@ -686,7 +1041,7 @@ export function EditorApp() {
   if (nodesOpen) {
     const overview =
       editorModule === 'verpleegkunde'
-        ? nursingNodeOverview(nursingDraft)
+        ? nursingNodeOverview(nursingDraft, new Set(draftNodeIds))
         : logopedieNodeOverview(scenario);
     return (
       <div
@@ -700,6 +1055,89 @@ export function EditorApp() {
           onConnect={connectNodes}
           onDisconnect={disconnectNodes}
           onOpenTasks={() => setPrintListOpen(true)}
+          onCreateQuestion={editorModule === 'verpleegkunde' ? addNodeQuestion : undefined}
+          onDeleteQuestion={editorModule === 'verpleegkunde' ? deleteNodeQuestion : undefined}
+          savedLayout={
+            editorModule === 'verpleegkunde' ? nursingDraft.nodeLayout : scenario.nodeLayout
+          }
+          onLayoutChange={rememberNodeLayout}
+          onUndo={() => {
+            void undoNodeAction();
+          }}
+          canUndo={nodeUndo.length > 0}
+          renderQuestionWizard={
+            editorModule === 'verpleegkunde'
+              ? (stepId, close) => (
+                  <NodeQuestionWizard
+                    stepId={stepId}
+                    draft={nursingDraft}
+                    onChange={(next) => {
+                      pushNodeUndo();
+                      markNursingDirty();
+                      rememberQuestionFolders(nursingDraft, next);
+                      setNursingDraft(next);
+                    }}
+                    stagedMedia={nursingStagedMedia}
+                    onStage={stageNursingMedia}
+                    diskMedia={nursingDiskMedia}
+                    onSaved={() => {
+                      setDraftNodeIds((ids) => ids.filter((id) => id !== stepId));
+                      close();
+                    }}
+                  />
+                )
+              : undefined
+          }
+          renderNodeEdit={(target, close) =>
+            editorModule === 'verpleegkunde' ? (
+              <NodeFieldEditor
+                module="verpleegkunde"
+                target={target}
+                draft={nursingDraft}
+                stagedMedia={nursingStagedMedia}
+                diskMedia={nursingDiskMedia}
+                onStage={stageNursingMedia}
+                onClose={close}
+                onSave={(next) => {
+                  if (JSON.stringify(next) !== JSON.stringify(nursingDraft)) {
+                    pushNodeUndo();
+                    markNursingDirty();
+                    rememberQuestionFolders(nursingDraft, next);
+                    setNursingDraft(next);
+                  }
+                  setSelectedStepId(target.stepId);
+                  if (target.quality) {
+                    const step = next.steps.find((item) => item.id === target.stepId);
+                    const index =
+                      step?.options.findIndex((option) => option.quality === target.quality) ?? 0;
+                    setNursingPreviewOptionIndex(index >= 0 ? index : 0);
+                  }
+                  setDraftNodeIds((ids) => ids.filter((id) => id !== target.stepId));
+                }}
+              />
+            ) : (
+              <NodeFieldEditor
+                module="logopedie"
+                target={target}
+                scenario={scenario}
+                onClose={close}
+                onSave={(next) => {
+                  if (JSON.stringify(next) !== JSON.stringify(scenario)) {
+                    pushNodeUndo();
+                    markDirty();
+                    setScenario(next);
+                  }
+                  setSelectedNodeId(target.stepId);
+                  if (target.quality) {
+                    const node = next.nodes.find((item) => item.id === target.stepId);
+                    const index =
+                      node?.options.findIndex((option) => option.quality === target.quality) ?? 0;
+                    setPreviewOptionIndex(index >= 0 ? index : 0);
+                  }
+                }}
+              />
+            )
+          }
         />
       </div>
     );
@@ -713,7 +1151,7 @@ export function EditorApp() {
           <h1>
             {editorModule === 'logopedie'
               ? 'Logopedie-scenariobewerker'
-              : 'Verpleegkunde-scenariobewerker'}
+              : 'Gesprekstechnieken-scenariobewerker'}
           </h1>
           <p className="editor-meta">
             {editorModule === 'logopedie'
@@ -728,14 +1166,6 @@ export function EditorApp() {
           <div className="editor-actions">
             <button
               type="button"
-              className="btn"
-              data-testid="btn-editor-quit"
-              onClick={() => quitEditor()}
-            >
-              Afsluiten
-            </button>
-            <button
-              type="button"
               className="btn btn-secondary"
               data-testid="btn-new-scenario"
               onClick={startNewScenario}
@@ -745,10 +1175,20 @@ export function EditorApp() {
             <button
               type="button"
               className="btn btn-secondary"
+              data-testid="btn-open-json"
+              onClick={() => {
+                void showCaseChooser();
+              }}
+            >
+              Casus openen
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
               data-testid="btn-nodes"
               onClick={() => setNodesOpen(true)}
             >
-              Nodes
+              Node Editor
             </button>
             <button
               type="button"
@@ -758,50 +1198,10 @@ export function EditorApp() {
             >
               Test modus
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              data-testid="btn-reset-seed"
-              onClick={editorModule === 'logopedie' ? resetToSeed : resetNursingToSeed}
-            >
-              Herstel startkopie
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              data-testid="btn-open-json"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Casus openen
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="visually-hidden"
-              data-testid="input-open-json"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                void openJsonFile(file);
-              }}
-            />
-            <button
-              type="button"
-              className="btn"
-              data-testid="btn-download-json"
-              onClick={() =>
-                editorModule === 'logopedie'
-                  ? downloadEnvelope(scenario)
-                  : downloadNursingEnvelope(nursingDraft)
-              }
-            >
-              Casus downloaden
-            </button>
             {saveOnThisPc ? (
               <button
                 type="button"
-                className="btn"
+                className="btn btn-secondary"
                 data-testid="btn-save-json"
                 onClick={() => requestSave()}
                 disabled={saving}
@@ -820,17 +1220,26 @@ export function EditorApp() {
                 Opslaan als nieuwe casus
               </button>
             ) : null}
-            {saveOnThisPc ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                data-testid="btn-export-package"
-                onClick={() => void exportPackage()}
-                disabled={saving}
-              >
-                Exporteren
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-download-json"
+              onClick={() =>
+                editorModule === 'logopedie'
+                  ? downloadEnvelope(scenario)
+                  : downloadNursingEnvelope(nursingDraft)
+              }
+            >
+              Casus downloaden
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-reset-seed"
+              onClick={editorModule === 'logopedie' ? resetToSeed : resetNursingToSeed}
+            >
+              Herstel startkopie
+            </button>
             {saveOnThisPc ? (
               <button
                 type="button"
@@ -854,7 +1263,59 @@ export function EditorApp() {
                 void importPackageFile(file);
               }}
             />
+            {saveOnThisPc ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-export-package"
+                onClick={() => void exportPackage()}
+                disabled={saving}
+              >
+                Exporteren
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-delete-case"
+              onClick={() => setDeleteStep(1)}
+              disabled={deletingCase}
+            >
+              Casus verwijderen
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-editor-quit"
+              onClick={() => quitEditor()}
+            >
+              Afsluiten
+            </button>
           </div>
+          {editorModule === 'logopedie' ? (
+            <aside className="editor-preview editor-header-preview editor-card">
+              <h2>Voorbeeld</h2>
+              <p className="muted" data-testid="preview-face-label">
+                {faceLabel(previewEmotion)}
+              </p>
+              <div className="editor-preview-stage" data-testid="editor-preview-stage">
+                <LogopedieAvatar
+                  emotion={previewEmotion}
+                  heightPx={240}
+                  name={scenario.client.name}
+                  srcOverride={avatarOverride}
+                />
+              </div>
+              <p className="muted">{previewOption?.clientResponse.text}</p>
+            </aside>
+          ) : (
+            <NursingPreviewAside
+              draft={nursingDraft}
+              stagedMedia={nursingStagedMedia}
+              selectedStepId={selectedStepId}
+              previewOptionIndex={nursingPreviewOptionIndex}
+            />
+          )}
         </div>
       </header>
 
@@ -873,18 +1334,12 @@ export function EditorApp() {
           data-testid="editor-module-nursing"
           onClick={() => selectEditorModule('verpleegkunde')}
         >
-          Verpleegkunde
+          Gesprekstechnieken
         </button>
       </nav>
 
-      <p className="editor-notice" data-testid="editor-demo-notice">
-        Dit is een demo-editor, geen les-app. Casus openen en Casus downloaden werken in de browser.
-        Opslaan naar schijf kan alleen lokaal via Editor.exe.
-      </p>
-      <p className="editor-notice">
-        {editorModule === 'logopedie'
-          ? 'Bij openen wordt het laatst geopende scenario geladen. Was er nog geen scenario geopend, dan de startkopie. De avatar is een stilstaande still, zonder zoom.'
-          : 'Bij openen wordt het laatst zelf gemaakte scenario geladen. Anders start Verpleegkunde leeg. Geen zoom, geen animatie.'}
+      <p className="editor-notice" data-testid="editor-credit">
+        {APP_VERSION} Made by Rutger van Horssen
       </p>
 
       {activeLoadNotice ? (
@@ -906,6 +1361,196 @@ export function EditorApp() {
         <p className="editor-save-ok" data-testid="editor-save-ok" role="status">
           {saveMessage}
         </p>
+      ) : null}
+
+      {caseChooser && listDeleteStep === 0 ? (
+        <Dialog title="Casus openen" testId="dialog-open-case" onClose={() => setCaseChooser(null)}>
+          {caseChooser.length === 0 ? (
+            <p>Geen casussen gevonden.</p>
+          ) : (
+            <ul className="editor-case-list" data-testid="editor-case-list">
+              {caseChooser.map((item) => (
+                <li key={item.file} className="editor-case-row">
+                  <button
+                    type="button"
+                    className="btn btn-secondary editor-case-open"
+                    data-testid={`btn-open-case-${item.file}`}
+                    onClick={() => {
+                      void openListedCase(item);
+                    }}
+                  >
+                    <span>{item.title}</span>
+                    {item.savedAt && formatCaseSavedAt(item.savedAt) ? (
+                      <span className="editor-case-saved" data-testid={`case-saved-${item.file}`}>
+                        {formatCaseSavedAt(item.savedAt)}
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary editor-case-delete"
+                    data-testid={`btn-delete-listed-case-${item.file}`}
+                    onClick={() => {
+                      setListDelete(item);
+                      setListDeleteStep(1);
+                    }}
+                  >
+                    Verwijderen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-open-case-back"
+              onClick={() => setCaseChooser(null)}
+            >
+              Terug
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {listDelete && listDeleteStep === 1 ? (
+        <Dialog
+          title="Casus verwijderen"
+          testId="dialog-delete-listed-case-1"
+          onClose={closeListDelete}
+        >
+          <p>Wil je &quot;{listDelete.title}&quot; verwijderen? Er gaat nog niets weg.</p>
+          <p>Bestand: {listDelete.file}</p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-delete-listed-cancel-1"
+              onClick={closeListDelete}
+            >
+              Annuleren
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-delete-listed-continue"
+              onClick={() => setListDeleteStep(2)}
+            >
+              Doorgaan
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {listDelete && listDeleteStep === 2 ? (
+        <Dialog
+          title="Casus echt verwijderen"
+          testId="dialog-delete-listed-case-2"
+          onClose={closeListDelete}
+        >
+          <p>
+            Bevestig nog een keer. &quot;{listDelete.title}&quot; en de vraagmappen, inclusief
+            video&apos;s en tekstbestanden, worden verwijderd.
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-delete-listed-cancel-2"
+              onClick={closeListDelete}
+            >
+              Annuleren
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-delete-listed-confirm"
+              onClick={() => {
+                void deleteListedCase();
+              }}
+              disabled={deletingCase}
+            >
+              Casus verwijderen
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {deleteStep === 1 ? (
+        <Dialog
+          title="Casus verwijderen"
+          testId="dialog-delete-case-1"
+          onClose={() => setDeleteStep(0)}
+        >
+          <p>
+            Wil je &quot;
+            {editorModule === 'logopedie'
+              ? scenario.title.trim() || 'Logopedie'
+              : nursingDraft.meta.title.trim() || 'Gesprekstechnieken'}
+            &quot; verwijderen? Er gaat nog niets weg.
+          </p>
+          <p>
+            {(editorModule === 'logopedie' ? logopedieCaseFile : nursingCaseFile)
+              ? `Bestand: ${editorModule === 'logopedie' ? logopedieCaseFile : nursingCaseFile}`
+              : 'Deze casus is nog niet opgeslagen.'}
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-delete-case-cancel-1"
+              onClick={() => setDeleteStep(0)}
+            >
+              Annuleren
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-delete-case-continue"
+              onClick={() => setDeleteStep(2)}
+            >
+              Doorgaan
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {deleteStep === 2 ? (
+        <Dialog
+          title="Casus echt verwijderen"
+          testId="dialog-delete-case-2"
+          onClose={() => setDeleteStep(0)}
+        >
+          <p>
+            Bevestig nog een keer. &quot;
+            {editorModule === 'logopedie'
+              ? scenario.title.trim() || 'Logopedie'
+              : nursingDraft.meta.title.trim() || 'Gesprekstechnieken'}
+            &quot; en de vraagmappen, inclusief video&apos;s en tekstbestanden, worden verwijderd.
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-delete-case-cancel-2"
+              onClick={() => setDeleteStep(0)}
+            >
+              Annuleren
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-delete-case-confirm"
+              onClick={() => {
+                void deleteOpenCase();
+              }}
+              disabled={deletingCase}
+            >
+              Casus verwijderen
+            </button>
+          </div>
+        </Dialog>
       ) : null}
 
       {saveBlockIssues ? (
@@ -943,7 +1588,11 @@ export function EditorApp() {
             draft={nursingDraft}
             onChange={(next) => {
               markNursingDirty();
+              rememberQuestionFolders(nursingDraft, next);
               setNursingDraft(next);
+              setDraftNodeIds((ids) =>
+                ids.filter((id) => next.steps.some((step) => step.id === id)),
+              );
             }}
             stagedMedia={nursingStagedMedia}
             onStage={(op) => {
@@ -1180,22 +1829,6 @@ export function EditorApp() {
                 </div>
               </main>
             ) : null}
-
-            <aside className="editor-preview">
-              <h2>Voorbeeld</h2>
-              <p className="muted" data-testid="preview-face-label">
-                {faceLabel(previewEmotion)}
-              </p>
-              <div className="editor-preview-stage" data-testid="editor-preview-stage">
-                <LogopedieAvatar
-                  emotion={previewEmotion}
-                  heightPx={240}
-                  name={scenario.client.name}
-                  srcOverride={avatarOverride}
-                />
-              </div>
-              <p className="muted">{previewOption?.clientResponse.text}</p>
-            </aside>
           </div>
 
           <EditorMediaPanel

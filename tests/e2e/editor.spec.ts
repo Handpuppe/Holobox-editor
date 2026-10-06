@@ -110,7 +110,7 @@ test.describe('logopedie scenario editor', () => {
     await expect(page.getByText('Vraag gewijzigd in de editor.')).toHaveCount(0);
   });
 
-  test('opens valid JSON, rejects invalid JSON, and restores the start copy', async ({ page }) => {
+  test('downloads JSON and opens the case list without a file picker', async ({ page }) => {
     await page.goto('editor.html');
     await expect(page.getByTestId('screen-scenario-editor')).toBeVisible();
     const originalPrompt = await page.getByTestId('prompt-text').inputValue();
@@ -125,23 +125,10 @@ test.describe('logopedie scenario editor', () => {
     await page.getByTestId('btn-reset-seed').click();
     await expect(page.getByTestId('prompt-text')).toHaveValue(originalPrompt);
 
-    await page.getByTestId('input-open-json').setInputFiles(savedPath ?? '');
-    await expect(page.getByTestId('prompt-text')).toHaveValue('Vraag voor roundtrip-JSON.');
-    await expect(page.getByTestId('editor-open-error')).toHaveCount(0);
-
-    await page.getByTestId('input-open-json').setInputFiles({
-      name: 'ongeldig.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from('{niet-json'),
-    });
-    await expect(page.getByTestId('editor-open-error')).toContainText(
-      'Dit bestand is geen geldige JSON.',
-    );
-    await expect(page.getByTestId('prompt-text')).toHaveValue('Vraag voor roundtrip-JSON.');
-
-    await page.getByTestId('btn-reset-seed').click();
-    await expect(page.getByTestId('prompt-text')).toHaveValue(originalPrompt);
-    await expect(page.getByTestId('editor-open-error')).toHaveCount(0);
+    await expect(page.getByTestId('input-open-json')).toHaveCount(0);
+    await page.getByTestId('btn-open-json').click();
+    await expect(page.getByTestId('dialog-open-case')).toBeVisible();
+    await expect(page.getByTestId('dialog-open-case').locator('input[type="file"]')).toHaveCount(0);
   });
 
   test('blocks save when the logopedie question is empty', async ({ page }) => {
@@ -292,7 +279,7 @@ test.describe('logopedie scenario editor', () => {
     const original = join(process.cwd(), 'resources', relative);
     const bak = `${original}.bak`;
     const distCopy = join(process.cwd(), 'dist', 'resources', relative);
-    const nursingVideo = join(process.cwd(), 'resources', 'verpleegkunde', 'Staat is pijn.mp4');
+    const nursingVideo = join(process.cwd(), 'resources', 'gesprekstechnieken', 'Staat is pijn.mp4');
     const nursingSize = statSync(nursingVideo).size;
     const originalBytes = readFileSync(original);
     const tinyPng = Buffer.from(
@@ -523,7 +510,7 @@ test.describe('verpleegkunde scenario editor', () => {
   test('asks confirmation before deleting verpleegkunde media and does not use logopedie', async ({
     page,
   }) => {
-    const pain = join(process.cwd(), 'resources', 'verpleegkunde', 'Staat is pijn.mp4');
+    const pain = join(process.cwd(), 'resources', 'gesprekstechnieken', 'Staat is pijn.mp4');
     const painSize = statSync(pain).size;
     const erik = join(process.cwd(), 'resources', 'logopedie', 'avatar', 'erik_basis.png');
     const erikSize = statSync(erik).size;
@@ -531,7 +518,7 @@ test.describe('verpleegkunde scenario editor', () => {
     await page.goto('editor.html');
     await page.getByTestId('editor-module-nursing').click();
     await expect(page.getByTestId('editor-nursing-media')).toBeVisible();
-    await page.getByTestId('nursing-media-row-verpleegkunde_Staat is pijn.mp4').click();
+    await page.getByTestId('nursing-media-row-gesprekstechnieken_Staat is pijn.mp4').click();
     await page.getByTestId('btn-nursing-media-delete').click();
     await expect(page.getByTestId('dialog-delete-nursing-media')).toBeVisible();
     await page.getByTestId('btn-cancel-delete-nursing-media').click();
@@ -629,7 +616,7 @@ test.describe('verpleegkunde scenario editor', () => {
   test('replaces the first step video, saves, and the copy-simulator serves the new file', async ({
     page,
   }) => {
-    const folder = join(process.cwd(), 'resources', 'verpleegkunde');
+    const folder = join(process.cwd(), 'resources', 'gesprekstechnieken');
     const airwayName = readdirSync(folder).find(
       (name) => name.includes('luchtweg') || name.includes('Airway'),
     );
@@ -637,12 +624,12 @@ test.describe('verpleegkunde scenario editor', () => {
     expect(airwayName).toBeTruthy();
     expect(koortsName).toBeTruthy();
     if (!airwayName || !koortsName) {
-      throw new Error('Verpleegkunde-video’s ontbreken in resources/verpleegkunde/.');
+      throw new Error('Verpleegkunde-video’s ontbreken in resources/gesprekstechnieken/.');
     }
     const airway = join(folder, airwayName);
     const koorts = join(folder, koortsName);
     const bak = `${airway}.bak`;
-    const distAirway = join(process.cwd(), 'dist', 'resources', 'verpleegkunde', airwayName);
+    const distAirway = join(process.cwd(), 'dist', 'resources', 'gesprekstechnieken', airwayName);
     const original = readFileSync(airway);
     const replacement = readFileSync(koorts);
     const erik = join(process.cwd(), 'resources', 'logopedie', 'avatar', 'erik_basis.png');
@@ -664,10 +651,10 @@ test.describe('verpleegkunde scenario editor', () => {
       await fillSavableNursing(page, 'Vraag met vervangen stapvideo.');
       await expect(page.getByTestId('nursing-step-video')).toBeVisible();
       await page.getByTestId('nursing-step-mode-video').click();
-      const airwayRel = `verpleegkunde/${airwayName}`;
+      const airwayRel = `gesprekstechnieken/${airwayName}`;
       await expect(page.getByTestId('nursing-step-choose-video')).toContainText(airwayName);
       await page.getByTestId('nursing-step-choose-video').selectOption(airwayRel);
-      await expect(page.getByTestId('nursing-step-video-path')).toContainText('verpleegkunde/');
+      await expect(page.getByTestId('nursing-step-video-path')).toContainText('gesprekstechnieken/');
       await page.getByTestId('input-nursing-step-replace').setInputFiles({
         name: airwayName,
         mimeType: 'video/mp4',
@@ -692,10 +679,10 @@ test.describe('verpleegkunde scenario editor', () => {
       const video = page.getByTestId('patient-video');
       await expect(video).toBeVisible();
       const src = await video.getAttribute('src');
-      expect(src).toContain('verpleegkunde');
+      expect(src).toContain('gesprekstechnieken');
       expect(src).not.toContain('logopedie');
       const served = await page.request.get(
-        `resources/verpleegkunde/${encodeURIComponent(airwayName)}`,
+        `resources/gesprekstechnieken/${encodeURIComponent(airwayName)}`,
       );
       expect(served.ok()).toBe(true);
       expect((await served.body()).length).toBe(replacement.length);
@@ -752,7 +739,7 @@ test.describe('verpleegkunde scenario editor', () => {
   test('drags good forward, wrong back to the same question, and keeps the partial line', async ({
     page,
   }) => {
-    const folder = join(process.cwd(), 'resources', 'verpleegkunde');
+    const folder = join(process.cwd(), 'resources', 'gesprekstechnieken');
     const videoName = readdirSync(folder).find((name) => /\.(mp4|webm|mov|m4v)$/i.test(name));
     expect(videoName).toBeTruthy();
     if (!videoName) {
@@ -786,7 +773,7 @@ test.describe('verpleegkunde scenario editor', () => {
     await page.getByTestId('nursing-answer-placeholder-partial').fill('Nog filmen: de ademhaling.');
     await page.getByTestId('btn-nursing-answer-placeholder-save-partial').click();
     await page.getByTestId('nursing-answer-mode-video-high').click();
-    await page.getByTestId('nursing-answer-choose-high').selectOption(`verpleegkunde/${videoName}`);
+    await page.getByTestId('nursing-answer-choose-high').selectOption(`gesprekstechnieken/${videoName}`);
     await page.getByTestId('btn-add-nursing-step').click();
     await page.getByTestId('nursing-step-tab-n-1').click();
     await page.getByTestId('btn-nodes').click();

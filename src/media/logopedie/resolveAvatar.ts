@@ -59,8 +59,12 @@ export interface AvatarCandidate {
 }
 
 export function publicResourceUrl(relativePath: string): string {
+  const normalized = relativePath.replaceAll('\\', '/').replace(/^\/+/, '');
+  const mapped = normalized.startsWith('verpleegkunde/')
+    ? `gesprekstechnieken/${normalized.slice('verpleegkunde/'.length)}`
+    : normalized;
   return withBaseUrl(
-    `/resources/${relativePath
+    `/resources/${mapped
       .split('/')
       .map((segment) => encodeURIComponent(segment))
       .join('/')}`,

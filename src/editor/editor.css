@@ -25,7 +25,10 @@ html.editor-page #root {
 
 .editor-header-side {
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
   justify-content: center;
+  gap: 32px;
   width: 100%;
 }
 
@@ -71,10 +74,27 @@ html.editor-page #root {
 .editor-actions {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   width: 16rem;
+  flex: 0 0 16rem;
   max-width: 100%;
+}
+
+.editor-header-preview {
+  flex: 0 0 420px;
+  width: 420px;
+  max-width: 100%;
+  margin-left: 40px;
+}
+
+.editor-header-preview .editor-preview-stage {
+  height: 360px;
+}
+
+.editor-header-preview .editor-preview-stage .logopedie-avatar,
+.editor-header-preview .editor-preview-stage .logopedie-avatar-img {
+  max-height: 360px;
 }
 
 .editor-actions .btn {
@@ -185,7 +205,7 @@ html.editor-page #root {
 
 .editor-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 240px;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -505,6 +525,57 @@ html.editor-page #root {
   text-align: left;
 }
 
+.scenario-test-controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.scenario-test-controls .btn {
+  width: auto;
+  flex: 1;
+}
+
+.editor-case-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-case-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.editor-case-list .btn {
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+}
+
+.editor-case-row .editor-case-open {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.editor-case-row .editor-case-delete {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 132px;
+}
+
+.editor-case-saved {
+  flex: 0 0 auto;
+  color: #52606d;
+  font-size: 14px;
+  font-weight: 550;
+}
+
 .editor-preview-stage .logopedie-avatar,
 .editor-preview-stage .logopedie-avatar-img {
   width: 100%;
@@ -593,7 +664,7 @@ html.editor-page #root {
 
 .scenario-editor.node-overview-page {
   max-width: none;
-  background: #1a2332;
+  background: #141414;
 }
 
 .print-list h1 {
@@ -645,6 +716,18 @@ html.editor-page #root {
 }
 
 @media (max-width: 900px) {
+  .editor-header-side {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .editor-actions,
+  .editor-header-preview {
+    width: 100%;
+    flex-basis: auto;
+    margin-left: 0;
+  }
+
   .editor-layout,
   .editor-media-layout,
   .editor-patient-grid,

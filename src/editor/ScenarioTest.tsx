@@ -1,14 +1,19 @@
-import { useReducer, useState } from 'react';
+import { useRef, useState } from 'react';
 import { copy } from '../content/nl';
 import { followList } from '../domain/followLine';
 import { formatDuration, createSession } from '../domain/session';
-import { CONCLUSION_NODE_ID, type OptionQuality, type Scenario } from '../domain/types';
+import {
+  CONCLUSION_NODE_ID,
+  type OptionQuality,
+  type Scenario,
+  type SimulationSession,
+} from '../domain/types';
 import { withBaseUrl } from '../media/baseUrl';
 import { findByRelativePath } from '../media/matching';
 import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
 import { nursingReducer } from '../nursing/reducer';
 import { createNursingSession, currentNursingStep } from '../nursing/session';
-import type { NursingScenario, NursingStep } from '../nursing/types';
+import type { NursingScenario, NursingSession, NursingStep } from '../nursing/types';
 import { simulationReducer } from '../state/simulationReducer';
 import { stepPrimaryMediaPath } from './nursingMedia';
 
@@ -119,13 +124,49 @@ function ReplayNote({ show }: { show: boolean }) {
   );
 }
 
+function TestControls({
+  canStepBack,
+  onStepBack,
+  onClose,
+}: {
+  canStepBack: boolean;
+  onStepBack: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="scenario-test-controls">
+      <button
+        type="button"
+        className="btn btn-secondary"
+        data-testid="btn-test-step-back"
+        onClick={onStepBack}
+        disabled={!canStepBack}
+      >
+        Stap terug
+      </button>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        data-testid="btn-test-close"
+        onClick={onClose}
+      >
+        Test sluiten
+      </button>
+    </div>
+  );
+}
+
 function TestResults({
   durationMs,
   criticalErrors,
+  canStepBack,
+  onStepBack,
   onClose,
 }: {
   durationMs: number;
   criticalErrors: string[];
+  canStepBack: boolean;
+  onStepBack: () => void;
   onClose: () => void;
 }) {
   return (
@@ -144,12 +185,16 @@ function TestResults({
         ) : (
           <p className="notice">Geen kritieke veiligheidfouten in deze poging.</p>
         )}
-        <button type="button" className="btn" data-testid="btn-test-back" onClick={onClose}>
-          Terug
-        </button>
+        <TestControls canStepBack={canStepBack} onStepBack={onStepBack} onClose={onClose} />
       </div>
     </div>
   );
+}
+
+interface NursingTestMemory {
+  session: NursingSession;
+  visit: number;
+  replay: boolean;
 }
 
 function NursingScenarioTest({
@@ -159,20 +204,37 @@ function NursingScenarioTest({
   scenario: NursingScenario;
   onClose: () => void;
 }) {
-  const [session, dispatch] = useReducer(nursingReducer, null, () =>
+  const [session, setSession] = useState<NursingSession>(() =>
     createNursingSession(new Date(), scenario.meta),
   );
   const [visit, setVisit] = useState(0);
   const [replay, setReplay] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  if (!session) {
-    return null;
-  }
+  const [history, setHistory] = useState<NursingTestMemory[]>([]);
+  const replayBeforePending = useRef(false);
+  const stepBack = () => {
+    if (pendingId) {
+      setPendingId(null);
+      setReplay(replayBeforePending.current);
+      return;
+    }
+    const previous = history[history.length - 1];
+    if (!previous) {
+      return;
+    }
+    setHistory((items) => items.slice(0, -1));
+    setSession(previous.session);
+    setVisit(previous.visit);
+    setReplay(previous.replay);
+  };
+  const canStepBack = pendingId !== null || history.length > 0;
   if (session.status === 'completed') {
     return (
       <TestResults
         durationMs={session.accumulatedActiveMs}
         criticalErrors={session.criticalErrors}
+        canStepBack={canStepBack}
+        onStepBack={stepBack}
         onClose={onClose}
       />
     );
@@ -190,13 +252,17 @@ function NursingScenarioTest({
       pendingOption.nextStepId,
       'completed',
     );
+    setHistory((items) => [...items, { session, visit, replay }]);
     setReplay(!followed.done && followed.id === step.id);
-    dispatch({
-      type: 'select',
-      optionId: pendingOption.id,
-      at: new Date().toISOString(),
-      steps: scenario.steps,
-    });
+    setSession(
+      (current) =>
+        nursingReducer(current, {
+          type: 'select',
+          optionId: pendingOption.id,
+          at: new Date().toISOString(),
+          steps: scenario.steps,
+        }) ?? current,
+    );
     setPendingId(null);
     setVisit((value) => value + 1);
   };
@@ -249,6 +315,7 @@ function NursingScenarioTest({
                       className="btn option-btn"
                       data-testid={`test-option-${quality}`}
                       onClick={() => {
+                        replayBeforePending.current = replay;
                         setReplay(false);
                         setPendingId(option.id);
                       }}
@@ -259,14 +326,7 @@ function NursingScenarioTest({
                 })
               )}
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              data-testid="btn-test-back"
-              onClick={onClose}
-            >
-              Terug
-            </button>
+            <TestControls canStepBack={canStepBack} onStepBack={stepBack} onClose={onClose} />
           </div>
         </div>
       </div>
@@ -274,17 +334,44 @@ function NursingScenarioTest({
   );
 }
 
+interface LogopedieTestMemory {
+  session: SimulationSession;
+  visit: number;
+  replay: boolean;
+}
+
 function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onClose: () => void }) {
-  const [session, dispatch] = useReducer(simulationReducer, null, () => createSession(scenario));
+  const [session, setSession] = useState<SimulationSession>(() => createSession(scenario));
   const [visit, setVisit] = useState(0);
   const [replay, setReplay] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  if (!session) {
-    return null;
-  }
+  const [history, setHistory] = useState<LogopedieTestMemory[]>([]);
+  const replayBeforePending = useRef(false);
+  const stepBack = () => {
+    if (pendingId) {
+      setPendingId(null);
+      setReplay(replayBeforePending.current);
+      return;
+    }
+    const previous = history[history.length - 1];
+    if (!previous) {
+      return;
+    }
+    setHistory((items) => items.slice(0, -1));
+    setSession(previous.session);
+    setVisit(previous.visit);
+    setReplay(previous.replay);
+  };
+  const canStepBack = pendingId !== null || history.length > 0;
   if (session.status === 'awaiting_conclusion' || session.status === 'completed') {
     return (
-      <TestResults durationMs={session.accumulatedActiveMs} criticalErrors={[]} onClose={onClose} />
+      <TestResults
+        durationMs={session.accumulatedActiveMs}
+        criticalErrors={[]}
+        canStepBack={canStepBack}
+        onStepBack={stepBack}
+        onClose={onClose}
+      />
     );
   }
   const node =
@@ -300,10 +387,21 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
       pendingOption.nextNodeId,
       CONCLUSION_NODE_ID,
     );
+    setHistory((items) => [...items, { session, visit, replay }]);
     setReplay(!followed.done && followed.id === node.id);
     const at = new Date().toISOString();
-    dispatch({ type: 'select-option', optionId: pendingOption.id, scenario, at });
-    dispatch({ type: 'complete-transition', scenario });
+    setSession((current) => {
+      const selected = simulationReducer(current, {
+        type: 'select-option',
+        optionId: pendingOption.id,
+        scenario,
+        at,
+      });
+      if (!selected) {
+        return current;
+      }
+      return simulationReducer(selected, { type: 'complete-transition', scenario }) ?? current;
+    });
     setPendingId(null);
     setVisit((value) => value + 1);
   };
@@ -359,6 +457,7 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
                       className="btn option-btn"
                       data-testid={`test-option-${quality}`}
                       onClick={() => {
+                        replayBeforePending.current = replay;
                         setReplay(false);
                         setPendingId(option.id);
                       }}
@@ -369,14 +468,7 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
                 })
               )}
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              data-testid="btn-test-back"
-              onClick={onClose}
-            >
-              Terug
-            </button>
+            <TestControls canStepBack={canStepBack} onStepBack={stepBack} onClose={onClose} />
           </div>
         </div>
       </div>

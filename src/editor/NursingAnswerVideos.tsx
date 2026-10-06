@@ -1,20 +1,25 @@
 import { useMemo, useRef, useState } from 'react';
+import { Dialog } from '../components/Dialog';
 import { publicResourceUrl } from '../media/logopedie/resolveAvatar';
 import type { NursingScenario, NursingStep } from '../nursing/types';
 import {
-  ANSWER_FOLDER_NAMES,
   ANSWER_VIDEO_LABELS,
   ANSWER_VIDEO_QUALITIES,
-  answerUploadRelativePath,
   assignAnswerVideo,
   optionForQuality,
   optionPrimaryMediaPath,
   saveAnswerPlaceholder,
-  scenarioMediaFolderName,
   setAnswerVideoMode,
   type AnswerVideoQuality,
 } from './nursingAnswerMedia';
-import { isNursingMediaPath, type StagedNursingMediaOp } from './nursingMedia';
+import {
+  isNursingMediaPath,
+  isOwnedQuestionVideo,
+  saveNursingMediaOp,
+  unlinkDeletedNursingMedia,
+  type StagedNursingMediaOp,
+} from './nursingMedia';
+import { questionVideoRelative, resolvedQuestionFolder } from './questionFolder';
 import { placeholderDraft, syncPlaceholderDraft } from './placeholderDraft';
 
 interface NursingAnswerVideosProps {
@@ -25,6 +30,8 @@ interface NursingAnswerVideosProps {
   onChange: (next: NursingScenario) => void;
   onStage: (op: StagedNursingMediaOp) => void;
   quality?: AnswerVideoQuality;
+  /** In Bewerken blijft het bestand staan tot Opslaan. */
+  deferFileDelete?: boolean;
 }
 
 function isVideoPath(relativePath: string): boolean {
@@ -39,9 +46,11 @@ function AnswerVideoPlace({
   catalog,
   onChange,
   onStage,
+  deferFileDelete = false,
 }: NursingAnswerVideosProps & { quality: AnswerVideoQuality }) {
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [pendingPlaceholder, setPendingPlaceholder] = useState(false);
   const option = optionForQuality(step, quality);
   const linkedPath = optionPrimaryMediaPath(draft, option);
   const stagedOp = linkedPath ? staged.find((item) => item.relativePath === linkedPath) : undefined;
@@ -67,10 +76,31 @@ function AnswerVideoPlace({
   }
   const placeholderField = syncedPlaceholder ?? placeholderState;
   const [error, setError] = useState<string | null>(null);
-  const folderName = scenarioMediaFolderName(draft.meta.title, draft.meta.id);
+  const questionFolder = resolvedQuestionFolder(draft.meta.title, step);
+  const uploadPath = questionVideoRelative(questionFolder, quality);
   const chooseOptions = catalog.filter((item) => isNursingMediaPath(item));
   const placeholderDraftText = placeholderField.text;
   const savedNote = placeholderField.saved;
+
+  async function confirmPlaceholder() {
+    const path = shownPath;
+    setPendingPlaceholder(false);
+    if (!path || !option) {
+      return;
+    }
+    if (isOwnedQuestionVideo(path) && !deferFileDelete) {
+      try {
+        await saveNursingMediaOp({ type: 'delete', relativePath: path });
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Verwijderen van de video is mislukt.');
+        return;
+      }
+    }
+    onStage({ type: 'delete', relativePath: path });
+    onChange(
+      setAnswerVideoMode(unlinkDeletedNursingMedia(draft, path), step.id, quality, 'placeholder'),
+    );
+  }
 
   function stageFile(relativePath: string, file: File, replace: boolean) {
     onStage({
@@ -85,15 +115,23 @@ function AnswerVideoPlace({
     if (!file || !option) {
       return;
     }
-    const relativePath = answerUploadRelativePath(folderName, quality, file.name);
+    const relativePath = uploadPath;
     if (!relativePath) {
-      setError('Alleen video onder resources/verpleegkunde/ is toegestaan.');
+      setError('Alleen video onder resources/gesprekstechnieken/ is toegestaan.');
       return;
     }
     setError(null);
     const exists = chooseOptions.includes(relativePath) || shownPath === relativePath;
     stageFile(relativePath, file, exists);
-    onChange(assignAnswerVideo(draft, step.id, quality, relativePath));
+    const linked = assignAnswerVideo(draft, step.id, quality, relativePath);
+    onChange({
+      ...linked,
+      steps: linked.steps.map((item) =>
+        item.id === step.id && item.questionFolder !== questionFolder
+          ? { ...item, questionFolder }
+          : item,
+      ),
+    });
   }
 
   function replaceCurrent(file: File | undefined) {
@@ -102,7 +140,7 @@ function AnswerVideoPlace({
     }
     if (shownPath) {
       if (!isNursingMediaPath(shownPath)) {
-        setError('Alleen video onder resources/verpleegkunde/ is toegestaan.');
+        setError('Alleen video onder resources/gesprekstechnieken/ is toegestaan.');
         return;
       }
       setError(null);
@@ -149,6 +187,10 @@ function AnswerVideoPlace({
               data-testid={`nursing-answer-mode-placeholder-${quality}`}
               onChange={() => {
                 setError(null);
+                if (shownPath) {
+                  setPendingPlaceholder(true);
+                  return;
+                }
                 onChange(setAnswerVideoMode(draft, step.id, quality, 'placeholder'));
               }}
             />
@@ -203,9 +245,10 @@ function AnswerVideoPlace({
 
       {mode === 'video' ? (
         <>
-          <p className="muted">
-            Nieuwe upload: resources/verpleegkunde/scenarios/{folderName}/Antwoorden/
-            {ANSWER_FOLDER_NAMES[quality]}/
+          <p className="muted" data-testid={`nursing-answer-upload-target-${quality}`}>
+            {uploadPath
+              ? `Nieuwe upload: resources/${uploadPath}`
+              : 'Alleen video onder resources/gesprekstechnieken/ is toegestaan.'}
           </p>
           <p className="muted" data-testid={`nursing-answer-video-path-${quality}`}>
             {shownPath ?? 'Geen video gekoppeld.'}
@@ -304,6 +347,39 @@ function AnswerVideoPlace({
           </div>
         </>
       ) : null}
+      {pendingPlaceholder && shownPath ? (
+        <Dialog
+          title="Video verwijderen?"
+          testId={`dialog-placeholder-delete-${quality}`}
+          onClose={() => setPendingPlaceholder(false)}
+        >
+          <p>
+            De video wordt verwijderd
+            {isOwnedQuestionVideo(shownPath) ? ` uit resources/${shownPath}` : ''}. Opnieuw een
+            video kiezen betekent opnieuw uploaden.
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-danger"
+              data-testid={`btn-confirm-placeholder-delete-${quality}`}
+              onClick={() => {
+                void confirmPlaceholder();
+              }}
+            >
+              Verwijderen
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid={`btn-cancel-placeholder-delete-${quality}`}
+              onClick={() => setPendingPlaceholder(false)}
+            >
+              Annuleren
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
     </section>
   );
 }
@@ -313,7 +389,12 @@ export function NursingAnswerVideos(props: NursingAnswerVideosProps) {
   return (
     <>
       {qualities.map((quality) => (
-        <AnswerVideoPlace key={`${props.step.id}-${quality}`} {...props} quality={quality} />
+        <AnswerVideoPlace
+          key={`${props.step.id}-${quality}`}
+          {...props}
+          quality={quality}
+          deferFileDelete={props.deferFileDelete}
+        />
       ))}
     </>
   );

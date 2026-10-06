@@ -47,7 +47,7 @@
           },
           "delayedFeedback": "",
           "educationalRationale": "",
-          "nextStepId": "completed",
+          "nextStepId": "n-extra-1",
           "answerVideoMode": "placeholder",
           "videoPlaceholder": "Close-up: vrouw kijkt op en haar handen worden stil.",
           "answerCardMode": "placeholder",
@@ -63,7 +63,7 @@
           },
           "delayedFeedback": "",
           "educationalRationale": "",
-          "nextStepId": "completed",
+          "nextStepId": "n-extra-1",
           "answerVideoMode": "placeholder",
           "videoPlaceholder": "Close-up: vrouw knikt één keer en wrijft weer over haar arm.",
           "answerCardMode": "placeholder",
@@ -71,7 +71,7 @@
         },
         {
           "id": "n-1-inappropriate",
-          "text": "U moet minder piekeren, dan slaapt u vanzelf.",
+          "text": "Als u de feiten op een rij zet, wordt de onrust vanzelf minder.",
           "quality": "inappropriate",
           "unsafe": true,
           "competencyAwards": {
@@ -87,7 +87,8 @@
         }
       ],
       "stepVideoMode": "placeholder",
-      "stepVideoPlaceholder": "Vrouw zit rechtop, handen in elkaar, kijkt langs de student."
+      "stepVideoPlaceholder": "Vrouw zit rechtop, handen in elkaar, kijkt langs de student.",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag1"
     },
     {
       "id": "n-extra-1",
@@ -111,7 +112,7 @@
           },
           "delayedFeedback": "",
           "educationalRationale": "",
-          "nextStepId": "completed",
+          "nextStepId": "n-extra-2",
           "answerCardMode": "placeholder",
           "answerCardPlaceholder": "Vrouw wordt stiller en kijkt de student aan.",
           "answerVideoMode": "placeholder",
@@ -127,7 +128,7 @@
           },
           "delayedFeedback": "",
           "educationalRationale": "",
-          "nextStepId": "completed",
+          "nextStepId": "n-extra-2",
           "answerCardMode": "placeholder",
           "answerCardPlaceholder": "Vrouw knikt kort, maar blijft onrustig.",
           "answerVideoMode": "placeholder",
@@ -135,7 +136,7 @@
         },
         {
           "id": "n-extra-1-inappropriate",
-          "text": "Maakt u zich niet druk, het valt vast mee.",
+          "text": "U vreest het bericht. Tot de arts er is, heeft het weinig zin om daar nu bij stil te staan.",
           "quality": "inappropriate",
           "unsafe": true,
           "competencyAwards": {
@@ -143,7 +144,7 @@
           },
           "delayedFeedback": "",
           "educationalRationale": "",
-          "nextStepId": "completed",
+          "nextStepId": "n-extra-1",
           "answerCardMode": "placeholder",
           "answerCardPlaceholder": "Vrouw schudt haar hoofd en zwijgt.",
           "answerVideoMode": "placeholder",
@@ -151,7 +152,529 @@
         }
       ],
       "stepVideoMode": "placeholder",
-      "stepVideoPlaceholder": "Vrouw praat sneller en wrijft over haar arm."
+      "stepVideoPlaceholder": "Vrouw praat sneller en wrijft over haar arm.",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag2"
+    },
+    {
+      "id": "n-extra-2",
+      "stepName": "Vraag.3",
+      "phaseLabel": "Ze vraagt of u de uitslag al weet.",
+      "question": "Wat doe je met een vraag die je niet mag beantwoorden?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-2",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag3",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw leunt naar voren en zoekt de blik van de student.",
+      "options": [
+        {
+          "id": "n-extra-2-high",
+          "text": "Die uitslag heb ik niet. Ik hoor dat u hem graag nu zou willen.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-3",
+          "answerVideoMode": "video",
+          "videoPlaceholder": "Close-up: vrouw knikt langzaam en haar schouders zakken.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": "",
+          "mediaSlotId": "nursing-answer-n-extra-2-high"
+        },
+        {
+          "id": "n-extra-2-partial",
+          "text": "De arts bespreekt de uitslag met u.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-3",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw kijkt naar de deur en wrijft over haar handen.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-2-inappropriate",
+          "text": "Ik mag daar niets over zeggen, dat is aan de arts.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-2",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw leunt terug en sluit even de mond.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-3",
+      "stepName": "Vraag.4",
+      "phaseLabel": "Ze wordt stil.",
+      "question": "Hoe ga je om met die stilte?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-3",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag4",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw valt stil, blik omlaag, handen stil in de schoot.",
+      "options": [
+        {
+          "id": "n-extra-3-high",
+          "text": "Ik wacht even. U bent stil, dat mag.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-4",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw blijft stil en ademt langzamer.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-3-partial",
+          "text": "Hoe laat bent u vanmorgen wakker geworden?",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-4",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw kijkt op en fronst kort.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-3-inappropriate",
+          "text": "U hoeft niets te zeggen. Het valt vast mee.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-3",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw schudt het hoofd en kijkt weg.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-4",
+      "stepName": "Vraag.5",
+      "phaseLabel": "Ze zegt dat haar partner erbij had moeten zijn.",
+      "question": "Wat is een passende reactie?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-4",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag5",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw kijkt naar de lege stoel naast haar.",
+      "options": [
+        {
+          "id": "n-extra-4-high",
+          "text": "U mist uw partner erbij. Wat heeft u van uw partner nodig?",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-5",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw legt een hand op de lege stoel.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-4-partial",
+          "text": "Ik kan uw partner later bellen.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-5",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw knikt en kijkt naar haar telefoon.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-4-inappropriate",
+          "text": "Uw partner hoeft er niet bij te zijn. U kunt dit gesprek ook alleen voeren.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-4",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw trekt de schouders op en kijkt naar de tafel.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-5",
+      "stepName": "Vraag.6",
+      "phaseLabel": "Ze vraagt wat ze moet doen als het bericht slecht is.",
+      "question": "Hoe reageer je zonder te adviseren?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-5",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag6",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw houdt een hand tegen de borst en fronst.",
+      "options": [
+        {
+          "id": "n-extra-5-high",
+          "text": "Als het bericht slecht is, wat betekent dat dan voor u?",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-6",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw denkt na, blik blijft bij de student.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-5-partial",
+          "text": "U kunt iemand meenemen naar het gesprek met de arts.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-6",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw knikt één keer en noteert niets.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-5-inappropriate",
+          "text": "Deze week noteert u uw vragen, belt u de huisarts en regelt u dat iemand meegaat.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-5",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw kijkt over de student heen en wordt stiller.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-6",
+      "stepName": "Vraag.7",
+      "phaseLabel": "Ze zegt dat ze zich aanstelt.",
+      "question": "Hoe reageer je op dat oordeel?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-6",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag7",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw schudt kort het hoofd en wrijft over de arm.",
+      "options": [
+        {
+          "id": "n-extra-6-high",
+          "text": "U zegt dat u zich aanstelt. Bang zijn voor deze uitslag is begrijpelijk.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-7",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw kijkt op, de hand op de arm wordt stil.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-6-partial",
+          "text": "Veel mensen ervaren dit zo vlak voor een uitslag.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-7",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw haalt de schouders op.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-6-inappropriate",
+          "text": "U maakt zich zorgen, maar er is nog niets om u zorgen over te maken.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-6",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw slaat de blik neer en wordt kleiner in de stoel.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-7",
+      "stepName": "Vraag.8",
+      "phaseLabel": "Ze praat snel en herhaalt dezelfde zin.",
+      "question": "Hoe rem je het tempo zonder haar af te kappen?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-7",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag8",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw praat snel, dezelfde handbeweging herhaalt zich.",
+      "options": [
+        {
+          "id": "n-extra-7-high",
+          "text": "U herhaalt dat u het niet rond krijgt. Klopt dat zo?",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-8",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: het tempo zakt, vrouw knikt na de samenvatting.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-7-partial",
+          "text": "Kunt u iets langzamer praten? Dan volg ik u beter.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-8",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw probeert langzamer te praten en struikelt over de zin.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-7-inappropriate",
+          "text": "Ik pak het even over. Eerst lopen we mijn vragen langs.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-7",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw stopt midden in de zin en kijkt naar de tafel.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-8",
+      "stepName": "Vraag.9",
+      "phaseLabel": "Ze wil het gesprek stoppen.",
+      "question": "Hoe sluit je aan bij die grens?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-8",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag9",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw schuift de stoel iets naar achteren en kijkt naar de deur.",
+      "options": [
+        {
+          "id": "n-extra-8-high",
+          "text": "U wilt nu stoppen. Zullen we morgen om tien uur verdergaan?",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-9",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw knikt en ontspant de schouders.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-8-partial",
+          "text": "Wilt u nog één vraag stellen voor we stoppen?",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-9",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw aarzelt met de hand op de stoelleuning.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-8-inappropriate",
+          "text": "Ik begrijp dat u wilt stoppen. Zonder het laatste stuk is het gesprek nog niet af.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-8",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw blijft zitten maar de hand klemt de leuning.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
+    },
+    {
+      "id": "n-extra-9",
+      "stepName": "Vraag.10",
+      "phaseLabel": "Ze vraagt of ze het goed heeft gedaan.",
+      "question": "Hoe sluit je het gesprek af?",
+      "help": "",
+      "mediaSlotId": "nursing-step-n-extra-9",
+      "scoredCompetencies": [
+        "observation"
+      ],
+      "kind": "choice",
+      "questionFolder": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag10",
+      "stepVideoMode": "placeholder",
+      "stepVideoPlaceholder": "Vrouw zoekt de blik van de student en wacht.",
+      "options": [
+        {
+          "id": "n-extra-9-high",
+          "text": "U vraagt of u het goed hebt gedaan, en u bent bang voor het bericht. Daar sluiten we mee af.",
+          "quality": "high",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 1
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "completed",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw knikt, handen in de schoot, gesprek valt stil.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-9-partial",
+          "text": "U hebt het vandaag goed gedaan.",
+          "quality": "partial",
+          "unsafe": false,
+          "competencyAwards": {
+            "observation": 0.5
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "completed",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw glimlacht kort en kijkt daarna weg.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        },
+        {
+          "id": "n-extra-9-inappropriate",
+          "text": "Ik vind uw reactie sterk. U hoeft daar niet aan te twijfelen.",
+          "quality": "inappropriate",
+          "unsafe": true,
+          "competencyAwards": {
+            "observation": 0
+          },
+          "delayedFeedback": "",
+          "educationalRationale": "",
+          "nextStepId": "n-extra-9",
+          "answerVideoMode": "placeholder",
+          "videoPlaceholder": "Close-up: vrouw trekt de wenkbrauwen op en wacht.",
+          "answerCardMode": "placeholder",
+          "answerCardPlaceholder": ""
+        }
+      ]
     }
   ],
   "mediaSlots": [
@@ -184,6 +707,303 @@
       "loopBehaviour": "none",
       "audioEnabled": false,
       "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-2",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-3",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-4",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-5",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-6",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-7",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-8",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-step-n-extra-9",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": null,
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": ""
+    },
+    {
+      "slotId": "nursing-answer-n-extra-2-high",
+      "scenarioId": "editor-leeg",
+      "module": "verpleegkunde",
+      "matchedKeywords": [],
+      "primaryMedia": "gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag3/Videos/antwoord-goed.mp4",
+      "idleMedia": null,
+      "posterImage": null,
+      "transcript": "",
+      "captions": "",
+      "alternativeMatches": [],
+      "loopBehaviour": "none",
+      "audioEnabled": false,
+      "studentLabel": "Bij goed antwoord play video"
     }
-  ]
+  ],
+  "nodeLayout": {
+    "q:n-1": {
+      "x": 168,
+      "y": 0
+    },
+    "a:n-1:high": {
+      "x": 564,
+      "y": 0
+    },
+    "a:n-1:partial": {
+      "x": 564,
+      "y": 373
+    },
+    "a:n-1:inappropriate": {
+      "x": 564,
+      "y": 746
+    },
+    "q:n-extra-1": {
+      "x": 934,
+      "y": 0
+    },
+    "a:n-extra-1:high": {
+      "x": 1330,
+      "y": 0
+    },
+    "a:n-extra-1:partial": {
+      "x": 1330,
+      "y": 373
+    },
+    "a:n-extra-1:inappropriate": {
+      "x": 1330,
+      "y": 746
+    },
+    "q:n-extra-2": {
+      "x": 1700,
+      "y": 0
+    },
+    "a:n-extra-2:high": {
+      "x": 2096,
+      "y": 0
+    },
+    "a:n-extra-2:partial": {
+      "x": 2096,
+      "y": 373
+    },
+    "a:n-extra-2:inappropriate": {
+      "x": 2096,
+      "y": 746
+    },
+    "q:n-extra-3": {
+      "x": 2466,
+      "y": 0
+    },
+    "a:n-extra-3:high": {
+      "x": 2862,
+      "y": 0
+    },
+    "a:n-extra-3:partial": {
+      "x": 2862,
+      "y": 373
+    },
+    "a:n-extra-3:inappropriate": {
+      "x": 2862,
+      "y": 746
+    },
+    "q:n-extra-4": {
+      "x": 3232,
+      "y": 0
+    },
+    "a:n-extra-4:high": {
+      "x": 3628,
+      "y": 0
+    },
+    "a:n-extra-4:partial": {
+      "x": 3628,
+      "y": 373
+    },
+    "a:n-extra-4:inappropriate": {
+      "x": 3628,
+      "y": 746
+    },
+    "q:n-extra-5": {
+      "x": 3998,
+      "y": 0
+    },
+    "a:n-extra-5:high": {
+      "x": 4394,
+      "y": 0
+    },
+    "a:n-extra-5:partial": {
+      "x": 4394,
+      "y": 373
+    },
+    "a:n-extra-5:inappropriate": {
+      "x": 4394,
+      "y": 746
+    },
+    "q:n-extra-6": {
+      "x": 4764,
+      "y": 0
+    },
+    "a:n-extra-6:high": {
+      "x": 5160,
+      "y": 0
+    },
+    "a:n-extra-6:partial": {
+      "x": 5160,
+      "y": 373
+    },
+    "a:n-extra-6:inappropriate": {
+      "x": 5160,
+      "y": 746
+    },
+    "q:n-extra-7": {
+      "x": 5530,
+      "y": 0
+    },
+    "a:n-extra-7:high": {
+      "x": 5926,
+      "y": 0
+    },
+    "a:n-extra-7:partial": {
+      "x": 5926,
+      "y": 373
+    },
+    "a:n-extra-7:inappropriate": {
+      "x": 5926,
+      "y": 746
+    },
+    "q:n-extra-8": {
+      "x": 6296,
+      "y": 0
+    },
+    "a:n-extra-8:high": {
+      "x": 6692,
+      "y": 0
+    },
+    "a:n-extra-8:partial": {
+      "x": 6692,
+      "y": 373
+    },
+    "a:n-extra-8:inappropriate": {
+      "x": 6692,
+      "y": 746
+    },
+    "q:n-extra-9": {
+      "x": 7062,
+      "y": 0
+    },
+    "a:n-extra-9:high": {
+      "x": 7458,
+      "y": 0
+    },
+    "a:n-extra-9:partial": {
+      "x": 7458,
+      "y": 373
+    },
+    "a:n-extra-9:inappropriate": {
+      "x": 7458,
+      "y": 746
+    }
+  }
 }

@@ -85,7 +85,8 @@ for (const full of files) {
     continue;
   }
   const rel = relative(resourcesRoot, full).split(sep).join('/');
-  const moduleName = rel.split('/')[0];
+  const folderName = rel.split('/')[0];
+  const moduleName = folderName === 'gesprekstechnieken' ? 'verpleegkunde' : folderName;
   if (moduleName !== 'logopedie' && moduleName !== 'verpleegkunde') {
     continue;
   }

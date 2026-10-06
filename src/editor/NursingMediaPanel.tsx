@@ -6,6 +6,7 @@ import {
   isNursingMediaPath,
   listNursingMedia,
   nursingMediaRowTestId,
+  nursingRelativePathForFile,
   type NursingMediaItem,
   type StagedNursingMediaOp,
 } from './nursingMedia';
@@ -63,9 +64,9 @@ export function NursingMediaPanel({ staged, onStage, previewPath }: NursingMedia
     if (!file) {
       return;
     }
-    const relativePath = `verpleegkunde/${file.name}`;
-    if (!isNursingMediaPath(relativePath)) {
-      setLoadError('Alleen media in resources/verpleegkunde/ zijn toegestaan.');
+    const relativePath = nursingRelativePathForFile(file.name);
+    if (!relativePath) {
+      setLoadError('Alleen media in resources/gesprekstechnieken/ zijn toegestaan.');
       return;
     }
     const exists = listed.some((item) => item.relativePath === relativePath);
@@ -83,7 +84,7 @@ export function NursingMediaPanel({ staged, onStage, previewPath }: NursingMedia
       return;
     }
     if (!isNursingMediaPath(relativePath)) {
-      setLoadError('Alleen media in resources/verpleegkunde/ zijn toegestaan.');
+      setLoadError('Alleen media in resources/gesprekstechnieken/ zijn toegestaan.');
       return;
     }
     onStage({
@@ -98,7 +99,7 @@ export function NursingMediaPanel({ staged, onStage, previewPath }: NursingMedia
   return (
     <section className="editor-media" data-testid="editor-nursing-media">
       <div className="editor-media-head">
-        <h2>Verpleegkunde-media</h2>
+        <h2>Beschikbare media</h2>
         <button
           type="button"
           className="btn btn-secondary"
@@ -136,7 +137,7 @@ export function NursingMediaPanel({ staged, onStage, previewPath }: NursingMedia
         />
       </div>
       <p className="muted">
-        Alleen bestanden onder resources/verpleegkunde/. Logopedie-stills blijven ongewijzigd.
+        Alleen bestanden onder resources/gesprekstechnieken/. Logopedie-stills blijven ongewijzigd.
       </p>
       {loadError ? (
         <p className="editor-open-error" data-testid="editor-nursing-media-error" role="alert">
@@ -211,7 +212,7 @@ export function NursingMediaPanel({ staged, onStage, previewPath }: NursingMedia
               </div>
             </>
           ) : (
-            <p className="muted">Geen Verpleegkunde-media geselecteerd.</p>
+            <p className="muted">Geen media geselecteerd.</p>
           )}
         </div>
       </div>
@@ -224,7 +225,7 @@ export function NursingMediaPanel({ staged, onStage, previewPath }: NursingMedia
         >
           <p>
             Verwijder {pendingDelete}? Dit geldt pas na Opslaan en blijft binnen
-            resources/verpleegkunde/.
+            resources/gesprekstechnieken/.
           </p>
           <div className="stack" style={{ marginTop: 24 }}>
             <button

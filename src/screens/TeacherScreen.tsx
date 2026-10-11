@@ -111,8 +111,7 @@ export function TeacherScreen() {
           value={moduleId}
           onChange={(event) => setModuleId(event.target.value as TrainingModule)}
         >
-          <option value="logopedie">Logopedie</option>
-          <option value="verpleegkunde">Verpleegkunde</option>
+          <option value="verpleegkunde">Gesprekstechnieken</option>
         </select>
       </section>
       <button

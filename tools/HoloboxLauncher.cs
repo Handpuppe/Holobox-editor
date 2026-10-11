@@ -18,6 +18,7 @@ internal static class Program
     {
         var root = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         Directory.SetCurrentDirectory(root);
+        ClearQuitRequest();
 
         var editor = IsEditorMode(args);
         var windowed = editor || Array.Exists(args, a => string.Equals(a, "windowed", StringComparison.OrdinalIgnoreCase));
@@ -26,7 +27,7 @@ internal static class Program
         var url = editor
             ? "http://127.0.0.1:" + port + appBase + "editor.html"
             : "http://127.0.0.1:" + port + appBase;
-        var title = editor ? "Holobox Logopedie-scenariobewerker" : "Holobox Zorgsimulator";
+        var title = editor ? "Phosaner scenariobewerker" : "Phosaner";
         var npmPreview = editor ? "run preview:editor" : "run preview";
         var distFile = Path.Combine(root, "dist", editor ? "editor.html" : "index.html");
 
@@ -296,16 +297,23 @@ internal static class Program
         }
         while (watch != null)
         {
+            if (QuitRequested())
+            {
+                ClearQuitRequest();
+                break;
+            }
+            var exited = false;
             try
             {
-                if (!watch.HasExited)
-                {
-                    watch.WaitForExit();
-                }
+                exited = watch.WaitForExit(400);
             }
             catch
             {
                 break;
+            }
+            if (!exited)
+            {
+                continue;
             }
             Thread.Sleep(800);
             var again = FindOpenBrowser(profileDir, url);
@@ -314,6 +322,38 @@ internal static class Program
                 break;
             }
             watch = again;
+        }
+    }
+
+    private static string QuitFlagPath()
+    {
+        return Path.Combine(Path.GetTempPath(), "phosaner-quit.flag");
+    }
+
+    private static bool QuitRequested()
+    {
+        try
+        {
+            return File.Exists(QuitFlagPath());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void ClearQuitRequest()
+    {
+        try
+        {
+            if (File.Exists(QuitFlagPath()))
+            {
+                File.Delete(QuitFlagPath());
+            }
+        }
+        catch
+        {
+            // De volgende start ruimt een achtergebleven vlag op.
         }
     }
 

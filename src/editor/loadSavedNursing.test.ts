@@ -6,6 +6,7 @@ import { emptyNursingScenario } from './emptyScenario';
 import {
   isBundledNursingExample,
   loadEditorStartupNursing,
+  loadNursingCaseByName,
   nursingEditorSourceLabel,
 } from './loadSavedNursing';
 
@@ -73,6 +74,88 @@ describe('nursing editor startup JSON', () => {
     expect(invalid.notice).toContain('ongeldig');
     expect(invalid.scenario.steps).toHaveLength(1);
     expect(invalid.scenario.steps[0]?.question).toBe('');
+  });
+
+  it('opens the newest gesprek case, otherwise Slechtnieuwsgesprek oefenen', async () => {
+    const older = emptyNursingScenario();
+    older.meta = { ...older.meta, id: 'oud', title: 'Oude casus' };
+    older.steps[0]!.question = 'Oud';
+    const newer = emptyNursingScenario();
+    newer.meta = { ...newer.meta, id: 'nieuw', title: 'Nieuwe casus' };
+    newer.steps[0]!.question = 'Nieuw';
+    const slecht = emptyNursingScenario();
+    slecht.meta = { ...slecht.meta, id: 'slecht', title: 'Slechtnieuwsgesprek oefenen' };
+    slecht.steps[0]!.question = 'Slechtnieuws';
+
+    const loaded = await loadEditorStartupNursing(async (url) => {
+      const target = String(url);
+      if (target.includes('/editor-api/cases')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            cases: [
+              {
+                file: 'verpleegkunde-oud.json',
+                title: 'Oude casus',
+                savedAt: '2026-10-01T00:00:00.000Z',
+              },
+              {
+                file: 'logopedie.json',
+                title: 'Logopedie',
+                savedAt: '2026-10-07T00:00:00.000Z',
+              },
+              {
+                file: 'verpleegkunde-nieuw.json',
+                title: 'Nieuwe casus',
+                savedAt: '2026-10-06T00:00:00.000Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (target.includes('verpleegkunde-nieuw.json')) {
+        return new Response(nursingEnvelopeJson(newer), { status: 200 });
+      }
+      if (target.includes('verpleegkunde-oud.json')) {
+        return new Response(nursingEnvelopeJson(older), { status: 200 });
+      }
+      if (target.includes('verpleegkunde.json')) {
+        return new Response(nursingEnvelopeJson(slecht), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    expect(loaded.source).toBe('json');
+    expect(loaded.fileName).toBe('verpleegkunde-nieuw.json');
+    expect(loaded.scenario.steps[0]?.question).toBe('Nieuw');
+    expect(loaded.label).toBe('Geladen: verpleegkunde-nieuw.json');
+
+    const fallback = await loadEditorStartupNursing(async (url) => {
+      const target = String(url);
+      if (target.includes('/editor-api/cases')) {
+        return new Response(JSON.stringify({ ok: true, cases: [] }), { status: 200 });
+      }
+      if (target.includes('verpleegkunde.json')) {
+        return new Response(nursingEnvelopeJson(slecht), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    expect(fallback.fileName).toBe('verpleegkunde.json');
+    expect(fallback.scenario.meta.title).toBe('Slechtnieuwsgesprek oefenen');
+    expect(fallback.scenario.steps[0]?.question).toBe('Slechtnieuws');
+
+    const restored = await loadNursingCaseByName('verpleegkunde-nieuw.json', async (url) => {
+      const target = String(url);
+      if (target.includes('verpleegkunde-nieuw.json')) {
+        return new Response('missing', { status: 404 });
+      }
+      if (target.includes('verpleegkunde.json')) {
+        return new Response(nursingEnvelopeJson(slecht), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    expect(restored.fileName).toBe('verpleegkunde.json');
+    expect(restored.scenario.meta.title).toBe('Slechtnieuwsgesprek oefenen');
   });
 
   it('labels the built-in copy and a saved file', () => {

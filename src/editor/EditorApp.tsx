@@ -1,29 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '../components/Dialog';
 import { withBaseUrl } from '../media/baseUrl';
-import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
-import { avatarSourceChain } from '../media/logopedie/resolveAvatar';
-import {
-  APP_VERSION,
-  type DecisionNode,
-  type NodeLayout,
-  type OptionQuality,
-  type Scenario,
-  type StudentOption,
-} from '../domain/types';
+import { APP_VERSION, type NodeLayout, type Scenario } from '../domain/types';
 import { sameNodeLayout } from './nodeLayout';
 import { saveNodeLayoutToCase } from './saveNodeLayout';
 import { logopedieSaveIssues, nursingSaveIssues } from './saveChecks';
 import { cloneScenario } from './cloneScenario';
-import { EditorMediaPanel } from './EditorMediaPanel';
 import { emptyLogopedieScenario, emptyNursingScenario } from './emptyScenario';
 import { downloadEnvelope, parseLogopedieEnvelope, saveEnvelopeToCopy } from './envelope';
-import { EDITOR_FACES, faceLabel } from './faces';
-import { readLastOpenedModule, writeLastOpenedModule } from './lastOpened';
-import { editorSourceLabel, loadEditorStartupScenario } from './loadSavedScenario';
+import { writeLastOpenedModule } from './lastOpened';
+import { editorSourceLabel } from './loadSavedScenario';
 import {
   isBundledNursingExample,
+  isGesprekCaseFile,
   loadEditorStartupNursing,
+  loadNursingCaseByName,
   nursingEditorSourceLabel,
 } from './loadSavedNursing';
 import {
@@ -124,18 +115,6 @@ function questionFolders(draft: NursingScenario): string[] {
   return names;
 }
 
-const QUALITY_LABELS: Record<OptionQuality, string> = {
-  high: 'Goed antwoord',
-  partial: 'Deels goed antwoord',
-  inappropriate: 'Verkeerd antwoord',
-};
-
-const QUALITIES: OptionQuality[] = ['high', 'partial', 'inappropriate'];
-
-function fieldClass(value: string): string {
-  return value.trim() ? 'field' : 'field is-empty';
-}
-
 async function quitEditor(): Promise<void> {
   try {
     await fetch(withBaseUrl('/editor-api/quit?immediate=1'), { method: 'POST' });
@@ -150,19 +129,6 @@ function canSaveToThisCopy(): boolean {
     return false;
   }
   return window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-}
-
-function replaceNode(scenario: Scenario, nodeId: string, next: DecisionNode): Scenario {
-  return {
-    ...scenario,
-    nodes: scenario.nodes.map((node) => (node.id === nodeId ? next : node)),
-  };
-}
-
-function replaceOption(node: DecisionNode, optionIndex: number, next: StudentOption): DecisionNode {
-  const options: DecisionNode['options'] = [node.options[0], node.options[1], node.options[2]];
-  options[optionIndex] = next;
-  return { ...node, options };
 }
 
 type EditorModule = 'logopedie' | 'verpleegkunde';
@@ -181,9 +147,8 @@ export function EditorApp() {
   const nodeUndoRef = useRef<NodeUndoEntry[]>([]);
   const dirtyRef = useRef(false);
   const nursingDirtyRef = useRef(false);
-  const [editorModule, setEditorModule] = useState<EditorModule>(
-    () => readLastOpenedModule() ?? 'logopedie',
-  );
+  const gesprekFileRef = useRef('verpleegkunde.json');
+  const [editorModule, setEditorModule] = useState<EditorModule>('verpleegkunde');
   const [scenario, setScenario] = useState<Scenario>(() => cloneScenario());
   const [nursingDraft, setNursingDraft] = useState<NursingScenario>(() => emptyNursingScenario());
   const [draftNodeIds, setDraftNodeIds] = useState<string[]>([]);
@@ -222,28 +187,14 @@ export function EditorApp() {
   const activeLoadedLabel = editorModule === 'logopedie' ? loadedLabel : nursingLoadedLabel;
 
   useEffect(() => {
-    let cancelled = false;
-    void loadEditorStartupScenario().then((result) => {
-      if (cancelled || dirtyRef.current) {
-        return;
-      }
-      setScenario(result.scenario);
-      setSelectedNodeId(result.scenario.startNodeId);
-      setPreviewOptionIndex(0);
-      setLoadedLabel(result.label);
-      setLoadNotice(result.notice);
-      setLogopedieCaseFile(result.source === 'json' ? 'logopedie.json' : null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
+    writeLastOpenedModule('verpleegkunde');
     let cancelled = false;
     void loadEditorStartupNursing().then((result) => {
       if (cancelled || nursingDirtyRef.current) {
         return;
+      }
+      if (result.fileName) {
+        gesprekFileRef.current = result.fileName;
       }
       setNursingDraft(result.scenario);
       setDraftNodeIds([]);
@@ -251,7 +202,7 @@ export function EditorApp() {
       setNursingPreviewOptionIndex(0);
       setNursingLoadedLabel(result.label);
       setNursingLoadNotice(result.notice);
-      setNursingCaseFile(result.source === 'json' ? 'verpleegkunde.json' : null);
+      setNursingCaseFile(result.source === 'json' ? result.fileName : null);
     });
     return () => {
       cancelled = true;
@@ -506,37 +457,25 @@ export function EditorApp() {
     setScenario(next);
   }
 
-  function resetToSeed() {
+  async function restoreGesprekCase() {
     clearNodeUndo();
-    markDirty();
-    const seeded = cloneScenario();
-    setScenario(seeded);
-    setSelectedNodeId(seeded.startNodeId);
-    setPreviewOptionIndex(0);
+    nursingDirtyRef.current = true;
     setOpenError(null);
-    setLoadNotice(null);
-    setLoadedLabel(editorSourceLabel('seed'));
-    setLogopedieCaseFile(null);
     setSaveMessage(null);
     setSaveError(null);
-    setStagedMedia([]);
-  }
-
-  function resetNursingToSeed() {
-    clearNodeUndo();
-    markNursingDirty();
-    const seeded = emptyNursingScenario();
-    setNursingDraft(seeded);
-    setDraftNodeIds([]);
-    setSelectedStepId(seeded.meta.startStepId);
-    setNursingPreviewOptionIndex(0);
-    setOpenError(null);
-    setNursingLoadNotice(null);
-    setNursingLoadedLabel(nursingEditorSourceLabel('seed'));
-    setNursingCaseFile(null);
-    setSaveMessage(null);
-    setSaveError(null);
+    setSaveBlockIssues(null);
     setNursingStagedMedia([]);
+    const result = await loadNursingCaseByName(gesprekFileRef.current);
+    if (result.fileName) {
+      gesprekFileRef.current = result.fileName;
+    }
+    setNursingDraft(result.scenario);
+    setDraftNodeIds([]);
+    setSelectedStepId(result.scenario.meta.startStepId);
+    setNursingPreviewOptionIndex(0);
+    setNursingLoadNotice(result.notice);
+    setNursingLoadedLabel(result.label);
+    setNursingCaseFile(result.source === 'json' ? result.fileName : null);
   }
 
   function startNewScenario() {
@@ -617,10 +556,11 @@ export function EditorApp() {
     }
   }
 
-  async function showCaseChooser(moduleId: EditorModule = editorModule) {
+  async function showCaseChooser() {
     setOpenError(null);
     try {
-      setCaseChooser(await listEditorCases(moduleId));
+      const cases = await listEditorCases('verpleegkunde');
+      setCaseChooser(cases.filter((item) => isGesprekCaseFile(item.file)));
     } catch (error) {
       setCaseChooser(null);
       setOpenError(
@@ -690,7 +630,7 @@ export function EditorApp() {
     closeListDelete();
     setCaseChooser((current) => current?.filter((entry) => entry.file !== item.file) ?? current);
     setSaveMessage(null);
-    await showCaseChooser(moduleId);
+    await showCaseChooser();
   }
 
   async function deleteOpenCase() {
@@ -719,7 +659,7 @@ export function EditorApp() {
       setNursingLoadedLabel('Niet opgeslagen');
     }
     setSaveMessage(null);
-    await showCaseChooser(moduleId);
+    await showCaseChooser();
   }
 
   async function openListedCase(item: EditorCaseListItem) {
@@ -944,6 +884,10 @@ export function EditorApp() {
         setOpenError(parsed.error);
         return;
       }
+      if (parsed.module === 'logopedie') {
+        setOpenError('Logopedie-pakketten worden niet meer geopend.');
+        return;
+      }
       const issues = editorPackageIssues(parsed);
       if (issues.length > 0) {
         setBlockKind('import');
@@ -957,53 +901,25 @@ export function EditorApp() {
           return;
         }
       }
-      if (parsed.module === 'logopedie') {
-        markDirty();
-        setEditorModule('logopedie');
-        setScenario(parsed.scenario);
-        setSelectedNodeId(parsed.scenario.startNodeId);
-        setPreviewOptionIndex(0);
-        setStagedMedia([]);
-        setLogopedieCaseFile(null);
-        setLoadedLabel(`Geladen: ${file.name}`);
-        setLoadNotice(null);
-      } else {
-        markNursingDirty();
-        setEditorModule('verpleegkunde');
-        setNursingDraft(parsed.scenario);
-        setDraftNodeIds([]);
-        setSelectedStepId(parsed.scenario.meta.startStepId);
-        setNursingPreviewOptionIndex(0);
-        setNursingStagedMedia([]);
-        setNursingCaseFile(null);
-        setNursingLoadedLabel(`Geladen: ${file.name}`);
-        setNursingLoadNotice(null);
-        try {
-          setNursingDiskMedia(await listNursingMedia());
-        } catch {
-          // preview still uses the written files
-        }
+      markNursingDirty();
+      setEditorModule('verpleegkunde');
+      setNursingDraft(parsed.scenario);
+      setDraftNodeIds([]);
+      setSelectedStepId(parsed.scenario.meta.startStepId);
+      setNursingPreviewOptionIndex(0);
+      setNursingStagedMedia([]);
+      setNursingCaseFile(null);
+      setNursingLoadedLabel(`Geladen: ${file.name}`);
+      setNursingLoadNotice(null);
+      try {
+        setNursingDiskMedia(await listNursingMedia());
+      } catch {
+        // preview still uses the written files
       }
       setSaveMessage(`Pakket ${file.name} is geladen in de editor.`);
     } catch {
       setOpenError('Het pakket kon niet worden gelezen.');
     }
-  }
-
-  const issues = useMemo(() => logopedieSaveIssues(scenario), [scenario]);
-  const node = scenario.nodes.find((item) => item.id === selectedNodeId) ?? scenario.nodes[0];
-  const previewOption = node?.options[previewOptionIndex] ?? node?.options[0];
-  const previewEmotion = previewOption?.emotion ?? node?.promptEmotion ?? 'neutral';
-  const previewAvatarPath = avatarSourceChain(previewEmotion)[0]?.relativePath ?? null;
-  const stagedAvatar = stagedMedia.find(
-    (op) => op.type !== 'delete' && op.relativePath === previewAvatarPath,
-  );
-  const avatarOverride =
-    stagedAvatar && stagedAvatar.type !== 'delete' ? stagedAvatar.previewUrl : null;
-
-  function updateSelected(next: DecisionNode) {
-    markDirty();
-    setScenario((current) => replaceNode(current, next.id, next));
   }
 
   if (testOpen) {
@@ -1148,15 +1064,9 @@ export function EditorApp() {
       <header className="editor-header">
         <div>
           <p className="editor-kicker">Los van de studentensimulatie</p>
-          <h1>
-            {editorModule === 'logopedie'
-              ? 'Logopedie-scenariobewerker'
-              : 'Gesprekstechnieken-scenariobewerker'}
-          </h1>
+          <h1>Gesprekstechnieken-scenariobewerker</h1>
           <p className="editor-meta">
-            {editorModule === 'logopedie'
-              ? `${scenario.title} · v${scenario.version}`
-              : `${nursingDraft.meta.title} · v${nursingDraft.meta.version}`}
+            {`${nursingDraft.meta.title} · v${nursingDraft.meta.version}`}
           </p>
           <p className="editor-loaded" data-testid="editor-loaded-source">
             {activeLoadedLabel}
@@ -1236,7 +1146,9 @@ export function EditorApp() {
               type="button"
               className="btn btn-secondary"
               data-testid="btn-reset-seed"
-              onClick={editorModule === 'logopedie' ? resetToSeed : resetNursingToSeed}
+              onClick={() => {
+                void restoreGesprekCase();
+              }}
             >
               Herstel startkopie
             </button>
@@ -1292,45 +1204,19 @@ export function EditorApp() {
               Afsluiten
             </button>
           </div>
-          {editorModule === 'logopedie' ? (
-            <aside className="editor-preview editor-header-preview editor-card">
-              <h2>Voorbeeld</h2>
-              <p className="muted" data-testid="preview-face-label">
-                {faceLabel(previewEmotion)}
-              </p>
-              <div className="editor-preview-stage" data-testid="editor-preview-stage">
-                <LogopedieAvatar
-                  emotion={previewEmotion}
-                  heightPx={240}
-                  name={scenario.client.name}
-                  srcOverride={avatarOverride}
-                />
-              </div>
-              <p className="muted">{previewOption?.clientResponse.text}</p>
-            </aside>
-          ) : (
-            <NursingPreviewAside
-              draft={nursingDraft}
-              stagedMedia={nursingStagedMedia}
-              selectedStepId={selectedStepId}
-              previewOptionIndex={nursingPreviewOptionIndex}
-            />
-          )}
+          <NursingPreviewAside
+            draft={nursingDraft}
+            stagedMedia={nursingStagedMedia}
+            selectedStepId={selectedStepId}
+            previewOptionIndex={nursingPreviewOptionIndex}
+          />
         </div>
       </header>
 
       <nav className="editor-module-tabs" aria-label="Module">
         <button
           type="button"
-          className={editorModule === 'logopedie' ? 'is-active' : undefined}
-          data-testid="editor-module-logopedie"
-          onClick={() => selectEditorModule('logopedie')}
-        >
-          Logopedie
-        </button>
-        <button
-          type="button"
-          className={editorModule === 'verpleegkunde' ? 'is-active' : undefined}
+          className="is-active"
           data-testid="editor-module-nursing"
           onClick={() => selectEditorModule('verpleegkunde')}
         >
@@ -1582,267 +1468,50 @@ export function EditorApp() {
         </Dialog>
       ) : null}
 
-      {editorModule === 'verpleegkunde' ? (
-        <>
-          <NursingEditor
-            draft={nursingDraft}
-            onChange={(next) => {
-              markNursingDirty();
-              rememberQuestionFolders(nursingDraft, next);
-              setNursingDraft(next);
-              setDraftNodeIds((ids) =>
-                ids.filter((id) => next.steps.some((step) => step.id === id)),
-              );
-            }}
-            stagedMedia={nursingStagedMedia}
-            onStage={(op) => {
-              markNursingDirty();
-              setNursingStagedMedia((current) => {
-                const without = current.filter((item) => item.relativePath !== op.relativePath);
-                return [...without, op];
-              });
-            }}
-            diskMedia={nursingDiskMedia}
-            selectedStepId={selectedStepId}
-            onSelectStep={setSelectedStepId}
-            previewOptionIndex={nursingPreviewOptionIndex}
-            onPreviewOption={setNursingPreviewOptionIndex}
-          />
-          <NursingMediaPanel
-            staged={nursingStagedMedia}
-            previewPath={
-              nursingDraft.mediaSlots.find(
-                (slot) =>
-                  slot.slotId ===
-                  (nursingDraft.steps.find((item) => item.id === selectedStepId)?.options[
-                    nursingPreviewOptionIndex
-                  ]?.mediaSlotId ??
-                    nursingDraft.steps.find((item) => item.id === selectedStepId)?.mediaSlotId),
-              )?.primaryMedia ?? null
-            }
-            onStage={(op) => {
-              markNursingDirty();
-              setNursingStagedMedia((current) => {
-                const without = current.filter((item) => item.relativePath !== op.relativePath);
-                return [...without, op];
-              });
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <section
-            className={`editor-issues${issues.length > 0 ? ' has-issues' : ''}`}
-            data-testid="editor-issues"
-            aria-live="polite"
-          >
-            <h2>Controle</h2>
-            {issues.length === 0 ? (
-              <p data-testid="editor-issues-ok">Geen validatiefouten.</p>
-            ) : (
-              <ul data-testid="editor-issues-list">
-                {issues.map((issue) => (
-                  <li key={issue}>{issue}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <div className="editor-layout">
-            <nav className="editor-nodes" aria-label="Beslissingspunten">
-              <h2>Vragen</h2>
-              <ol>
-                {scenario.nodes.map((item, index) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className={item.id === node?.id ? 'is-active' : undefined}
-                      data-testid={`node-tab-${item.id}`}
-                      onClick={() => {
-                        setSelectedNodeId(item.id);
-                        setPreviewOptionIndex(0);
-                      }}
-                    >
-                      {item.phaseLabel.trim() || `Vraag ${index + 1}`}
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </nav>
-
-            {node ? (
-              <main className="editor-main" id="inhoud">
-                <section className="editor-card">
-                  <h2>Vraag van de cliënt</h2>
-                  <div className="field">
-                    <label htmlFor="scenario-title">Titel</label>
-                    <textarea
-                      id="scenario-title"
-                      data-testid="scenario-title"
-                      rows={1}
-                      value={scenario.title}
-                      onChange={(event) => {
-                        markDirty();
-                        setScenario((current) => ({ ...current, title: event.target.value }));
-                      }}
-                    />
-                  </div>
-                  <div className={fieldClass(node.prompt.text)}>
-                    <label htmlFor="prompt-text">Wat zegt de cliënt?</label>
-                    <textarea
-                      id="prompt-text"
-                      data-testid="prompt-text"
-                      rows={3}
-                      value={node.prompt.text}
-                      onChange={(event) =>
-                        updateSelected({
-                          ...node,
-                          prompt: { ...node.prompt, text: event.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="prompt-context">Wat is zichtbaar?</label>
-                    <textarea
-                      id="prompt-context"
-                      data-testid="prompt-context"
-                      rows={2}
-                      value={node.prompt.context}
-                      onChange={(event) =>
-                        updateSelected({
-                          ...node,
-                          prompt: { ...node.prompt, context: event.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                </section>
-
-                <div className="editor-option-grid">
-                  {node.options.map((option, optionIndex) => (
-                    <section
-                      key={option.id}
-                      className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
-                      data-testid={`option-editor-${option.id}`}
-                    >
-                      <div className="option-card-head">
-                        <h2>Antwoord {String(optionIndex + 1)}</h2>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          data-testid={`btn-preview-option-${String(optionIndex)}`}
-                          onClick={() => setPreviewOptionIndex(optionIndex)}
-                        >
-                          Toon gezicht
-                        </button>
-                      </div>
-                      <div className="field">
-                        <label htmlFor={`quality-${option.id}`}>Kwaliteit</label>
-                        <select
-                          id={`quality-${option.id}`}
-                          data-testid={`option-quality-${option.id}`}
-                          value={option.quality}
-                          onChange={(event) =>
-                            updateSelected(
-                              replaceOption(node, optionIndex, {
-                                ...option,
-                                quality: event.target.value as OptionQuality,
-                              }),
-                            )
-                          }
-                        >
-                          {QUALITIES.map((quality) => (
-                            <option key={quality} value={quality}>
-                              {QUALITY_LABELS[quality]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className={fieldClass(option.text)}>
-                        <label htmlFor={`option-text-${option.id}`}>Antwoord keuze</label>
-                        <textarea
-                          id={`option-text-${option.id}`}
-                          data-testid={`option-text-${option.id}`}
-                          rows={3}
-                          value={option.text}
-                          onChange={(event) =>
-                            updateSelected(
-                              replaceOption(node, optionIndex, {
-                                ...option,
-                                text: event.target.value,
-                              }),
-                            )
-                          }
-                        />
-                      </div>
-                      <div className={fieldClass(option.clientResponse.text)}>
-                        <label htmlFor={`client-response-${option.id}`}>
-                          Reactie van de cliënt
-                        </label>
-                        <textarea
-                          id={`client-response-${option.id}`}
-                          data-testid={`client-response-${option.id}`}
-                          rows={2}
-                          value={option.clientResponse.text}
-                          onChange={(event) =>
-                            updateSelected(
-                              replaceOption(node, optionIndex, {
-                                ...option,
-                                clientResponse: {
-                                  ...option.clientResponse,
-                                  text: event.target.value,
-                                },
-                              }),
-                            )
-                          }
-                        />
-                      </div>
-                      <fieldset className="face-picker">
-                        <legend>Gezicht na dit antwoord</legend>
-                        <div className="face-options">
-                          {EDITOR_FACES.map((face) => (
-                            <label key={face.emotion} className="face-option">
-                              <input
-                                type="radio"
-                                name={`face-${option.id}`}
-                                value={face.emotion}
-                                checked={option.emotion === face.emotion}
-                                data-testid={`option-face-${option.id}-${face.emotion}`}
-                                onChange={() => {
-                                  setPreviewOptionIndex(optionIndex);
-                                  updateSelected(
-                                    replaceOption(node, optionIndex, {
-                                      ...option,
-                                      emotion: face.emotion,
-                                    }),
-                                  );
-                                }}
-                              />
-                              {face.label}
-                            </label>
-                          ))}
-                        </div>
-                      </fieldset>
-                    </section>
-                  ))}
-                </div>
-              </main>
-            ) : null}
-          </div>
-
-          <EditorMediaPanel
-            staged={stagedMedia}
-            previewPath={previewAvatarPath}
-            onStage={(op) => {
-              setStagedMedia((current) => {
-                const without = current.filter((item) => item.relativePath !== op.relativePath);
-                return [...without, op];
-              });
-            }}
-          />
-        </>
-      )}
+      <>
+        <NursingEditor
+          draft={nursingDraft}
+          onChange={(next) => {
+            markNursingDirty();
+            rememberQuestionFolders(nursingDraft, next);
+            setNursingDraft(next);
+            setDraftNodeIds((ids) => ids.filter((id) => next.steps.some((step) => step.id === id)));
+          }}
+          stagedMedia={nursingStagedMedia}
+          onStage={(op) => {
+            markNursingDirty();
+            setNursingStagedMedia((current) => {
+              const without = current.filter((item) => item.relativePath !== op.relativePath);
+              return [...without, op];
+            });
+          }}
+          diskMedia={nursingDiskMedia}
+          selectedStepId={selectedStepId}
+          onSelectStep={setSelectedStepId}
+          previewOptionIndex={nursingPreviewOptionIndex}
+          onPreviewOption={setNursingPreviewOptionIndex}
+        />
+        <NursingMediaPanel
+          staged={nursingStagedMedia}
+          previewPath={
+            nursingDraft.mediaSlots.find(
+              (slot) =>
+                slot.slotId ===
+                (nursingDraft.steps.find((item) => item.id === selectedStepId)?.options[
+                  nursingPreviewOptionIndex
+                ]?.mediaSlotId ??
+                  nursingDraft.steps.find((item) => item.id === selectedStepId)?.mediaSlotId),
+            )?.primaryMedia ?? null
+          }
+          onStage={(op) => {
+            markNursingDirty();
+            setNursingStagedMedia((current) => {
+              const without = current.filter((item) => item.relativePath !== op.relativePath);
+              return [...without, op];
+            });
+          }}
+        />
+      </>
     </div>
   );
 }

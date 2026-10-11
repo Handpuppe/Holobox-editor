@@ -10,7 +10,6 @@ import {
 } from '../domain/types';
 import { withBaseUrl } from '../media/baseUrl';
 import { findByRelativePath } from '../media/matching';
-import { LogopedieAvatar } from '../media/logopedie/LogopedieAvatar';
 import { nursingReducer } from '../nursing/reducer';
 import { createNursingSession, currentNursingStep } from '../nursing/session';
 import type { NursingScenario, NursingSession, NursingStep } from '../nursing/types';
@@ -409,14 +408,10 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
     <div className="scenario-editor" data-testid="screen-scenario-editor" lang="nl">
       <div className="scenario-test" data-testid="screen-scenario-test">
         <div className="scenario-test-layout">
-          <div className="editor-preview-stage scenario-test-stage" data-testid="test-media-stage">
-            <LogopedieAvatar
-              key={`${node?.id ?? 'erik'}-${String(visit)}`}
-              emotion={node?.promptEmotion ?? 'neutral'}
-              heightPx={240}
-              name={scenario.client.name}
-            />
-          </div>
+          <div
+            className="editor-preview-stage scenario-test-stage"
+            data-testid="test-media-stage"
+          />
           <div key={node ? `${node.id}-${String(visit)}` : 'empty'}>
             {node ? (
               <p className="muted" data-testid="test-step-title">

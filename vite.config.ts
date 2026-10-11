@@ -133,6 +133,14 @@ function claimStopLock(): boolean {
   }
 }
 
+function writeQuitFlag(): void {
+  try {
+    writeFileSync(join(tmpdir(), 'phosaner-quit.flag'), '1');
+  } catch {
+    // De launcher sluit het venster ook als dit bestand niet verschijnt.
+  }
+}
+
 function launchVisibleStopScript(): void {
   if (!claimStopLock()) {
     return;
@@ -164,6 +172,7 @@ function ensureQuitWatcher(): void {
       return;
     }
     launchVisibleStopScript();
+    writeQuitFlag();
   }, 250);
   timer.unref();
   quitTimer = timer;
@@ -177,6 +186,7 @@ function requestEditorQuit(immediate: boolean): void {
   if (immediate) {
     quitDeadline = 0;
     launchVisibleStopScript();
+    writeQuitFlag();
     return;
   }
   quitDeadline = Date.now() + 2_500;
@@ -1155,7 +1165,7 @@ function envelopeSummary(
       module?: unknown;
       scenario?: { title?: unknown; client?: { name?: unknown } };
       meta?: { title?: unknown };
-      patient?: { name?: unknown; background?: unknown };
+      patient?: { name?: unknown; background?: unknown; fictional?: unknown };
     };
     if (data.module !== moduleId) {
       return null;
@@ -1169,12 +1179,60 @@ function envelopeSummary(
           : 'fictieve cliënt';
       return { title, summary: `Opgeslagen casus met ${name}.` };
     }
-    const title = typeof data.meta?.title === 'string' ? data.meta.title : 'Verpleegkunde-scenario';
-    const name = typeof data.patient?.name === 'string' ? data.patient.name : 'fictieve patiënt';
-    return { title, summary: `Opgeslagen casus met ${name}.` };
+    const title = typeof data.meta?.title === 'string' ? data.meta.title : 'Gesprekstechnieken';
+    const name =
+      typeof data.patient?.name === 'string' && data.patient.name.trim()
+        ? data.patient.name.trim()
+        : 'fictieve patiënt';
+    const fictional = data.patient?.fictional !== false;
+    return { title, summary: fictional ? `${name}, fictief` : name };
   } catch {
     return null;
   }
+}
+
+function listGesprekMenuTiles(
+  resourcesRoot: string,
+): Array<{ id: string; title: string; summary: string; module: string; source: 'file' }> {
+  const tiles: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    module: string;
+    source: 'file';
+  }> = [];
+  const scenariosDir = join(resourcesRoot, 'scenarios');
+  if (!existsSync(scenariosDir)) {
+    return tiles;
+  }
+  for (const name of readdirSync(scenariosDir)) {
+    if (!name.endsWith('.json') || name.endsWith('.bak')) {
+      continue;
+    }
+    if (name !== 'verpleegkunde.json' && !name.startsWith('verpleegkunde-')) {
+      continue;
+    }
+    try {
+      const text = readFileSync(join(scenariosDir, name), 'utf8');
+      const info = envelopeSummary(text, 'verpleegkunde');
+      if (info) {
+        tiles.push({
+          id: `scenarios/${name}`,
+          title: info.title,
+          summary: info.summary,
+          module: 'verpleegkunde',
+          source: 'file',
+        });
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+  tiles.sort(
+    (left, right) =>
+      left.title.localeCompare(right.title, 'nl') || left.id.localeCompare(right.id, 'nl'),
+  );
+  return tiles;
 }
 
 function listExtraScenarioTiles(
@@ -1378,7 +1436,10 @@ function scenarioCatalogMiddleware(resourcesRoot: string) {
       }
       sendJson(res, 200, {
         ok: true,
-        tiles: listExtraScenarioTiles(moduleId, resourcesRoot),
+        tiles:
+          moduleId === 'verpleegkunde'
+            ? listGesprekMenuTiles(resourcesRoot)
+            : listExtraScenarioTiles(moduleId, resourcesRoot),
       });
       return;
     }

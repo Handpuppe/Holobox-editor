@@ -9,13 +9,13 @@ import { useAppState } from '../state/AppState';
 
 export function NursingHomeScreen() {
   const navigate = useNavigate();
-  const { nursingSession, startNursing, discardNursing } = useAppState();
+  const { nursingSession, nursingScenario, startNursing, discardNursing } = useAppState();
   const unfinished = nursingSession && nursingSession.status !== 'completed';
   const [showResume, setShowResume] = useState(Boolean(unfinished));
 
   return (
     <Screen
-      title="Verpleegkunde – Virtuele Patiënt"
+      title={nursingScenario.meta.title || 'Gesprekstechnieken'}
       testId="screen-nursing-home"
       footer={
         <>
@@ -34,13 +34,12 @@ export function NursingHomeScreen() {
           >
             Start simulatie
           </button>
-          <BackButton fallback="/verpleegkunde" />
+          <BackButton fallback="/" />
         </>
       }
     >
-      <p className="lead">
-        Oefen ABCDE en SBAR met meneer de Vries, een fictieve patiënt met acute benauwdheid.
-      </p>
+      <p className="lead">{nursingScenario.patient.name}, fictief</p>
+      {nursingScenario.patient.background ? <p>{nursingScenario.patient.background}</p> : null}
       <p className="notice">
         {copy.fictionalNotice} Dit is geen diagnostisch instrument en geen vervanging van zorg.
       </p>

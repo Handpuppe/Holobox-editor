@@ -96,7 +96,7 @@ export function SideAppMenu() {
               kioskvenster.
             </p>
           ) : (
-            <p>De Holobox-app wordt volledig afgesloten.</p>
+            <p>Phosaner wordt volledig afgesloten.</p>
           )}
           <div className="stack" style={{ marginTop: 24 }}>
             {quitBlocked ? (

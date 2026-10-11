@@ -2,14 +2,16 @@ import { withBaseUrl } from './baseUrl';
 import { mediaManifest } from './generated/media-manifest';
 import type { MediaFileType, MediaManifestItem, MediaSlotConfig, TrainingModule } from './types';
 
+const manifestItems = mediaManifest.items as readonly MediaManifestItem[];
+
 function withPublicBase(item: MediaManifestItem): MediaManifestItem {
   return { ...item, publicUrl: withBaseUrl(item.publicUrl) };
 }
 
 export function listModuleMedia(moduleId: TrainingModule): MediaManifestItem[] {
-  return mediaManifest.items
+  return manifestItems
     .filter((item) => item.module === moduleId)
-    .map((item) => withPublicBase(item as MediaManifestItem));
+    .map((item) => withPublicBase(item));
 }
 
 function canonicalCatalogPath(relativePath: string): string {
@@ -30,9 +32,9 @@ function isModuleMediaPath(moduleId: string, relativePath: string): boolean {
 
 export function findByRelativePath(relativePath: string): MediaManifestItem | undefined {
   const wanted = canonicalCatalogPath(relativePath);
-  const item = mediaManifest.items.find(
+  const item = manifestItems.find(
     (entry) => entry.relativePath === relativePath || entry.relativePath === wanted,
-  ) as MediaManifestItem | undefined;
+  );
   return item ? withPublicBase(item) : undefined;
 }
 

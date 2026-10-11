@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { aphasiaIntakeScenario } from './data/aphasiaIntakeScenario';
+import * as scenarioTiles from './data/scenarioTiles';
+import { APP_VERSION } from './domain/types';
 import { conclusionByQuality, optionIdsByQuality } from './domain/playthrough';
 import { STORAGE_KEY } from './storage/storageService';
 import { renderApp } from './test/renderApp';
@@ -22,9 +26,6 @@ function mockReducedMotion() {
 }
 
 async function startIntake(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByTestId('btn-module-logopedie'));
-  expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
-  await user.click(screen.getByTestId('btn-scenario-tile-default'));
   await user.click(screen.getByTestId('btn-start-simulation'));
   expect(screen.getByTestId('screen-briefing')).toBeInTheDocument();
   await user.click(screen.getByTestId('btn-start-intake'));
@@ -46,28 +47,122 @@ describe('application flow', () => {
     window.localStorage.clear();
   });
 
-  it('opens a logopedie catalog then the default tile', async () => {
+  it('opens Phosaner on Gesprekstechnieken without Logopedie or ABCDE', async () => {
     const user = userEvent.setup();
-    renderApp();
-    await user.click(screen.getByTestId('btn-module-logopedie'));
-    expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /Erik/i })).toHaveLength(1);
-    expect(screen.getByTestId('btn-scenario-tile-default')).toHaveTextContent('logopedie');
-    await user.click(screen.getByTestId('btn-back'));
-    expect(screen.getByTestId('screen-home')).toBeInTheDocument();
+    const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/editor-api/quit')) {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        return new Response('missing', { status: 404 });
+      });
+    try {
+      renderApp();
+      expect(
+        screen.getByRole('heading', {
+          name: 'Phosaner — Scenario-gedreven holografisch onderwijs.',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Gesprekstechnieken' })).toBeInTheDocument();
+      expect(screen.getByTestId('gesprek-menu-empty')).toBeInTheDocument();
+      expect(screen.queryByTestId('btn-module-logopedie')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('btn-module-nursing')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Erik/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Logopedie/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/ABCDE/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/SBAR/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/acute benauwdheid/)).not.toBeInTheDocument();
+      const version = screen.getByTestId('app-version');
+      const credit = screen.getByTestId('app-credit');
+      expect(version).toHaveTextContent(`Versie ${APP_VERSION}`);
+      expect(credit).toHaveTextContent('Made by Rutger van Horssen');
+      expect(version.parentElement).toBe(credit.parentElement);
+      expect(version.parentElement).not.toHaveClass('screen-main');
+      const about = screen.getByTestId('btn-about');
+      const quit = screen.getByTestId('btn-quit-app');
+      expect(about.compareDocumentPosition(quit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await user.click(quit);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/editor-api/quit?immediate=1'),
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(close).toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+      close.mockRestore();
+    }
   });
 
-  it('opens a nursing catalog then the default tile into the simulation', async () => {
+  it('opens Slechtnieuwsgesprek oefenen and shows another gesprek case', async () => {
+    const raw = readFileSync(join('resources', 'scenarios', 'verpleegkunde.json'), 'utf8');
+    const tiles = vi.spyOn(scenarioTiles, 'fetchGesprekMenuTiles').mockResolvedValue([
+      {
+        id: 'scenarios/verpleegkunde.json',
+        title: 'Slechtnieuwsgesprek oefenen',
+        summary: 'mevrouw De Boer, fictief',
+        module: 'verpleegkunde',
+        source: 'file',
+      },
+      {
+        id: 'scenarios/verpleegkunde-testcasus.json',
+        title: 'Phosaner testcasus',
+        summary: 'testpatiënt, fictief',
+        module: 'verpleegkunde',
+        source: 'file',
+      },
+    ]);
+    const envelope = vi
+      .spyOn(scenarioTiles, 'fetchScenarioEnvelope')
+      .mockImplementation(async (id) => (id === 'scenarios/verpleegkunde.json' ? raw : null));
     const user = userEvent.setup();
-    renderApp();
-    await user.click(screen.getByTestId('btn-module-nursing'));
-    expect(screen.getByTestId('screen-nursing-catalog')).toBeInTheDocument();
-    await user.click(screen.getByTestId('btn-scenario-tile-default'));
+    try {
+      renderApp();
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Phosaner — Scenario-gedreven holografisch onderwijs.',
+        }),
+      ).toBeInTheDocument();
+      const slechtnieuws = await screen.findByTestId(
+        'btn-scenario-tile-scenarios_verpleegkunde.json',
+      );
+      expect(slechtnieuws).toHaveTextContent('Slechtnieuwsgesprek oefenen');
+      expect(slechtnieuws).toHaveTextContent('mevrouw De Boer, fictief');
+      expect(slechtnieuws).toHaveTextContent('Gesprekstechnieken');
+      expect(
+        screen.getByTestId('btn-scenario-tile-scenarios_verpleegkunde-testcasus.json'),
+      ).toHaveTextContent('Phosaner testcasus');
+      expect(screen.queryByText(/ABCDE/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Erik/)).not.toBeInTheDocument();
+      await user.click(slechtnieuws);
+      expect(await screen.findByTestId('screen-nursing-home')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Slechtnieuwsgesprek oefenen' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('screen-nursing-home')).toHaveTextContent(
+        'mevrouw De Boer, fictief',
+      );
+      expect(screen.queryByText(/ABCDE/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/acute benauwdheid/)).not.toBeInTheDocument();
+    } finally {
+      tiles.mockRestore();
+      envelope.mockRestore();
+    }
+  });
+
+  it('opens the nursing simulation from the case home and returns to Phosaner', async () => {
+    const user = userEvent.setup();
+    const first = renderApp(['/', '/verpleegkunde/home']);
     expect(screen.getByTestId('screen-nursing-home')).toBeInTheDocument();
     await user.click(screen.getByTestId('btn-back'));
-    expect(screen.getByTestId('screen-nursing-catalog')).toBeInTheDocument();
-    await user.click(screen.getByTestId('btn-scenario-tile-default'));
-    expect(screen.getByTestId('screen-nursing-home')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-home')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Phosaner — Scenario-gedreven holografisch onderwijs.' }),
+    ).toBeInTheDocument();
+    first.unmount();
+    renderApp(['/verpleegkunde/home']);
     await user.click(screen.getByTestId('btn-start-nursing'));
     expect(screen.getByTestId('screen-nursing-briefing')).toBeInTheDocument();
     expect(screen.getByTestId('btn-back')).toHaveTextContent('Terug');
@@ -76,12 +171,9 @@ describe('application flow', () => {
     expect(screen.queryByTestId('btn-back')).not.toBeInTheDocument();
   });
 
-  it('starts a simulation from the home screen', async () => {
+  it('starts a simulation from the logopedie home screen', async () => {
     const user = userEvent.setup();
-    renderApp();
-    expect(screen.getByTestId('screen-home')).toBeInTheDocument();
-    expect(screen.getByTestId('app-version')).toBeInTheDocument();
-    expect(screen.getByTestId('app-credit')).toHaveTextContent('Made by Rutger van Horssen');
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     expect(screen.getByTestId('virtual-client')).toBeInTheDocument();
     const avatar = screen.getByTestId('logopedie-avatar');
@@ -96,7 +188,7 @@ describe('application flow', () => {
 
   it('selects a response, blocks double selection, and moves to the next node', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     const first = screen.getByTestId('option-d1-high');
     await user.click(first);
@@ -109,7 +201,7 @@ describe('application flow', () => {
 
   it('opens and saves notes', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     await user.click(screen.getByTestId('btn-notes'));
     const dialog = screen.getByTestId('dialog-notes');
@@ -123,7 +215,7 @@ describe('application flow', () => {
 
   it('pauses and resumes', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     await user.click(screen.getByTestId('btn-pause'));
     expect(screen.getByTestId('dialog-pause')).toBeInTheDocument();
@@ -135,7 +227,7 @@ describe('application flow', () => {
 
   it('restores an unfinished session after reload', async () => {
     const user = userEvent.setup();
-    const first = renderApp();
+    const first = renderApp(['/logopedie/home']);
     await startIntake(user);
     await choose(user, 'd1-high');
     first.unmount();
@@ -148,7 +240,7 @@ describe('application flow', () => {
 
   it('completes the clinical conclusion and shows scores', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     for (const optionId of optionIdsByQuality(aphasiaIntakeScenario, 'high')) {
       await choose(user, optionId);
@@ -175,7 +267,7 @@ describe('application flow', () => {
 
   it('saves, reopens and deletes a result after confirmation', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     for (const optionId of optionIdsByQuality(aphasiaIntakeScenario, 'high')) {
       await choose(user, optionId);
@@ -212,7 +304,7 @@ describe('application flow', () => {
 
   it('rejects an incomplete clinical conclusion', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     await user.click(screen.getByTestId('btn-end'));
     await user.click(screen.getByTestId('btn-confirm-end'));
@@ -224,7 +316,7 @@ describe('application flow', () => {
 
   it('goes from the logopedie conclusion to the hub in one click', async () => {
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     await user.click(screen.getByTestId('btn-end'));
     await user.click(screen.getByTestId('btn-confirm-end'));
@@ -232,8 +324,10 @@ describe('application flow', () => {
     expect(screen.getByRole('button', { name: 'Hoofdmenu' })).toBeInTheDocument();
     await user.click(screen.getByTestId('btn-conclusion-home'));
     expect(screen.getByTestId('screen-home')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-module-logopedie')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-module-nursing')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Phosaner — Scenario-gedreven holografisch onderwijs.' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('btn-module-logopedie')).not.toBeInTheDocument();
   });
 
   it('supports keyboard navigation on the home screen', async () => {
@@ -242,7 +336,7 @@ describe('application flow', () => {
     await user.tab();
     expect(document.getElementById('inhoud')).toHaveFocus();
     await user.tab();
-    expect(screen.getByTestId('btn-module-logopedie')).toHaveFocus();
+    expect(screen.getByTestId('btn-previous-results')).toHaveFocus();
   });
 
   it('falls back when storage is unavailable', async () => {
@@ -298,7 +392,7 @@ describe('logopedie answer stills', () => {
     ];
     const seen = new Set<string>();
     for (const face of faces) {
-      renderApp();
+      renderApp(['/logopedie/home']);
       await startIntake(user);
       await user.click(screen.getByTestId(`option-${face.optionId}`));
       const avatar = screen.getByTestId('logopedie-avatar');
@@ -329,7 +423,7 @@ describe('reduced motion client', () => {
       }),
     });
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     await user.click(screen.getByTestId('option-d1-low'));
     expect(screen.getByTestId('virtual-client')).toHaveAttribute('data-emotion', 'frustrated');
@@ -341,7 +435,7 @@ describe('focus management', () => {
   it('moves focus to the dialog when notes open', async () => {
     mockReducedMotion();
     const user = userEvent.setup();
-    renderApp();
+    renderApp(['/logopedie/home']);
     await startIntake(user);
     await user.click(screen.getByTestId('btn-notes'));
     await waitFor(() => {

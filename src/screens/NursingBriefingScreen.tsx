@@ -11,7 +11,7 @@ export function NursingBriefingScreen() {
 
   return (
     <Screen
-      title={meta.title || 'Scenario: ABCDE en SBAR'}
+      title={meta.title || 'Gesprekstechnieken'}
       testId="screen-nursing-briefing"
       footer={
         <>
@@ -36,10 +36,7 @@ export function NursingBriefingScreen() {
       <section className="card">
         <h2>Patiënt</h2>
         <p>
-          <strong>
-            {patient.name}
-          </strong>{' '}
-          <span className="badge">{copy.clientFictional}</span>
+          <strong>{patient.name}</strong> <span className="badge">{copy.clientFictional}</span>
         </p>
         <p>{patient.background}</p>
       </section>

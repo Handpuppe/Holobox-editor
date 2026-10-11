@@ -1,6 +1,6 @@
 export const copy = {
-  appName: 'Holobox Zorgsimulator',
-  appShortName: 'Holobox Zorgsimulator',
+  appName: 'Phosaner',
+  appShortName: 'Phosaner',
   fictionalNotice: 'Alle cliëntgegevens in deze training zijn fictief.',
   educationalNotice:
     'Dit is een educatieve simulatie. Het is geen diagnostisch instrument en geen vervanging van professionele zorg.',
@@ -63,7 +63,7 @@ export const copy = {
     'Deze app bewaart voortgang en resultaten alleen in de lokale opslag van deze browser. Er gaan geen student- of cliëntgegevens naar een server. Er is geen analyse, advertentie of tracking. Je kunt resultaten zelf verwijderen.',
   aboutDisclaimerTitle: 'Educatief gebruik',
   aboutDisclaimer:
-    'Alle cliënten en patiënten, waaronder Erik de Vries (logopedie) en meneer de Vries (verpleegkunde), zijn fictief. De training is bedoeld voor onderwijs. Gebruik de app niet om echte patiënten te beoordelen of te behandelen.',
+    'Alle cliënten en patiënten, waaronder mevrouw De Boer, zijn fictief. De training is bedoeld voor onderwijs. Gebruik de app niet om echte patiënten te beoordelen of te behandelen.',
   aboutClearData:
     'Wis lokale gegevens via de browserinstellingen voor deze site, of verwijder afzonderlijke resultaten in Eerdere resultaten.',
   competencyLabels: {

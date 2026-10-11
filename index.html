@@ -6,11 +6,8 @@
     <meta name="color-scheme" content="light only" />
     <meta name="theme-color" content="#FFFFFF" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <meta
-      name="description"
-      content="Holobox-training: intakeoefening met een fictieve cliënt met afasie na een beroerte."
-    />
-    <title>Holobox Zorgsimulator</title>
+    <meta name="description" content="Phosaner: gesprekstechnieken met fictieve cliënten." />
+    <title>Phosaner — Scenario-gedreven holografisch onderwijs.</title>
     <style>
       html,
       body,
@@ -30,7 +27,9 @@
         if (host !== '127.0.0.1' && host !== 'localhost') return;
         var left = 40;
         function ping() {
-          fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(function () {});
+          fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(
+            function () {},
+          );
         }
         ping();
         var timer = setInterval(function () {

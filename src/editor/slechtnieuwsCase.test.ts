@@ -17,7 +17,7 @@ describe('Slechtnieuwsgesprek oefenen', () => {
     expect(scenario.meta.title).toBe('Slechtnieuwsgesprek oefenen');
     expect(scenario.steps).toHaveLength(10);
     expect(scenario.nodeLayout?.['q:n-1']).toEqual({ x: 168, y: 0 });
-    expect(scenario.nodeLayout?.['a:n-extra-1:inappropriate']?.x).toBeCloseTo(1514.6669311523438);
+    expect(scenario.nodeLayout?.['a:n-extra-1:inappropriate']).toEqual({ x: 1330, y: 746 });
     expect(
       scenario.steps[0]?.options.find((option) => option.quality === 'inappropriate')?.text,
     ).toBe('Als u de feiten op een rij zet, wordt de onrust vanzelf minder.');

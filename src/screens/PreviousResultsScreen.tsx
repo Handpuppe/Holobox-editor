@@ -24,7 +24,7 @@ export function PreviousResultsScreen() {
           <article className="card result-item" key={result.id} data-testid={`result-${result.id}`}>
             <h2>{new Date(result.savedAt).toLocaleString('nl-NL')}</h2>
             <p className="badge">
-              {result.module === 'verpleegkunde' ? 'Verpleegkunde' : 'Logopedie'}
+              {result.module === 'verpleegkunde' ? 'Gesprekstechnieken' : 'Oefening'}
             </p>
             <p>
               {copy.scoreLabel}: {String(result.score.total)} · {copy.durationLabel}:{' '}

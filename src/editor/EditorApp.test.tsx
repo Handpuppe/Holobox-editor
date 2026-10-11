@@ -9,7 +9,7 @@ import { APP_VERSION } from '../domain/types';
 import { renderApp } from '../test/renderApp';
 import { EditorApp } from './EditorApp';
 import { formatCaseSavedAt } from './editorCases';
-import { envelopeJson, LOGOPEDIE_ENVELOPE_FILENAME } from './envelope';
+import { envelopeJson } from './envelope';
 import { cloneScenario } from './cloneScenario';
 import { emptyNursingScenario } from './emptyScenario';
 import { alignFlowCards, nursingNodeOverview } from './nodeBoard';
@@ -62,7 +62,7 @@ describe('EditorApp', () => {
     render(<EditorApp />);
     await waitFor(() => {
       expect(screen.getByTestId('editor-load-notice')).toHaveTextContent(
-        'Geen opgeslagen logopedie.json gevonden.',
+        'Geen opgeslagen verpleegkunde.json gevonden.',
       );
     });
 
@@ -73,14 +73,21 @@ describe('EditorApp', () => {
       `${APP_VERSION} Made by Rutger van Horssen`,
     );
     expect(screen.getByTestId('editor-module-nursing')).toHaveTextContent('Gesprekstechnieken');
+    expect(screen.getByTestId('editor-module-nursing')).toHaveClass('is-active');
+    expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Gesprekstechnieken-scenariobewerker' }),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('input-open-json')).not.toBeInTheDocument();
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
-    expect(screen.getByTestId('editor-issues-ok')).toHaveTextContent('Geen validatiefouten.');
-    expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
     expect(screen.getAllByText('Antwoord keuze').length).toBeGreaterThan(0);
     expect(screen.queryByText('Wat zegt de student?')).not.toBeInTheDocument();
-    expect(screen.getByTestId('editor-media')).toBeInTheDocument();
-    expect(screen.getByTestId('editor-preview-stage')).not.toHaveStyle({
+    expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor-nursing-media')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-nursing-preview-stage')).not.toHaveStyle({
       transform: 'scale(1.5)',
     });
     expect(screen.getByTestId('btn-open-json')).toHaveTextContent('Casus openen');
@@ -109,33 +116,21 @@ describe('EditorApp', () => {
       expect(button).toHaveClass('btn-secondary');
     }
     const actions = screen.getByTestId('btn-nodes').closest('.editor-actions');
-    const preview = screen.getByTestId('editor-preview-stage').closest('.editor-preview');
+    const preview = screen.getByTestId('editor-nursing-preview-stage').closest('.editor-preview');
     expect(preview).toHaveClass('editor-card');
     expect(actions?.parentElement).toBe(preview?.parentElement);
     expect(actions?.parentElement).toHaveClass('editor-header-side');
     expect(document.querySelector('.editor-layout .editor-preview')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Printlijst' })).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByTestId('prompt-text'), {
-      target: { value: '' },
+    fireEvent.change(screen.getByTestId('nursing-question'), {
+      target: { value: 'Aangepaste gesprekstechniekvraag in de editor.' },
     });
-    const firstOptionId = aphasiaIntakeScenario.nodes[0]?.options[0]?.id ?? 'd1-high';
-    fireEvent.change(screen.getByTestId(`option-text-${firstOptionId}`), {
-      target: { value: '   ' },
+    fireEvent.change(screen.getByTestId('nursing-option-text-n-1-high'), {
+      target: { value: 'Aangepast goed antwoord in de editor.' },
     });
-    expect(screen.getByTestId('editor-issues-list')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByTestId('prompt-text'), {
-      target: { value: 'Aangepaste cliëntvraag in de editor.' },
-    });
-    fireEvent.change(screen.getByTestId(`option-text-${firstOptionId}`), {
-      target: { value: 'Aangepaste studentvraag in de editor.' },
-    });
-    await user.click(screen.getByTestId(`option-face-${firstOptionId}-frustrated`));
-    expect(screen.getByTestId('preview-face-label')).toHaveTextContent('Gefrustreerd');
-    expect(screen.getByTestId('logopedie-avatar')).toHaveAttribute(
-      'data-avatar-variant',
-      'gefrustreerd',
+    expect(screen.getByTestId('preview-nursing-question')).toHaveTextContent(
+      'Aangepaste gesprekstechniekvraag in de editor.',
     );
 
     await user.click(screen.getByTestId('btn-download-json'));
@@ -146,28 +141,30 @@ describe('EditorApp', () => {
     const json = JSON.parse(await (captured as Blob).text()) as {
       schemaVersion: number;
       module: string;
-      scenario: { nodes: Array<{ prompt: { text: string }; options: Array<{ text: string }> }> };
+      steps: Array<{ question: string; options: Array<{ text: string }> }>;
     };
     expect(json.schemaVersion).toBe(1);
-    expect(json.module).toBe('logopedie');
-    expect(json.scenario.nodes[0]?.prompt.text).toBe('Aangepaste cliëntvraag in de editor.');
-    expect(json.scenario.nodes[0]?.options[0]?.text).toBe('Aangepaste studentvraag in de editor.');
+    expect(json.module).toBe('verpleegkunde');
+    expect(json.steps[0]?.question).toBe('Aangepaste gesprekstechniekvraag in de editor.');
+    expect(json.steps[0]?.options[0]?.text).toBe('Aangepast goed antwoord in de editor.');
     expect(aphasiaIntakeScenario.nodes[0]?.prompt.text).toBe(originalPrompt);
     expect(aphasiaIntakeScenario.nodes[0]?.options[0]?.text).toBe(originalOption);
-    expect(LOGOPEDIE_ENVELOPE_FILENAME).toBe('logopedie.json');
   });
 
   it('is not part of the student simulation routes', () => {
     renderApp(['/logopedie']);
     expect(screen.queryByTestId('screen-scenario-editor')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-logopedie-catalog')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-home')).toBeInTheDocument();
+    expect(screen.queryByTestId('screen-logopedie-catalog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('btn-module-logopedie')).not.toBeInTheDocument();
   });
 
   it('opens a listed case without a file picker and can download it again', async () => {
     const user = userEvent.setup();
-    const draft = cloneScenario();
-    draft.nodes[0]!.prompt.text = 'Vraag uit geopend JSON-bestand.';
-    const fileName = 'logopedie-extra-casus.json';
+    const draft = emptyNursingScenario();
+    draft.meta.title = 'Extra casus';
+    draft.steps[0]!.question = 'Vraag uit geopend JSON-bestand.';
+    const fileName = 'verpleegkunde-extra-casus.json';
     let captured: unknown;
     vi.spyOn(URL, 'createObjectURL').mockImplementation((value) => {
       captured = value;
@@ -186,7 +183,7 @@ describe('EditorApp', () => {
           );
         }
         if (target.includes(fileName)) {
-          return new Response(envelopeJson(draft), {
+          return new Response(nursingEnvelopeJson(draft), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
@@ -207,21 +204,22 @@ describe('EditorApp', () => {
       expect(screen.getByTestId('dialog-open-case').querySelector('input[type="file"]')).toBeNull();
       await user.click(screen.getByTestId(`btn-open-case-${fileName}`));
 
-      expect(await screen.findByTestId('prompt-text')).toHaveValue(
+      expect(await screen.findByTestId('nursing-question')).toHaveValue(
         'Vraag uit geopend JSON-bestand.',
       );
       expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(`Geladen: ${fileName}`);
       expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
       expect(screen.queryByTestId('dialog-open-case')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
 
       await user.click(screen.getByTestId('btn-download-json'));
       expect(captured).toBeInstanceOf(Blob);
       const json = JSON.parse(await (captured as Blob).text()) as {
         module: string;
-        scenario: { nodes: Array<{ prompt: { text: string } }> };
+        steps: Array<{ question: string }>;
       };
-      expect(json.module).toBe('logopedie');
-      expect(json.scenario.nodes[0]?.prompt.text).toBe('Vraag uit geopend JSON-bestand.');
+      expect(json.module).toBe('verpleegkunde');
+      expect(json.steps[0]?.question).toBe('Vraag uit geopend JSON-bestand.');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -240,8 +238,8 @@ describe('EditorApp', () => {
             JSON.stringify({
               ok: true,
               cases: [
-                { file: 'logopedie-a.json', title: 'Zelfde naam', savedAt: older },
-                { file: 'logopedie-b.json', title: 'Zelfde naam', savedAt: newer },
+                { file: 'verpleegkunde-a.json', title: 'Zelfde naam', savedAt: older },
+                { file: 'verpleegkunde-b.json', title: 'Zelfde naam', savedAt: newer },
               ],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -258,12 +256,12 @@ describe('EditorApp', () => {
       await user.click(screen.getByTestId('btn-open-json'));
       const olderLabel = formatCaseSavedAt(older);
       const newerLabel = formatCaseSavedAt(newer);
-      expect(await screen.findByTestId('case-saved-logopedie-a.json')).toHaveTextContent(
+      expect(await screen.findByTestId('case-saved-verpleegkunde-a.json')).toHaveTextContent(
         olderLabel,
       );
-      expect(screen.getByTestId('case-saved-logopedie-b.json')).toHaveTextContent(newerLabel);
+      expect(screen.getByTestId('case-saved-verpleegkunde-b.json')).toHaveTextContent(newerLabel);
       expect(olderLabel).not.toBe(newerLabel);
-      const first = screen.getByTestId('btn-open-case-logopedie-a.json').textContent ?? '';
+      const first = screen.getByTestId('btn-open-case-verpleegkunde-a.json').textContent ?? '';
       expect(first.indexOf('Zelfde naam')).toBeGreaterThanOrEqual(0);
       expect(first.indexOf('Zelfde naam')).toBeLessThan(first.indexOf(olderLabel));
     } finally {
@@ -279,7 +277,6 @@ describe('EditorApp', () => {
     draft.meta.title = 'Tijdelijke casus';
     draft.steps[0]!.question = 'Blijft staan na verwijderen';
     draft.steps[0]!.questionFolder = 'gesprekstechnieken/Tijdelijke casus-Vraag2';
-    let caseReads = 0;
     const deleteCalls: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -293,9 +290,8 @@ describe('EditorApp', () => {
           });
         }
         if (target.includes('/editor-api/cases')) {
-          caseReads += 1;
           const cases =
-            caseReads === 1
+            deleteCalls.length === 0
               ? [
                   {
                     file: fileName,
@@ -730,7 +726,7 @@ describe('EditorApp', () => {
 
   it('shows a clear error for invalid JSON and keeps the current draft', async () => {
     const user = userEvent.setup();
-    const fileName = 'logopedie-kapot.json';
+    const fileName = 'verpleegkunde-kapot.json';
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: RequestInfo | URL) => {
@@ -755,8 +751,8 @@ describe('EditorApp', () => {
       await waitFor(() => {
         expect(screen.getByTestId('editor-loaded-source')).toBeInTheDocument();
       });
-      const original = (screen.getByTestId('prompt-text') as HTMLTextAreaElement).value;
-      fireEvent.change(screen.getByTestId('prompt-text'), {
+      const original = (screen.getByTestId('nursing-question') as HTMLTextAreaElement).value;
+      fireEvent.change(screen.getByTestId('nursing-question'), {
         target: { value: 'Nog in de editor, niet overschrijven.' },
       });
 
@@ -766,7 +762,7 @@ describe('EditorApp', () => {
       expect(await screen.findByTestId('editor-open-error')).toHaveTextContent(
         'Dit bestand is geen geldige JSON.',
       );
-      expect(screen.getByTestId('prompt-text')).toHaveValue(
+      expect(screen.getByTestId('nursing-question')).toHaveValue(
         'Nog in de editor, niet overschrijven.',
       );
       expect(original).not.toBe('Nog in de editor, niet overschrijven.');
@@ -792,33 +788,39 @@ describe('EditorApp', () => {
     await waitFor(() => {
       expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     });
-    fireEvent.change(screen.getByTestId('prompt-text'), {
-      target: { value: 'Vraag opgeslagen in deze kopie.' },
-    });
+    fillNursingTexts('Vraag opgeslagen in deze kopie.');
     await user.click(screen.getByTestId('btn-save-json'));
     expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
       'Opgeslagen in deze kopie',
     );
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: logopedie.json');
-    const post = fetchMock.mock.calls.find((call) => call[1]?.method === 'POST');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+      'Geladen: verpleegkunde.json',
+    );
+    const post = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('save-verpleegkunde'),
+    );
     const body = JSON.parse(String(post?.[1]?.body)) as {
       schemaVersion: number;
       module: string;
-      scenario: { nodes: Array<{ prompt: { text: string } }> };
+      steps: Array<{ question: string }>;
     };
     expect(body.schemaVersion).toBe(1);
-    expect(body.module).toBe('logopedie');
-    expect(body.scenario.nodes[0]?.prompt.text).toBe('Vraag opgeslagen in deze kopie.');
+    expect(body.module).toBe('verpleegkunde');
+    expect(body.steps[0]?.question).toBe('Vraag opgeslagen in deze kopie.');
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('save-logopedie'))).toBe(
+      false,
+    );
   });
 
-  it('loads saved logopedie.json on startup without Open JSON', async () => {
-    const draft = cloneScenario();
-    draft.nodes[0]!.prompt.text = 'Extra zin uit logopedie.json.';
+  it('loads saved verpleegkunde.json on startup without Open JSON', async () => {
+    const draft = emptyNursingScenario();
+    draft.meta.title = 'Slechtnieuwsgesprek oefenen';
+    draft.steps[0]!.question = 'Extra zin uit verpleegkunde.json.';
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
         if ((init?.method ?? 'GET') === 'GET' || init?.method == null) {
-          return new Response(envelopeJson(draft), {
+          return new Response(nursingEnvelopeJson(draft), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
@@ -828,16 +830,21 @@ describe('EditorApp', () => {
     );
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('prompt-text')).toHaveValue('Extra zin uit logopedie.json.');
+      expect(screen.getByTestId('nursing-question')).toHaveValue(
+        'Extra zin uit verpleegkunde.json.',
+      );
     });
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: logopedie.json');
+    expect(screen.getByTestId('nursing-title')).toHaveValue('Slechtnieuwsgesprek oefenen');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+      'Geladen: verpleegkunde.json',
+    );
+    expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
     expect(screen.queryByTestId('editor-load-notice')).not.toBeInTheDocument();
     expect(screen.getByTestId('btn-open-json')).toBeInTheDocument();
     expect(screen.getByTestId('btn-download-json')).toBeInTheDocument();
   });
 
   it('falls back to the start copy when saved JSON is invalid or missing', async () => {
-    const original = aphasiaIntakeScenario.nodes[0]?.prompt.text ?? '';
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('{niet-json', { status: 200 })),
@@ -846,7 +853,8 @@ describe('EditorApp', () => {
     await waitFor(() => {
       expect(screen.getByTestId('editor-load-notice')).toHaveTextContent('ongeldig');
     });
-    expect(screen.getByTestId('prompt-text')).toHaveValue(original);
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     first.unmount();
 
@@ -857,31 +865,50 @@ describe('EditorApp', () => {
     render(<EditorApp />);
     await waitFor(() => {
       expect(screen.getByTestId('editor-load-notice')).toHaveTextContent(
-        'Geen opgeslagen logopedie.json gevonden.',
+        'Geen opgeslagen verpleegkunde.json gevonden.',
       );
     });
-    expect(screen.getByTestId('prompt-text')).toHaveValue(original);
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
   });
 
-  it('restores the start copy after opening a listed case', async () => {
+  it('restores the gesprek case after opening a listed case', async () => {
     const user = userEvent.setup();
-    const draft = cloneScenario();
-    draft.nodes[0]!.prompt.text = 'Tijdelijk geopend.';
-    const fileName = 'logopedie-tijdelijk.json';
-    const original = aphasiaIntakeScenario.nodes[0]?.prompt.text ?? '';
+    const start = emptyNursingScenario();
+    start.meta.title = 'Slechtnieuwsgesprek oefenen';
+    start.steps[0]!.question = 'Eerste zin van de gesprekscasus.';
+    const opened = emptyNursingScenario();
+    opened.meta.title = 'Tijdelijk';
+    opened.steps[0]!.question = 'Tijdelijk geopend.';
+    const fileName = 'verpleegkunde-tijdelijk.json';
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: RequestInfo | URL) => {
         const target = String(url);
         if (target.includes('/editor-api/cases')) {
           return new Response(
-            JSON.stringify({ ok: true, cases: [{ file: fileName, title: 'Tijdelijk' }] }),
+            JSON.stringify({
+              ok: true,
+              cases: [
+                {
+                  file: 'verpleegkunde.json',
+                  title: 'Slechtnieuwsgesprek oefenen',
+                  savedAt: '2026-10-06T00:00:00.000Z',
+                },
+                { file: fileName, title: 'Tijdelijk', savedAt: '2026-10-02T00:00:00.000Z' },
+              ],
+            }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           );
         }
         if (target.includes(fileName)) {
-          return new Response(envelopeJson(draft), {
+          return new Response(nursingEnvelopeJson(opened), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (target.includes('verpleegkunde.json')) {
+          return new Response(nursingEnvelopeJson(start), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
@@ -893,16 +920,98 @@ describe('EditorApp', () => {
     try {
       render(<EditorApp />);
       await waitFor(() => {
-        expect(screen.getByTestId('editor-loaded-source')).toBeInTheDocument();
+        expect(screen.getByTestId('nursing-title')).toHaveValue('Slechtnieuwsgesprek oefenen');
       });
       await user.click(screen.getByTestId('btn-open-json'));
       await user.click(await screen.findByTestId(`btn-open-case-${fileName}`));
-      expect(await screen.findByTestId('prompt-text')).toHaveValue('Tijdelijk geopend.');
+      expect(await screen.findByTestId('nursing-question')).toHaveValue('Tijdelijk geopend.');
 
       await user.click(screen.getByTestId('btn-reset-seed'));
-      expect(screen.getByTestId('prompt-text')).toHaveValue(original);
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+      await waitFor(() => {
+        expect(screen.getByTestId('nursing-title')).toHaveValue('Slechtnieuwsgesprek oefenen');
+      });
+      expect(screen.getByTestId('nursing-question')).toHaveValue(
+        'Eerste zin van de gesprekscasus.',
+      );
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+        'Geladen: verpleegkunde.json',
+      );
+      expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
       expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('opens Gesprekstechnieken on the case file and restores it without Logopedie', async () => {
+    const raw = readFileSync(join('resources', 'scenarios', 'verpleegkunde.json'), 'utf8');
+    const parsed = parseVerpleegkundeEnvelope(raw);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    const title = parsed.scenario.meta.title;
+    const question = parsed.scenario.steps[0]?.question ?? '';
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: RequestInfo | URL) => {
+        const target = String(url);
+        if (target.includes('/editor-api/cases')) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              cases: [
+                {
+                  file: 'logopedie.json',
+                  title: 'Logopedie',
+                  savedAt: '2026-10-06T12:00:00.000Z',
+                },
+                { file: 'verpleegkunde.json', title, savedAt: '2026-10-05T12:00:00.000Z' },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (target.includes('verpleegkunde.json')) {
+          return new Response(raw, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('missing', { status: 404 });
+      }),
+    );
+    try {
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('nursing-title')).toHaveValue(title);
+      });
+      expect(
+        screen.getByRole('heading', { name: 'Gesprekstechnieken-scenariobewerker' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('editor-module-nursing')).toHaveClass('is-active');
+      expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
+      expect(screen.getByTestId('nursing-question')).toHaveValue(question);
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+        'Geladen: verpleegkunde.json',
+      );
+
+      fireEvent.change(screen.getByTestId('nursing-title'), {
+        target: { value: 'Tijdelijk gewijzigd' },
+      });
+      await user.click(screen.getByTestId('btn-reset-seed'));
+      await waitFor(() => {
+        expect(screen.getByTestId('nursing-title')).toHaveValue(title);
+      });
+      expect(screen.getByTestId('nursing-question')).toHaveValue(question);
+      expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('btn-open-json'));
+      expect(await screen.findByTestId('btn-open-case-verpleegkunde.json')).toBeInTheDocument();
+      expect(screen.queryByTestId('btn-open-case-logopedie.json')).not.toBeInTheDocument();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -972,9 +1081,11 @@ describe('EditorApp', () => {
     expect(json.schemaVersion).toBe(1);
     expect(json.module).toBe('verpleegkunde');
     expect(json.steps[0]?.question).toBe('Aangepaste verpleegkundevraag in de editor.');
-
-    await user.click(screen.getByTestId('editor-module-logopedie'));
-    expect(screen.getByTestId('prompt-text')).toHaveValue(originalQuestion);
+    expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nursing-question')).toHaveValue(
+      'Aangepaste verpleegkundevraag in de editor.',
+    );
+    expect(originalQuestion).not.toBe('Aangepaste verpleegkundevraag in de editor.');
   });
 
   it('saves the nursing draft to this copy via the editor API', async () => {
@@ -1080,7 +1191,7 @@ describe('EditorApp', () => {
     expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
   });
 
-  it('blocks save when a logopedie question is empty and writes nothing', async () => {
+  it('blocks save when a gesprek question is empty and writes nothing', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') {
@@ -1093,7 +1204,8 @@ describe('EditorApp', () => {
     await waitFor(() => {
       expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     });
-    fireEvent.change(screen.getByTestId('prompt-text'), { target: { value: '' } });
+    fillNursingTexts('Tijdelijke vraag');
+    fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: '' } });
     await user.click(screen.getByTestId('btn-save-json'));
     expect(screen.getByTestId('dialog-save-blocked')).toBeInTheDocument();
     expect(screen.getByTestId('dialog-save-blocked-list')).toHaveTextContent(
@@ -1159,15 +1271,15 @@ describe('EditorApp', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('exports the current logopedie draft to this copy', async () => {
+  it('exports the current gesprek draft to this copy', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST' && String(url).includes('export-package')) {
         return new Response(
           JSON.stringify({
             ok: true,
-            folder: 'exports/logopedie-test',
-            zip: 'exports/logopedie-test.zip',
+            folder: 'exports/gesprek-test',
+            zip: 'exports/gesprek-test.zip',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
@@ -1182,26 +1294,26 @@ describe('EditorApp', () => {
     await waitFor(() => {
       expect(screen.getByTestId('btn-export-package')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByTestId('prompt-text'), {
+    fireEvent.change(screen.getByTestId('nursing-question'), {
       target: { value: 'Tekst voor export-pakket.' },
     });
     await user.click(screen.getByTestId('btn-export-package'));
     expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
-      'exports/logopedie-test.zip',
+      'exports/gesprek-test.zip',
     );
     const post = fetchMock.mock.calls.find((call) => String(call[0]).includes('export-package'));
     const body = JSON.parse(String(post?.[1]?.body)) as {
       module: string;
       envelopeText: string;
     };
-    expect(body.module).toBe('logopedie');
+    expect(body.module).toBe('verpleegkunde');
     expect(body.envelopeText).toContain('Tekst voor export-pakket.');
     expect(screen.getByTestId('btn-download-json')).toBeInTheDocument();
     expect(screen.getByTestId('btn-open-json')).toBeInTheDocument();
     expect(screen.getByTestId('btn-save-json')).toBeInTheDocument();
   });
 
-  it('imports a valid logopedie package and blocks an incomplete one', async () => {
+  it('imports a valid gesprek package and blocks logopedie and incomplete ones', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') {
@@ -1210,35 +1322,54 @@ describe('EditorApp', () => {
       return new Response('missing', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
-    const draft = cloneScenario();
-    draft.nodes[0]!.prompt.text = 'Tekst uit geïmporteerd pakket.';
-    const zip = buildEditorPackageZip('logopedie', envelopeJson(draft), [
+    const draft = emptyNursingScenario();
+    draft.patient.name = 'Testpatiënt';
+    draft.steps[0]!.stepName = 'Vraag.1';
+    draft.steps[0]!.phaseLabel = 'Situatie';
+    draft.steps[0]!.question = 'Tekst uit geïmporteerd pakket.';
+    draft.steps[0]!.options[0]!.text = 'Goed antwoord';
+    draft.steps[0]!.options[1]!.text = 'Deels goed antwoord';
+    draft.steps[0]!.options[2]!.text = 'Verkeerd antwoord';
+    const zip = buildEditorPackageZip('verpleegkunde', nursingEnvelopeJson(draft), [
       {
-        relativePath: 'logopedie/avatar/generated/erik/neutraal.png',
+        relativePath: 'gesprekstechnieken/Startvideos/import-startvideo.mp4',
         data: new Uint8Array([1, 2]),
       },
     ]);
-    const zipBytes = Uint8Array.from(zip);
-    const file = new File([zipBytes], 'logopedie-pakket.zip', {
+    const file = new File([Uint8Array.from(zip)], 'gesprek-pakket.zip', {
       type: 'application/zip',
     });
+    const logopedieZip = buildEditorPackageZip('logopedie', envelopeJson(cloneScenario()), []);
 
     render(<EditorApp />);
     await waitFor(() => {
       expect(screen.getByTestId('input-import-package')).toBeInTheDocument();
     });
-    await user.upload(screen.getByTestId('input-import-package'), file);
-    expect(await screen.findByTestId('prompt-text')).toHaveValue('Tekst uit geïmporteerd pakket.');
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Geladen: logopedie-pakket.zip',
+    await user.upload(
+      screen.getByTestId('input-import-package'),
+      new File([Uint8Array.from(logopedieZip)], 'logopedie-pakket.zip', {
+        type: 'application/zip',
+      }),
     );
-    expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+    expect(await screen.findByTestId('editor-open-error')).toHaveTextContent(
+      'Logopedie-pakketten worden niet meer geopend.',
+    );
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+
+    await user.upload(screen.getByTestId('input-import-package'), file);
+    expect(await screen.findByTestId('nursing-question')).toHaveValue(
+      'Tekst uit geïmporteerd pakket.',
+    );
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+      'Geladen: gesprek-pakket.zip',
+    );
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     const mediaPost = fetchMock.mock.calls.find((call) => String(call[0]).includes('import-media'));
     expect(mediaPost).toBeTruthy();
 
-    const broken = cloneScenario();
-    broken.nodes[0]!.prompt.text = '';
-    const brokenZip = buildEditorPackageZip('logopedie', envelopeJson(broken), []);
+    const broken = emptyNursingScenario();
+    broken.steps[0]!.question = '';
+    const brokenZip = buildEditorPackageZip('verpleegkunde', nursingEnvelopeJson(broken), []);
     await user.upload(
       screen.getByTestId('input-import-package'),
       new File([Uint8Array.from(brokenZip)], 'kapot.zip', { type: 'application/zip' }),
@@ -1246,10 +1377,10 @@ describe('EditorApp', () => {
     expect(await screen.findByTestId('dialog-save-blocked')).toHaveTextContent(
       'Importeren geblokkeerd',
     );
-    expect(screen.getByTestId('prompt-text')).toHaveValue('Tekst uit geïmporteerd pakket.');
+    expect(screen.getByTestId('nursing-question')).toHaveValue('Tekst uit geïmporteerd pakket.');
   });
 
-  it('opens a new empty Logopedie scenario without writing the current case', async () => {
+  it('opens a new empty gesprek scenario without writing the current case', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
       return new Response('missing', { status: 404 });
@@ -1260,8 +1391,10 @@ describe('EditorApp', () => {
       expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     });
     await user.click(screen.getByTestId('btn-new-scenario'));
-    expect(screen.getByTestId('scenario-title')).toHaveValue('');
-    expect(screen.getByTestId('prompt-text')).toHaveValue('');
+    expect(screen.getByTestId('nursing-title')).toHaveValue('');
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
+    expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
       'Nieuw scenario (niet opgeslagen)',
     );
@@ -1483,7 +1616,7 @@ describe('EditorApp', () => {
     const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST' && String(url).includes('save-as-case')) {
         return new Response(
-          JSON.stringify({ ok: true, file: 'resources/scenarios/logopedie-casus-test.json' }),
+          JSON.stringify({ ok: true, file: 'resources/scenarios/verpleegkunde-casus-test.json' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
@@ -1495,35 +1628,35 @@ describe('EditorApp', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('btn-save-as-case')).toBeInTheDocument();
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
     });
+    fillNursingTexts('Casus om apart op te slaan.');
     await user.click(screen.getByTestId('btn-save-as-case'));
     expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
       'Opgeslagen als nieuwe casus',
     );
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Geladen: logopedie-casus-test.json',
+      'Geladen: verpleegkunde-casus-test.json',
     );
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('save-as-case'))).toBe(
       true,
     );
     expect(
       fetchMock.mock.calls.some(
-        (call) => String(call[0]).includes('save-logopedie') && call[1]?.method === 'POST',
+        (call) => String(call[0]).includes('save-verpleegkunde') && call[1]?.method === 'POST',
       ),
     ).toBe(false);
   });
 
-  it('shows three Verpleegkunde answer videos and keeps the Logopedie still', async () => {
-    const user = userEvent.setup();
+  it('shows three Gesprekstechnieken answer videos without Logopedie', async () => {
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
     });
-    expect(screen.queryByText('Bij goed antwoord play video')).not.toBeInTheDocument();
-    expect(screen.getByTestId('logopedie-avatar')).not.toHaveStyle({ transform: 'scale(1.5)' });
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTestId('editor-module-nursing'));
+    await userEvent.setup().click(screen.getByTestId('editor-module-nursing'));
     expect(screen.getByText('Bij goed antwoord play video')).toBeInTheDocument();
     expect(screen.getByText('Bij deels goed antwoord play video')).toBeInTheDocument();
     expect(screen.getByText('Bij verkeerd antwoord play video')).toBeInTheDocument();
@@ -1646,17 +1779,16 @@ describe('EditorApp', () => {
     const user = userEvent.setup();
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('logopedie-avatar')).toBeInTheDocument();
+      expect(screen.getByTestId('nursing-question')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('btn-nodes'));
     expect(screen.getByTestId('node-overview')).toBeInTheDocument();
-    expect(screen.queryByTestId('btn-node-new-question')).not.toBeInTheDocument();
     expect(screen.getAllByText('Scenario In').length).toBeGreaterThan(0);
     expect(screen.queryByText('Scenario input')).not.toBeInTheDocument();
-    expect(screen.queryByText('Placeholder')).not.toBeInTheDocument();
     expect(screen.getByTestId('node-overview').querySelectorAll('input, textarea')).toHaveLength(0);
     await user.click(screen.getByTestId('btn-nodes-back'));
-    expect(screen.getByTestId('logopedie-avatar')).not.toHaveStyle({ transform: 'scale(1.5)' });
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId('editor-module-nursing'));
     fireEvent.change(screen.getByTestId('nursing-title'), { target: { value: 'Opnamecasus' } });

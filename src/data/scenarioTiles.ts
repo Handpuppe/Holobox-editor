@@ -38,6 +38,38 @@ export function builtinTile(moduleId: ScenarioTileModule): ScenarioTile {
   return moduleId === 'logopedie' ? builtinLogopedieTile() : builtinNursingTile();
 }
 
+export async function fetchGesprekMenuTiles(fetchImpl?: typeof fetch): Promise<ScenarioTile[]> {
+  if (!fetchImpl && import.meta.env.MODE === 'test') {
+    return [];
+  }
+  try {
+    const fetchFn = fetchImpl ?? fetch;
+    const response = await fetchFn(withBaseUrl('/app-api/scenario-tiles?module=verpleegkunde'), {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const payload = (await response.json()) as { tiles?: ScenarioTile[] };
+    if (!Array.isArray(payload.tiles)) {
+      return [];
+    }
+    return payload.tiles.filter(
+      (tile) =>
+        tile &&
+        tile.source === 'file' &&
+        tile.module === 'verpleegkunde' &&
+        typeof tile.id === 'string' &&
+        tile.id.startsWith('scenarios/verpleegkunde') &&
+        !tile.id.includes('logopedie') &&
+        typeof tile.title === 'string' &&
+        typeof tile.summary === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchExtraScenarioTiles(
   moduleId: ScenarioTileModule,
   fetchImpl?: typeof fetch,

@@ -69,7 +69,7 @@ export function NursingSimulationScreen() {
   return (
     <div className="sim-layout" data-testid="screen-nursing-simulation">
       <h1 id="screen-title" className="visually-hidden" tabIndex={-1}>
-        ABCDE en SBAR met {patient.name}
+        {nursingScenario.meta.title || 'Gesprekstechnieken'}
       </h1>
       <PatientStage
         moduleId="verpleegkunde"

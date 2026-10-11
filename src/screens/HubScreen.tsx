@@ -1,35 +1,78 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
+import {
+  fetchGesprekMenuTiles,
+  fetchScenarioEnvelope,
+  type ScenarioTile,
+} from '../data/scenarioTiles';
 import { APP_VERSION } from '../domain/types';
+import { parseVerpleegkundeEnvelope } from '../editor/nursingEnvelope';
+import { nursingSaveIssues } from '../editor/saveChecks';
+import { withBaseUrl } from '../media/baseUrl';
 import { useAppState } from '../state/AppState';
 
 export function HubScreen() {
   const navigate = useNavigate();
-  const { storageAvailable, storageNotice } = useAppState();
+  const { storageAvailable, storageNotice, selectNursingScenario } = useAppState();
+  const [tiles, setTiles] = useState<ScenarioTile[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const next = await fetchGesprekMenuTiles();
+      if (!cancelled) {
+        setTiles(next);
+      }
+    }
+    void load();
+    const timer = window.setInterval(() => {
+      void load();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  async function openCase(tile: ScenarioTile) {
+    setLoadError(null);
+    const text = await fetchScenarioEnvelope(tile.id, 'verpleegkunde');
+    if (!text) {
+      setLoadError('Dit scenario kon niet worden geladen.');
+      return;
+    }
+    const parsed = parseVerpleegkundeEnvelope(text);
+    if (!parsed.ok || nursingSaveIssues(parsed.scenario).length > 0) {
+      setLoadError('Dit scenario is ongeldig.');
+      return;
+    }
+    selectNursingScenario(parsed.scenario);
+    void navigate('/verpleegkunde/home');
+  }
+
+  async function quitApp() {
+    if (closing) {
+      return;
+    }
+    setClosing(true);
+    try {
+      await fetch(withBaseUrl('/editor-api/quit?immediate=1'), { method: 'POST' });
+    } catch {
+      // Het stop-script sluit de servers ook als dit verzoek de pagina al verlaat.
+    }
+    window.close();
+  }
 
   return (
     <Screen
-      title="Holobox Zorgsimulator"
+      title="Phosaner — Scenario-gedreven holografisch onderwijs."
       testId="screen-home"
       footer={
         <>
-          <button
-            type="button"
-            className="btn"
-            data-testid="btn-module-logopedie"
-            onClick={() => void navigate('/logopedie')}
-          >
-            Logopedie
-          </button>
-          <button
-            type="button"
-            className="btn"
-            data-testid="btn-module-nursing"
-            onClick={() => void navigate('/verpleegkunde')}
-          >
-            Verpleegkunde
-          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -54,19 +97,46 @@ export function HubScreen() {
           >
             Over deze applicatie
           </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            data-testid="btn-quit-app"
+            onClick={() => void quitApp()}
+          >
+            Afsluiten
+          </button>
         </>
       }
     >
       <p className="lead">
-        Kies een opleidingsmodule. Alle patiënten en cliënten in deze app zijn fictief.
+        Kies een gesprekscasus. Alle patiënten en cliënten in deze app zijn fictief.
       </p>
       <section className="card">
-        <h2>Logopedie – Virtuele Cliëntsimulator</h2>
-        <p>Intake met Erik de Vries, fictieve cliënt met afasie na een beroerte.</p>
-      </section>
-      <section className="card">
-        <h2>Verpleegkunde – Virtuele Patiënt en Klinisch Redeneren</h2>
-        <p>ABCDE en SBAR bij meneer de Vries, fictieve patiënt met acute benauwdheid.</p>
+        <h2>Gesprekstechnieken</h2>
+        {loadError ? (
+          <p className="notice notice-attention" data-testid="catalog-load-error" role="status">
+            {loadError}
+          </p>
+        ) : null}
+        {tiles.length === 0 ? (
+          <p data-testid="gesprek-menu-empty">Er is nog geen gesprekscasus.</p>
+        ) : (
+          <div className="scenario-tile-list">
+            {tiles.map((tile) => (
+              <button
+                key={tile.id}
+                type="button"
+                className="scenario-tile"
+                data-testid={`btn-scenario-tile-${tile.id.replaceAll('/', '_')}`}
+                onClick={() => void openCase(tile)}
+              >
+                <span className="scenario-tile-module">Gesprekstechnieken</span>
+                <span className="scenario-tile-title">{tile.title}</span>
+                <span className="scenario-tile-summary">{tile.summary}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
       <p className="notice" data-testid="fictional-notice">
         {copy.fictionalNotice} {copy.educationalNotice}
@@ -81,12 +151,14 @@ export function HubScreen() {
           {copy.storageCorrupted}
         </p>
       ) : null}
-      <p className="version-line" data-testid="app-version">
-        {copy.versionLabel} {APP_VERSION}
-      </p>
-      <p className="version-line" data-testid="app-credit">
-        Made by Rutger van Horssen
-      </p>
+      <div className="version-block" data-testid="app-version-block">
+        <p className="version-line" data-testid="app-version">
+          {copy.versionLabel} {APP_VERSION}
+        </p>
+        <p className="version-line" data-testid="app-credit">
+          Made by Rutger van Horssen
+        </p>
+      </div>
     </Screen>
   );
 }

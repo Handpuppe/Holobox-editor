@@ -13,7 +13,6 @@ import { NursingHomeScreen } from './screens/NursingHomeScreen';
 import { NursingResultsScreen } from './screens/NursingResultsScreen';
 import { NursingSimulationScreen } from './screens/NursingSimulationScreen';
 import { PreviousResultsScreen } from './screens/PreviousResultsScreen';
-import { ScenarioCatalogScreen } from './screens/ScenarioCatalogScreen';
 import { ResultsScreen } from './screens/ResultsScreen';
 import { SimulationScreen } from './screens/SimulationScreen';
 import { TeacherPreviewScreen } from './screens/TeacherPreviewScreen';
@@ -35,17 +34,14 @@ export function App() {
       ) : (
         <Routes>
           <Route path="/" element={<HubScreen />} />
-          <Route path="/logopedie" element={<ScenarioCatalogScreen moduleId="logopedie" />} />
+          <Route path="/logopedie" element={<Navigate to="/" replace />} />
           <Route path="/logopedie/home" element={<HomeScreen />} />
           <Route path="/logopedie/briefing" element={<BriefingScreen />} />
           <Route path="/logopedie/simulatie" element={<SimulationScreen />} />
           <Route path="/logopedie/conclusie" element={<ConclusionScreen />} />
           <Route path="/logopedie/resultaat" element={<ResultsScreen />} />
           <Route path="/logopedie/resultaat/:resultId" element={<ResultsScreen />} />
-          <Route
-            path="/verpleegkunde"
-            element={<ScenarioCatalogScreen moduleId="verpleegkunde" />}
-          />
+          <Route path="/verpleegkunde" element={<Navigate to="/" replace />} />
           <Route path="/verpleegkunde/home" element={<NursingHomeScreen />} />
           <Route path="/verpleegkunde/briefing" element={<NursingBriefingScreen />} />
           <Route path="/verpleegkunde/simulatie" element={<NursingSimulationScreen />} />

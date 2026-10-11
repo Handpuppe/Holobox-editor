@@ -224,7 +224,7 @@ describe('ScenarioTest', () => {
     expect(screen.queryByText(/ABCDE|SBAR/)).not.toBeInTheDocument();
   });
 
-  it('keeps Erik still and follows a logopedie line without scores', async () => {
+  it('follows a logopedie line without scores or an avatar', async () => {
     const user = userEvent.setup();
     render(
       <ScenarioTest
@@ -234,16 +234,14 @@ describe('ScenarioTest', () => {
         onClose={() => undefined}
       />,
     );
-    const avatar = screen.getByTestId('logopedie-avatar');
-    expect(avatar).toBeInTheDocument();
-    expect(avatar).not.toHaveStyle({ transform: 'scale(1.5)' });
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     const wrongText = screen.getByTestId('test-option-inappropriate').textContent ?? '';
     await user.click(screen.getByTestId('test-option-inappropriate'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     expect(screen.queryByTestId('screen-scenario-test-results')).not.toBeInTheDocument();
     expect(screen.getByTestId('test-answer-reaction')).toHaveTextContent(wrongText);
-    expect(screen.getByTestId('logopedie-avatar')).not.toHaveStyle({ transform: 'scale(1.5)' });
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
     const replay = screen.getByTestId('test-replay');
@@ -257,7 +255,7 @@ describe('ScenarioTest', () => {
     await user.click(screen.getByTestId('test-option-inappropriate'));
     await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag een');
-    expect(screen.getByTestId('logopedie-avatar')).not.toHaveStyle({ transform: 'scale(1.5)' });
+    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('test-option-partial'));
     await user.click(screen.getByTestId('btn-test-continue'));
     expect(screen.getByTestId('test-question')).toHaveTextContent('Vraag twee');

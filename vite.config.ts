@@ -9,6 +9,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -32,6 +33,14 @@ import {
   embedNodeLayout,
   parseStoredNodeLayout,
 } from './src/editor/nodeLayoutFile';
+import {
+  holoboxPackageExists,
+  holoboxZipRelative,
+  listHoloboxDiskFiles,
+  listHoloboxPackageTitles,
+  packageZipPath,
+  writeHoloboxPackageFile,
+} from './src/editor/holoboxPackageDisk';
 import { zipStore, type ZipEntry } from './src/editor/zipStore';
 import {
   removeQuestionFolder,
@@ -47,6 +56,7 @@ const packageJson = JSON.parse(
 const MAX_EDITOR_BODY_BYTES = 8_000_000;
 const MAX_EDITOR_MEDIA_BYTES = 16_000_000;
 const MAX_EDITOR_PACKAGE_BYTES = 64_000_000;
+const MAX_HOLOBOX_PACKAGE_BYTES = 512_000_000;
 
 const APP_BASE = '/Holobox-editor/';
 const LEGACY_LOCAL_BASE = '/HoloboxVPKenLogo';
@@ -91,6 +101,19 @@ function isNursingEditorMediaPath(url: string | undefined): boolean {
 function isQuestionFolderRequest(url: string | undefined): boolean {
   const path = requestPath(url);
   return path === '/editor-api/question-folder' || path.endsWith('/editor-api/question-folder');
+}
+
+function isHoloboxPackageFilesPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return (
+    path === '/editor-api/holobox-package-files' ||
+    path.endsWith('/editor-api/holobox-package-files')
+  );
+}
+
+function isHoloboxPackagePath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/holobox-package' || path.endsWith('/editor-api/holobox-package');
 }
 
 function isEditorExportPath(url: string | undefined): boolean {
@@ -356,6 +379,28 @@ function regenerateMediaManifest(projectRoot: string): void {
   spawnSync(process.execPath, [join(projectRoot, 'scripts', 'generate-media-manifest.mjs')], {
     cwd: projectRoot,
     stdio: 'ignore',
+  });
+}
+
+function headerValue(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
+}
+
+function readRequestBuffer(req: IncomingMessage, limit: number): Promise<Buffer> {
+  return new Promise((resolveBody, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('too-large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolveBody(Buffer.concat(chunks)));
+    req.on('error', reject);
   });
 }
 
@@ -965,6 +1010,113 @@ function copyModuleMedia(
   });
 }
 
+function editorHoloboxPackageMiddleware(resourcesRoot: string, projectRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (isHoloboxPackageFilesPath(req.url)) {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+        return;
+      }
+      void readRequestBody(req, MAX_EDITOR_BODY_BYTES)
+        .then((body) => {
+          let data: { title?: unknown; folders?: unknown; extraVideos?: unknown };
+          try {
+            data = JSON.parse(body) as typeof data;
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'De bestandslijst is ongeldig.' });
+            return;
+          }
+          const title = typeof data.title === 'string' ? data.title : '';
+          if (!holoboxZipRelative(title)) {
+            sendJson(res, 400, { ok: false, error: 'De casus heeft geen naam voor een pakket.' });
+            return;
+          }
+          const folders = Array.isArray(data.folders) ? data.folders : [];
+          const extraVideos = Array.isArray(data.extraVideos) ? data.extraVideos : [];
+          if (folders.length > 64 || extraVideos.length > 200) {
+            sendJson(res, 400, { ok: false, error: 'De casus heeft te veel bestanden.' });
+            return;
+          }
+          const files = listHoloboxDiskFiles(
+            resourcesRoot,
+            title,
+            folders.filter((item): item is string => typeof item === 'string'),
+            extraVideos.filter((item): item is string => typeof item === 'string'),
+          );
+          sendJson(res, 200, { ok: true, files });
+        })
+        .catch((error: unknown) => {
+          if (error instanceof Error && error.message === 'too-large') {
+            sendJson(res, 413, { ok: false, error: 'De bestandslijst is te groot.' });
+            return;
+          }
+          sendJson(res, 500, {
+            ok: false,
+            error: 'De bestanden van de casus konden niet worden gelezen.',
+          });
+        });
+      return;
+    }
+    if (!isHoloboxPackagePath(req.url)) {
+      next();
+      return;
+    }
+    if (req.method === 'GET') {
+      const url = new URL(req.url ?? '', 'http://127.0.0.1');
+      const title = url.searchParams.get('name') ?? '';
+      const zip = holoboxZipRelative(title);
+      if (!zip) {
+        sendJson(res, 400, { ok: false, error: 'De casus heeft geen naam voor een pakket.' });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        exists: holoboxPackageExists(projectRoot, title),
+        zip,
+      });
+      return;
+    }
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { ok: false, error: 'Alleen GET en POST zijn toegestaan.' });
+      return;
+    }
+    let title = '';
+    try {
+      title = decodeURIComponent(headerValue(req.headers['x-holobox-name']));
+    } catch {
+      sendJson(res, 400, { ok: false, error: 'De casusnaam is ongeldig.' });
+      return;
+    }
+    const replace = headerValue(req.headers['x-holobox-replace']) === '1';
+    void readRequestBuffer(req, MAX_HOLOBOX_PACKAGE_BYTES)
+      .then((body) => {
+        if (
+          body.length < 4 ||
+          body[0] !== 0x50 ||
+          body[1] !== 0x4b ||
+          body[2] !== 0x03 ||
+          body[3] !== 0x04
+        ) {
+          sendJson(res, 400, { ok: false, error: 'Het pakket is geen zip.' });
+          return;
+        }
+        const saved = writeHoloboxPackageFile(projectRoot, title, new Uint8Array(body), replace);
+        if (!saved.ok) {
+          sendJson(res, saved.exists ? 409 : 400, saved);
+          return;
+        }
+        sendJson(res, 200, saved);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'too-large') {
+          sendJson(res, 413, { ok: false, error: 'Het pakket is te groot.' });
+          return;
+        }
+        sendJson(res, 500, { ok: false, error: 'Het pakket kon niet worden opgeslagen.' });
+      });
+  };
+}
+
 function editorPackageMiddleware(resourcesRoot: string, projectRoot: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (isEditorExportFilePath(req.url)) {
@@ -1194,45 +1346,22 @@ function envelopeSummary(
 function listGesprekMenuTiles(
   resourcesRoot: string,
 ): Array<{ id: string; title: string; summary: string; module: string; source: 'file' }> {
-  const tiles: Array<{
-    id: string;
-    title: string;
-    summary: string;
-    module: string;
-    source: 'file';
-  }> = [];
-  const scenariosDir = join(resourcesRoot, 'scenarios');
-  if (!existsSync(scenariosDir)) {
-    return tiles;
-  }
-  for (const name of readdirSync(scenariosDir)) {
-    if (!name.endsWith('.json') || name.endsWith('.bak')) {
-      continue;
+  const projectRoot = resolve(resourcesRoot, '..');
+  return listHoloboxPackageTitles(projectRoot).flatMap((title) => {
+    const zip = holoboxZipRelative(title);
+    if (!zip) {
+      return [];
     }
-    if (name !== 'verpleegkunde.json' && !name.startsWith('verpleegkunde-')) {
-      continue;
-    }
-    try {
-      const text = readFileSync(join(scenariosDir, name), 'utf8');
-      const info = envelopeSummary(text, 'verpleegkunde');
-      if (info) {
-        tiles.push({
-          id: `scenarios/${name}`,
-          title: info.title,
-          summary: info.summary,
-          module: 'verpleegkunde',
-          source: 'file',
-        });
-      }
-    } catch {
-      // skip unreadable files
-    }
-  }
-  tiles.sort(
-    (left, right) =>
-      left.title.localeCompare(right.title, 'nl') || left.id.localeCompare(right.id, 'nl'),
-  );
-  return tiles;
+    return [
+      {
+        id: zip,
+        title,
+        summary: 'Versleuteld pakket',
+        module: 'verpleegkunde',
+        source: 'file' as const,
+      },
+    ];
+  });
 }
 
 function listExtraScenarioTiles(
@@ -1454,6 +1583,13 @@ function scenarioCatalogMiddleware(resourcesRoot: string) {
       sendJson(res, 400, { ok: false, error: 'Onbekende module.' });
       return;
     }
+    if (moduleId === 'verpleegkunde') {
+      sendJson(res, 404, {
+        ok: false,
+        error: 'De casus opent alleen vanuit het versleutelde pakket.',
+      });
+      return;
+    }
     const target = resolveCatalogFile(id, resourcesRoot);
     if (!target) {
       sendJson(res, 404, { ok: false, error: 'Scenario niet gevonden.' });
@@ -1465,6 +1601,54 @@ function scenarioCatalogMiddleware(resourcesRoot: string) {
       return;
     }
     sendJson(res, 200, { ok: true, envelopeText: text });
+  };
+}
+
+function isHoloboxCaseListPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/app-api/holobox-packages' || path.endsWith('/app-api/holobox-packages');
+}
+
+function isHoloboxCaseFilePath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/app-api/holobox-package' || path.endsWith('/app-api/holobox-package');
+}
+
+function holoboxCaseMiddleware(projectRoot: string) {
+  return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (isHoloboxCaseListPath(req.url)) {
+      if ((req.method ?? 'GET') !== 'GET') {
+        sendJson(res, 405, { ok: false, error: 'Alleen GET is toegestaan.' });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        packages: listHoloboxPackageTitles(projectRoot).flatMap((title) => {
+          const zip = holoboxZipRelative(title);
+          return zip ? [{ title, zip }] : [];
+        }),
+      });
+      return;
+    }
+    if (!isHoloboxCaseFilePath(req.url)) {
+      next();
+      return;
+    }
+    if ((req.method ?? 'GET') !== 'GET') {
+      sendJson(res, 405, { ok: false, error: 'Alleen GET is toegestaan.' });
+      return;
+    }
+    const url = new URL(req.url ?? '', 'http://127.0.0.1');
+    const abs = packageZipPath(projectRoot, url.searchParams.get('name') ?? '', false);
+    if (!abs || !existsSync(abs)) {
+      sendJson(res, 404, { ok: false, error: 'Pakket niet gevonden.' });
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Length', String(statSync(abs).size));
+    createReadStream(abs).pipe(res);
   };
 }
 
@@ -1493,6 +1677,11 @@ function resourcesPlugin(): Plugin {
       return;
     }
     let rel = path.slice(index + marker.length);
+    if (req.socket?.localPort === 4173 && (rel === 'scenarios' || rel.startsWith('scenarios/'))) {
+      res.statusCode = 404;
+      res.end();
+      return;
+    }
     if (rel.startsWith('verpleegkunde/')) {
       const mapped = `gesprekstechnieken/${rel.slice('verpleegkunde/'.length)}`;
       if (existsSync(resolve(resourcesRoot, mapped))) {
@@ -1530,9 +1719,13 @@ function resourcesPlugin(): Plugin {
         editorQuestionFolderMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
       server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(
+        editorHoloboxPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(editorDeleteCaseMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorCasesMiddleware(resourcesRoot));
       server.middlewares.use(scenarioCatalogMiddleware(resourcesRoot));
+      server.middlewares.use(holoboxCaseMiddleware(resolve(resourcesRoot, '..')));
       server.middlewares.use(serveResources);
     },
     configurePreviewServer(server) {
@@ -1552,9 +1745,13 @@ function resourcesPlugin(): Plugin {
         editorQuestionFolderMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
       );
       server.middlewares.use(editorPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')));
+      server.middlewares.use(
+        editorHoloboxPackageMiddleware(resourcesRoot, resolve(resourcesRoot, '..')),
+      );
       server.middlewares.use(editorDeleteCaseMiddleware(resourcesRoot, distResourcesRoot));
       server.middlewares.use(editorCasesMiddleware(resourcesRoot));
       server.middlewares.use(scenarioCatalogMiddleware(resourcesRoot));
+      server.middlewares.use(holoboxCaseMiddleware(resolve(resourcesRoot, '..')));
       server.middlewares.use(serveResources);
       server.middlewares.use((req, res, next) => {
         const path = req.url ?? '';
@@ -1573,7 +1770,14 @@ function resourcesPlugin(): Plugin {
     },
     closeBundle() {
       if (existsSync(resourcesRoot)) {
-        cpSync(resourcesRoot, join('dist', 'resources'), { recursive: true });
+        cpSync(resourcesRoot, join('dist', 'resources'), {
+          recursive: true,
+          filter: (src) => {
+            const rel = relative(resourcesRoot, src).split(sep).join('/');
+            return rel !== 'scenarios' && !rel.startsWith('scenarios/');
+          },
+        });
+        rmSync(join('dist', 'resources', 'scenarios'), { recursive: true, force: true });
       }
       const indexHtml = join('dist', 'index.html');
       if (existsSync(indexHtml)) {

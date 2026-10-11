@@ -28,13 +28,32 @@ import { saveEnvelopeAsNewCase } from './saveAsCase';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
 import { NursingEditor, NursingPreviewAside } from './NursingEditor';
 import {
+  clearHeldEditorPassword,
+  heldEditorPassword,
+  holdEditorPassword,
+  readEditorLock,
+  verifyEditorPassword,
+} from './editorLock';
+import {
+  encryptHoloboxPackage,
+  fetchHoloboxDiskFiles,
+  fetchHoloboxPackageStatus,
+  HOLOBOX_PACKAGE_KEY,
+  openCasePackageFiles,
+  safeCaseFileName,
+  safeHoloboxPackageTitle,
+  storeHoloboxPackage,
+} from './holoboxPackage';
+import {
   deleteQuestionFolder,
   isQuestionFolderPath,
   questionFolderOnDisk,
   questionTextFiles,
+  resolvedQuestionFolder,
   restoreQuestionFolder,
   sameQuestionTexts,
   saveQuestionFolder,
+  startVideoRelative,
   type QuestionFolderBackupFile,
 } from './questionFolder';
 import { NodeFieldEditor } from './NodeFieldEditor';
@@ -182,6 +201,12 @@ export function EditorApp() {
   const [stagedMedia, setStagedMedia] = useState<StagedMediaOp[]>([]);
   const [nursingStagedMedia, setNursingStagedMedia] = useState<StagedNursingMediaOp[]>([]);
   const [nursingDiskMedia, setNursingDiskMedia] = useState<NursingMediaItem[]>([]);
+  const [holoboxReplaceOpen, setHoloboxReplaceOpen] = useState(false);
+  const [holoboxPasswordOpen, setHoloboxPasswordOpen] = useState(false);
+  const [holoboxPassword, setHoloboxPassword] = useState('');
+  const [holoboxPasswordError, setHoloboxPasswordError] = useState<string | null>(null);
+  const [holoboxWillReplace, setHoloboxWillReplace] = useState(false);
+  const holoboxBusy = useRef(false);
   const saveOnThisPc = canSaveToThisCopy();
   const activeLoadNotice = editorModule === 'logopedie' ? loadNotice : nursingLoadNotice;
   const activeLoadedLabel = editorModule === 'logopedie' ? loadedLabel : nursingLoadedLabel;
@@ -858,6 +883,150 @@ export function EditorApp() {
     setSaveMessage(`Geëxporteerd naar ${result.zip}`);
   }
 
+  function holoboxCaseTitle(): string {
+    return nursingDraft.meta.title.trim();
+  }
+
+  async function collectHoloboxFiles() {
+    const title = holoboxCaseTitle();
+    const folders: string[] = [];
+    const extraVideos: string[] = [];
+    for (const step of nursingDraft.steps) {
+      const folder = resolvedQuestionFolder(title, step);
+      if (isQuestionFolderPath(folder) && folder.startsWith('gesprekstechnieken/')) {
+        folders.push(folder);
+      }
+      const start = startVideoRelative(title, step.stepName ?? '');
+      if (start) {
+        extraVideos.push(start);
+      }
+    }
+    for (const slot of nursingDraft.mediaSlots) {
+      if (slot.primaryMedia) {
+        extraVideos.push(slot.primaryMedia);
+      }
+    }
+    const listed = await fetchHoloboxDiskFiles(title, folders, extraVideos);
+    if (!listed.ok) {
+      setSaveError(listed.error);
+      return null;
+    }
+    const disk = new Map<string, Uint8Array>();
+    for (const relativePath of listed.files) {
+      const encoded = relativePath.split('/').map(encodeURIComponent).join('/');
+      const response = await fetch(withBaseUrl(`/resources/${encoded}`), { cache: 'no-store' });
+      if (!response.ok) {
+        continue;
+      }
+      disk.set(relativePath, new Uint8Array(await response.arrayBuffer()));
+    }
+    for (const op of nursingStagedMedia) {
+      const relativePath = op.relativePath.replaceAll('\\', '/');
+      if (op.type === 'delete') {
+        disk.delete(relativePath);
+        continue;
+      }
+      disk.set(relativePath, new Uint8Array(await op.file.arrayBuffer()));
+    }
+    return openCasePackageFiles(
+      nursingDraft,
+      safeCaseFileName(nursingCaseFile),
+      envelopeTextForModule('verpleegkunde', nursingDraft),
+      [...disk.entries()].map(([relativePath, data]) => ({ relativePath, data })),
+    );
+  }
+
+  async function encryptAndStoreHolobox(replace: boolean) {
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      const files = await collectHoloboxFiles();
+      if (!files) {
+        return;
+      }
+      const zip = await encryptHoloboxPackage(files, HOLOBOX_PACKAGE_KEY);
+      const saved = await storeHoloboxPackage(holoboxCaseTitle(), zip, replace);
+      if (!saved.ok) {
+        if (saved.exists) {
+          setHoloboxReplaceOpen(true);
+          return;
+        }
+        setSaveError(saved.error);
+        return;
+      }
+      setSaveMessage(
+        saved.replaced
+          ? `Pakket voor HoloBox staat in ${saved.zip}. Het vorige pakket staat in pakketten/vorige/.`
+          : `Pakket voor HoloBox staat in ${saved.zip}.`,
+      );
+    } catch {
+      setSaveError('Het pakket kon niet worden gemaakt.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runHoloboxPackage(replace: boolean) {
+    const record = readEditorLock();
+    if (!record) {
+      setSaveError('Stel eerst een editorwachtwoord in.');
+      return;
+    }
+    const held = heldEditorPassword();
+    if (!held || !(await verifyEditorPassword(record, held))) {
+      clearHeldEditorPassword();
+      setHoloboxWillReplace(replace);
+      setHoloboxPassword('');
+      setHoloboxPasswordError(null);
+      setHoloboxPasswordOpen(true);
+      return;
+    }
+    await encryptAndStoreHolobox(replace);
+  }
+
+  async function requestHoloboxPackage() {
+    if (holoboxBusy.current || saving) {
+      return;
+    }
+    holoboxBusy.current = true;
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      if (!safeHoloboxPackageTitle(holoboxCaseTitle())) {
+        setSaveError('De casus heeft geen naam voor een pakket.');
+        return;
+      }
+      const status = await fetchHoloboxPackageStatus(holoboxCaseTitle());
+      if (!status.ok) {
+        setSaveError(status.error);
+        return;
+      }
+      if (status.exists) {
+        setHoloboxReplaceOpen(true);
+        return;
+      }
+      await runHoloboxPackage(false);
+    } finally {
+      holoboxBusy.current = false;
+    }
+  }
+
+  async function confirmHoloboxPassword() {
+    const record = readEditorLock();
+    if (!record || !(await verifyEditorPassword(record, holoboxPassword))) {
+      setHoloboxPasswordError('Het editorwachtwoord klopt niet.');
+      return;
+    }
+    const secret = holoboxPassword;
+    const replace = holoboxWillReplace;
+    setHoloboxPassword('');
+    setHoloboxPasswordError(null);
+    setHoloboxPasswordOpen(false);
+    holdEditorPassword(secret);
+    await encryptAndStoreHolobox(replace);
+  }
+
   async function importPackageFromPicker() {
     const picked = await pickZipFileToImport();
     if (picked === 'cancelled') {
@@ -1186,6 +1355,17 @@ export function EditorApp() {
                 Exporteren
               </button>
             ) : null}
+            {saveOnThisPc ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-holobox-package"
+                onClick={() => void requestHoloboxPackage()}
+                disabled={saving}
+              >
+                Pakket voor HoloBox
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-secondary"
@@ -1358,6 +1538,99 @@ export function EditorApp() {
               disabled={deletingCase}
             >
               Casus verwijderen
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {holoboxReplaceOpen ? (
+        <Dialog
+          title="Vervangen"
+          testId="dialog-holobox-replace"
+          onClose={() => setHoloboxReplaceOpen(false)}
+        >
+          <p>
+            Er bestaat al een pakket voor &quot;{holoboxCaseTitle()}&quot;. Het hele pakket
+            vervangen?
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-holobox-replace-no"
+              onClick={() => setHoloboxReplaceOpen(false)}
+            >
+              Nee
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-holobox-replace-yes"
+              onClick={() => {
+                setHoloboxReplaceOpen(false);
+                void runHoloboxPackage(true);
+              }}
+            >
+              Ja
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {holoboxPasswordOpen ? (
+        <Dialog
+          title="Editorwachtwoord"
+          testId="dialog-holobox-password"
+          onClose={() => {
+            setHoloboxPasswordOpen(false);
+            setHoloboxPassword('');
+            setHoloboxPasswordError(null);
+          }}
+        >
+          <p>Bevestig het editorwachtwoord om het pakket te maken.</p>
+          <div className="field">
+            <label htmlFor="holobox-package-password">Editorwachtwoord</label>
+            <input
+              id="holobox-package-password"
+              data-testid="holobox-package-password"
+              type="password"
+              autoComplete="current-password"
+              value={holoboxPassword}
+              onChange={(event) => setHoloboxPassword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void confirmHoloboxPassword();
+                }
+              }}
+            />
+          </div>
+          {holoboxPasswordError ? (
+            <p className="editor-open-error" data-testid="holobox-password-error" role="alert">
+              {holoboxPasswordError}
+            </p>
+          ) : null}
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-holobox-password-cancel"
+              onClick={() => {
+                setHoloboxPasswordOpen(false);
+                setHoloboxPassword('');
+                setHoloboxPasswordError(null);
+              }}
+            >
+              Annuleren
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-holobox-package-confirm"
+              onClick={() => void confirmHoloboxPassword()}
+              disabled={saving}
+            >
+              Pakket maken
             </button>
           </div>
         </Dialog>

@@ -1,4 +1,5 @@
 import { withBaseUrl } from './baseUrl';
+import { packageMediaUrl } from './packageMedia';
 import { mediaManifest } from './generated/media-manifest';
 import type { MediaFileType, MediaManifestItem, MediaSlotConfig, TrainingModule } from './types';
 
@@ -121,12 +122,14 @@ export function mediaItemFromRelativePath(
     durationSeconds: null,
     width: null,
     height: null,
-    publicUrl: withBaseUrl(
-      `/resources/${relativePath
-        .split('/')
-        .map((segment) => encodeURIComponent(segment))
-        .join('/')}`,
-    ),
+    publicUrl:
+      packageMediaUrl(relativePath) ??
+      withBaseUrl(
+        `/resources/${relativePath
+          .split('/')
+          .map((segment) => encodeURIComponent(segment))
+          .join('/')}`,
+      ),
     warnings: [],
   };
 }

@@ -78,8 +78,7 @@ export function zipStore(entries: ZipEntry[]): Uint8Array {
     u32(centralView, 16, crc);
     u32(centralView, 20, data.length);
     u32(centralView, 24, data.length);
-    u16(centralView, 26, name.length);
-    u16(centralView, 28, 0);
+    u16(centralView, 28, name.length);
     u16(centralView, 30, 0);
     u16(centralView, 32, 0);
     u16(centralView, 34, 0);

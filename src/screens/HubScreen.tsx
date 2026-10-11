@@ -3,29 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
 import {
-  fetchGesprekMenuTiles,
-  fetchScenarioEnvelope,
-  type ScenarioTile,
-} from '../data/scenarioTiles';
+  fetchHoloboxPackages,
+  openHoloboxCase,
+  type HoloboxPackageListing,
+} from '../data/openHoloboxCase';
 import { APP_VERSION } from '../domain/types';
-import { parseVerpleegkundeEnvelope } from '../editor/nursingEnvelope';
-import { nursingSaveIssues } from '../editor/saveChecks';
 import { withBaseUrl } from '../media/baseUrl';
 import { useAppState } from '../state/AppState';
 
 export function HubScreen() {
   const navigate = useNavigate();
   const { storageAvailable, storageNotice, selectNursingScenario } = useAppState();
-  const [tiles, setTiles] = useState<ScenarioTile[]>([]);
+  const [packages, setPackages] = useState<HoloboxPackageListing[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  const [opening, setOpening] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const next = await fetchGesprekMenuTiles();
+      const next = await fetchHoloboxPackages();
       if (!cancelled) {
-        setTiles(next);
+        setPackages(next);
       }
     }
     void load();
@@ -38,19 +37,19 @@ export function HubScreen() {
     };
   }, []);
 
-  async function openCase(tile: ScenarioTile) {
+  async function openPackage(title: string) {
+    if (opening) {
+      return;
+    }
+    setOpening(true);
     setLoadError(null);
-    const text = await fetchScenarioEnvelope(tile.id, 'verpleegkunde');
-    if (!text) {
-      setLoadError('Dit scenario kon niet worden geladen.');
+    const opened = await openHoloboxCase(title);
+    setOpening(false);
+    if (!opened.ok) {
+      setLoadError(opened.error);
       return;
     }
-    const parsed = parseVerpleegkundeEnvelope(text);
-    if (!parsed.ok || nursingSaveIssues(parsed.scenario).length > 0) {
-      setLoadError('Dit scenario is ongeldig.');
-      return;
-    }
-    selectNursingScenario(parsed.scenario);
+    selectNursingScenario(opened.scenario);
     void navigate('/verpleegkunde/home');
   }
 
@@ -118,21 +117,20 @@ export function HubScreen() {
             {loadError}
           </p>
         ) : null}
-        {tiles.length === 0 ? (
+        {packages.length === 0 ? (
           <p data-testid="gesprek-menu-empty">Er is nog geen gesprekscasus.</p>
         ) : (
           <div className="scenario-tile-list">
-            {tiles.map((tile) => (
+            {packages.map((item) => (
               <button
-                key={tile.id}
+                key={item.zip}
                 type="button"
                 className="scenario-tile"
-                data-testid={`btn-scenario-tile-${tile.id.replaceAll('/', '_')}`}
-                onClick={() => void openCase(tile)}
+                data-testid={`btn-scenario-tile-${item.zip.replaceAll('/', '_')}`}
+                onClick={() => void openPackage(item.title)}
               >
                 <span className="scenario-tile-module">Gesprekstechnieken</span>
-                <span className="scenario-tile-title">{tile.title}</span>
-                <span className="scenario-tile-summary">{tile.summary}</span>
+                <span className="scenario-tile-title">{item.title}</span>
               </button>
             ))}
           </div>

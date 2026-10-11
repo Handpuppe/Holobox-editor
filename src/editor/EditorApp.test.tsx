@@ -9,6 +9,13 @@ import { APP_VERSION } from '../domain/types';
 import { renderApp } from '../test/renderApp';
 import { EditorApp } from './EditorApp';
 import { formatCaseSavedAt } from './editorCases';
+import {
+  createEditorLock,
+  holdEditorPassword,
+  writeEditorLock,
+  EDITOR_LOCK_STORAGE_KEY,
+} from './editorLock';
+import { decryptHoloboxPackage, HOLOBOX_PACKAGE_KEY } from './holoboxPackage';
 import { envelopeJson } from './envelope';
 import { cloneScenario } from './cloneScenario';
 import { emptyNursingScenario } from './emptyScenario';
@@ -109,6 +116,7 @@ describe('EditorApp', () => {
       'Herstel startkopie',
       'Importeren',
       'Exporteren',
+      'Pakket voor HoloBox',
       'Casus verwijderen',
       'Afsluiten',
     ]);
@@ -2717,6 +2725,251 @@ describe('EditorApp', () => {
         'Geen video gekoppeld.',
       );
       expect(existsSync(projectVideo)).toBe(projectVideoExisted);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+const packagePassword = 'editor-geheim-voor-pakket';
+const packageMarker = 'PAKKET-MARKER-ZIN-7f3a';
+const packageVideo = 'ftypVIDEO-MARKER-91c2';
+
+async function packageBody(body: BodyInit | null | undefined): Promise<Uint8Array> {
+  if (body instanceof Blob) {
+    return new Uint8Array(await body.arrayBuffer());
+  }
+  throw new Error('Het pakketverzoek heeft geen zip.');
+}
+
+function containsPackageText(bytes: Uint8Array, text: string): boolean {
+  return new TextDecoder().decode(bytes).includes(text);
+}
+
+describe('Pakket voor HoloBox', () => {
+  it('encrypts the open case for Phosaner and keeps Afsluiten', async () => {
+    const user = userEvent.setup();
+    const record = await createEditorLock(packagePassword, 'WACHT-CODE-BUIT-APPX');
+    writeEditorLock(record);
+    holdEditorPassword(packagePassword);
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (init?.method === 'POST' && target.includes('holobox-package-files')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            files: [
+              'gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag1/Videos/antwoord-goed.mp4',
+              'gesprekstechnieken/Startvideos/Slechtnieuwsgesprek-oefenen-Vraag1-startvideo.mp4',
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (target.includes('holobox-package') && init?.method !== 'POST') {
+        return new Response(
+          JSON.stringify({ ok: true, exists: false, zip: 'pakketten/test.zip' }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      if (init?.method === 'POST' && target.includes('holobox-package')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+            replaced: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (target.includes('.mp4')) {
+        return new Response(packageVideo, { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('btn-holobox-package')).toHaveTextContent('Pakket voor HoloBox');
+      });
+      expect(screen.getByTestId('btn-editor-quit')).toHaveTextContent('Afsluiten');
+      fireEvent.change(screen.getByTestId('nursing-title'), {
+        target: { value: 'Slechtnieuwsgesprek oefenen' },
+      });
+      fireEvent.change(screen.getByTestId('nursing-question'), {
+        target: { value: packageMarker },
+      });
+      await user.click(screen.getByTestId('btn-holobox-package'));
+      expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+        'pakketten/Slechtnieuwsgesprek oefenen.zip',
+      );
+      const post = fetchMock.mock.calls.find(
+        (call) =>
+          String(call[0]).includes('/editor-api/holobox-package') &&
+          !String(call[0]).includes('holobox-package-files') &&
+          call[1]?.method === 'POST',
+      );
+      const headers = post?.[1]?.headers as Record<string, string>;
+      expect(headers['X-Holobox-Replace']).toBe('0');
+      const zip = await packageBody(post?.[1]?.body);
+      expect(containsPackageText(zip, packageMarker)).toBe(false);
+      expect(containsPackageText(zip, packageVideo)).toBe(false);
+      expect(containsPackageText(zip, packagePassword)).toBe(false);
+      expect(containsPackageText(zip, HOLOBOX_PACKAGE_KEY)).toBe(false);
+      expect((await decryptHoloboxPackage(zip, packagePassword)).ok).toBe(false);
+      const opened = await decryptHoloboxPackage(zip, HOLOBOX_PACKAGE_KEY);
+      expect(opened.ok).toBe(true);
+      if (opened.ok) {
+        const names = opened.files.map((file) => file.name);
+        expect(names).toContain('scenarios/verpleegkunde.json');
+        expect(names.some((name) => name.includes('/Startvideos/'))).toBe(true);
+        expect(names.some((name) => name.endsWith('antwoord-goed.mp4'))).toBe(true);
+        expect(opened.files.some((file) => containsPackageText(file.data, packageMarker))).toBe(
+          true,
+        );
+        expect(opened.files.some((file) => containsPackageText(file.data, packageVideo))).toBe(
+          true,
+        );
+      }
+      expect(window.localStorage.getItem(EDITOR_LOCK_STORAGE_KEY)).not.toContain(packagePassword);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('asks to replace an existing package and leaves it when the answer is no', async () => {
+    const user = userEvent.setup();
+    const record = await createEditorLock(packagePassword, 'WACHT-CODE-BUIT-APPX');
+    writeEditorLock(record);
+    holdEditorPassword(packagePassword);
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (init?.method === 'POST' && target.includes('holobox-package-files')) {
+        return new Response(JSON.stringify({ ok: true, files: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (target.includes('holobox-package') && init?.method !== 'POST') {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            exists: true,
+            zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (init?.method === 'POST' && target.includes('holobox-package')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+            replaced: true,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<EditorApp />);
+      fireEvent.change(screen.getByTestId('nursing-title'), {
+        target: { value: 'Slechtnieuwsgesprek oefenen' },
+      });
+      await user.click(screen.getByTestId('btn-holobox-package'));
+      expect(await screen.findByTestId('dialog-holobox-replace')).toHaveTextContent('Vervangen');
+      await user.click(screen.getByTestId('btn-holobox-replace-no'));
+      expect(screen.queryByTestId('dialog-holobox-replace')).not.toBeInTheDocument();
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            call[1]?.method === 'POST' &&
+            String(call[0]).includes('/editor-api/holobox-package') &&
+            !String(call[0]).includes('holobox-package-files'),
+        ),
+      ).toBe(false);
+      await user.click(screen.getByTestId('btn-holobox-package'));
+      await user.click(await screen.findByTestId('btn-holobox-replace-yes'));
+      expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent('pakketten/vorige/');
+      const post = fetchMock.mock.calls.find(
+        (call) =>
+          call[1]?.method === 'POST' &&
+          String(call[0]).includes('/editor-api/holobox-package') &&
+          !String(call[0]).includes('holobox-package-files'),
+      );
+      expect((post?.[1]?.headers as Record<string, string>)['X-Holobox-Replace']).toBe('1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('asks for the editor password when it is not in memory and rejects a wrong one', async () => {
+    const user = userEvent.setup();
+    const record = await createEditorLock(packagePassword, 'WACHT-CODE-BUIT-APPX');
+    writeEditorLock(record);
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (init?.method === 'POST' && target.includes('holobox-package-files')) {
+        return new Response(JSON.stringify({ ok: true, files: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (target.includes('holobox-package') && init?.method !== 'POST') {
+        return new Response(
+          JSON.stringify({ ok: true, exists: false, zip: 'pakketten/test.zip' }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      if (init?.method === 'POST' && target.includes('holobox-package')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+            replaced: false,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<EditorApp />);
+      fireEvent.change(screen.getByTestId('nursing-title'), {
+        target: { value: 'Slechtnieuwsgesprek oefenen' },
+      });
+      await user.click(screen.getByTestId('btn-holobox-package'));
+      expect(await screen.findByTestId('dialog-holobox-password')).toBeInTheDocument();
+      await user.type(screen.getByTestId('holobox-package-password'), 'verkeerd-wachtwoord');
+      await user.click(screen.getByTestId('btn-holobox-package-confirm'));
+      expect(await screen.findByTestId('holobox-password-error')).toHaveTextContent(
+        'Het editorwachtwoord klopt niet.',
+      );
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            call[1]?.method === 'POST' &&
+            String(call[0]).includes('/editor-api/holobox-package') &&
+            !String(call[0]).includes('holobox-package-files'),
+        ),
+      ).toBe(false);
+      await user.clear(screen.getByTestId('holobox-package-password'));
+      await user.type(screen.getByTestId('holobox-package-password'), packagePassword);
+      await user.click(screen.getByTestId('btn-holobox-package-confirm'));
+      expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+        'pakketten/Slechtnieuwsgesprek oefenen.zip',
+      );
+      expect(window.localStorage.getItem(EDITOR_LOCK_STORAGE_KEY)).toBe(JSON.stringify(record));
     } finally {
       vi.unstubAllGlobals();
     }

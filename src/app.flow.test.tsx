@@ -4,7 +4,13 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { aphasiaIntakeScenario } from './data/aphasiaIntakeScenario';
-import * as scenarioTiles from './data/scenarioTiles';
+import * as openHoloboxCase from './data/openHoloboxCase';
+import {
+  encryptHoloboxPackage,
+  HOLOBOX_PACKAGE_KEY,
+  openCasePackageFiles,
+} from './editor/holoboxPackage';
+import { parseVerpleegkundeEnvelope } from './editor/nursingEnvelope';
 import { APP_VERSION } from './domain/types';
 import { conclusionByQuality, optionIdsByQuality } from './domain/playthrough';
 import { STORAGE_KEY } from './storage/storageService';
@@ -96,59 +102,78 @@ describe('application flow', () => {
     }
   });
 
-  it('opens Slechtnieuwsgesprek oefenen and shows another gesprek case', async () => {
+  it('opens Slechtnieuwsgesprek oefenen from the tile without a password', async () => {
     const raw = readFileSync(join('resources', 'scenarios', 'verpleegkunde.json'), 'utf8');
-    const tiles = vi.spyOn(scenarioTiles, 'fetchGesprekMenuTiles').mockResolvedValue([
+    const parsed = parseVerpleegkundeEnvelope(raw);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    const zip = await encryptHoloboxPackage(
+      openCasePackageFiles(parsed.scenario, 'verpleegkunde.json', raw, []),
+      HOLOBOX_PACKAGE_KEY,
+      { iterations: 1000 },
+    );
+    const packages = vi.spyOn(openHoloboxCase, 'fetchHoloboxPackages').mockResolvedValue([
       {
-        id: 'scenarios/verpleegkunde.json',
         title: 'Slechtnieuwsgesprek oefenen',
-        summary: 'mevrouw De Boer, fictief',
-        module: 'verpleegkunde',
-        source: 'file',
+        zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
       },
-      {
-        id: 'scenarios/verpleegkunde-testcasus.json',
-        title: 'Phosaner testcasus',
-        summary: 'testpatiënt, fictief',
-        module: 'verpleegkunde',
-        source: 'file',
-      },
+      { title: 'Phosaner testcasus', zip: 'pakketten/Phosaner testcasus.zip' },
     ]);
-    const envelope = vi
-      .spyOn(scenarioTiles, 'fetchScenarioEnvelope')
-      .mockImplementation(async (id) => (id === 'scenarios/verpleegkunde.json' ? raw : null));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('Slechtnieuwsgesprek%20oefenen')) {
+        const body = new ArrayBuffer(zip.byteLength);
+        new Uint8Array(body).set(zip);
+        return new Response(body, { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
     const user = userEvent.setup();
     try {
       renderApp();
-      expect(
-        await screen.findByRole('heading', {
-          name: 'Phosaner — Scenario-gedreven holografisch onderwijs.',
-        }),
-      ).toBeInTheDocument();
       const slechtnieuws = await screen.findByTestId(
-        'btn-scenario-tile-scenarios_verpleegkunde.json',
+        'btn-scenario-tile-pakketten_Slechtnieuwsgesprek oefenen.zip',
       );
       expect(slechtnieuws).toHaveTextContent('Slechtnieuwsgesprek oefenen');
-      expect(slechtnieuws).toHaveTextContent('mevrouw De Boer, fictief');
-      expect(slechtnieuws).toHaveTextContent('Gesprekstechnieken');
+      expect(slechtnieuws).not.toHaveTextContent('Versleuteld pakket');
+      expect(slechtnieuws).not.toHaveTextContent('mevrouw De Boer');
       expect(
-        screen.getByTestId('btn-scenario-tile-scenarios_verpleegkunde-testcasus.json'),
+        screen.getByTestId('btn-scenario-tile-pakketten_Phosaner testcasus.zip'),
       ).toHaveTextContent('Phosaner testcasus');
-      expect(screen.queryByText(/ABCDE/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/Erik/)).not.toBeInTheDocument();
-      await user.click(slechtnieuws);
-      expect(await screen.findByTestId('screen-nursing-home')).toBeInTheDocument();
       expect(
-        screen.getByRole('heading', { name: 'Slechtnieuwsgesprek oefenen' }),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId('screen-nursing-home')).toHaveTextContent(
-        'mevrouw De Boer, fictief',
+        screen.queryByText('Wat zeg je als eerste?', { exact: false }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('U hebt slecht geslapen. Wilt u daar iets over vertellen?', {
+          exact: false,
+        }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('case-password')).not.toBeInTheDocument();
+      expect(screen.queryByText('Het editorwachtwoord klopt niet.')).not.toBeInTheDocument();
+      expect(screen.getByTestId('btn-quit-app')).toHaveTextContent('Afsluiten');
+      await user.click(slechtnieuws);
+      expect(screen.queryByTestId('case-password')).not.toBeInTheDocument();
+      expect(screen.queryByText('Het editorwachtwoord klopt niet.')).not.toBeInTheDocument();
+      expect(await screen.findByTestId('screen-nursing-home')).toBeInTheDocument();
+      expect(screen.getByTestId('screen-nursing-home')).toHaveTextContent('mevrouw De Boer');
+      expect(JSON.stringify(window.localStorage)).not.toContain(HOLOBOX_PACKAGE_KEY);
+      expect(JSON.stringify(window.sessionStorage)).not.toContain(HOLOBOX_PACKAGE_KEY);
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('holobox-package'))).toBe(
+        true,
       );
-      expect(screen.queryByText(/ABCDE/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/acute benauwdheid/)).not.toBeInTheDocument();
+      await user.click(screen.getByTestId('btn-start-nursing'));
+      await user.click(screen.getByTestId('btn-start-nursing-sim'));
+      expect(screen.getByTestId('nursing-step-question')).toHaveTextContent(
+        'Wat zeg je als eerste?',
+      );
+      expect(
+        screen.getByText('U hebt slecht geslapen. Wilt u daar iets over vertellen?'),
+      ).toBeInTheDocument();
     } finally {
-      tiles.mockRestore();
-      envelope.mockRestore();
+      packages.mockRestore();
+      fetchMock.mockRestore();
     }
   });
 

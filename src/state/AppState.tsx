@@ -10,7 +10,6 @@ import {
 } from 'react';
 import { aphasiaIntakeScenario } from '../data/aphasiaIntakeScenario';
 import { resolveLogopedieScenario } from '../data/loadLogopedieScenario';
-import { resolveNursingScenario } from '../data/loadNursingScenario';
 import { buildFeedback } from '../domain/feedback';
 import { emptyFlags } from '../domain/notes';
 import { calculateScores } from '../domain/scoring';
@@ -217,23 +216,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setOverlayReady(true);
       }
     }, 2500);
-    void Promise.all([resolveLogopedieScenario(), resolveNursingScenario()])
-      .then(([loadedLogopedie, loadedNursing]) => {
+    void resolveLogopedieScenario()
+      .then((loadedLogopedie) => {
         if (cancelled) {
           return;
         }
         defaultLogopedieRef.current = loadedLogopedie.scenario;
-        defaultNursingRef.current = loadedNursing.scenario;
         setScenario(loadedLogopedie.scenario);
-        setNursingScenario(loadedNursing.scenario);
         setOverlayReady(true);
       })
       .catch(() => {
         if (!cancelled) {
           defaultLogopedieRef.current = aphasiaIntakeScenario;
-          defaultNursingRef.current = builtInNursingScenario;
           setScenario(aphasiaIntakeScenario);
-          setNursingScenario(builtInNursingScenario);
           setOverlayReady(true);
         }
       })

@@ -17,3 +17,4 @@ resources/scenarios/verpleegkunde.json
 resources/scenarios/verpleegkunde.json.bak
 resources/**/*.bak
 exports
+pakketten

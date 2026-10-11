@@ -1,4 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import {
+  EDITOR_LOCK_STORAGE_KEY,
+  EDITOR_SESSION_KEY,
+  createEditorLock,
+} from '../../src/editor/editorLock';
 import { chooseDefaultScenario } from './helpers';
 import { spawnSync } from 'node:child_process';
 import {
@@ -30,9 +35,30 @@ function cleanupLogopedieJson(): void {
   }
 }
 
+let editorLockJson: Promise<string> | undefined;
+
+function editorLockForE2e(): Promise<string> {
+  editorLockJson ??= createEditorLock('e2e-editor-wachtwoord', 'E2E-ADMIN-CODE').then((record) =>
+    JSON.stringify(record),
+  );
+  return editorLockJson;
+}
+
+async function seedEditorUnlock(page: Page): Promise<void> {
+  const lockJson = await editorLockForE2e();
+  await page.addInitScript(
+    ({ stored, lockKey, sessionKey }) => {
+      window.localStorage.setItem(lockKey, stored);
+      window.sessionStorage.setItem(sessionKey, '1');
+    },
+    { stored: lockJson, lockKey: EDITOR_LOCK_STORAGE_KEY, sessionKey: EDITOR_SESSION_KEY },
+  );
+}
+
 test.describe('logopedie scenario editor', () => {
-  test.beforeEach(() => {
+  test.beforeEach(async ({ page }) => {
     cleanupLogopedieJson();
+    await seedEditorUnlock(page);
   });
   test.afterEach(() => {
     cleanupLogopedieJson();
@@ -279,7 +305,12 @@ test.describe('logopedie scenario editor', () => {
     const original = join(process.cwd(), 'resources', relative);
     const bak = `${original}.bak`;
     const distCopy = join(process.cwd(), 'dist', 'resources', relative);
-    const nursingVideo = join(process.cwd(), 'resources', 'gesprekstechnieken', 'Staat is pijn.mp4');
+    const nursingVideo = join(
+      process.cwd(),
+      'resources',
+      'gesprekstechnieken',
+      'Staat is pijn.mp4',
+    );
     const nursingSize = statSync(nursingVideo).size;
     const originalBytes = readFileSync(original);
     const tinyPng = Buffer.from(
@@ -411,9 +442,10 @@ async function saveStepPlaceholder(page: Page) {
 }
 
 test.describe('verpleegkunde scenario editor', () => {
-  test.beforeEach(() => {
+  test.beforeEach(async ({ page }) => {
     cleanupNursingJson();
     cleanupLogopedieJson();
+    await seedEditorUnlock(page);
   });
   test.afterEach(() => {
     cleanupNursingJson();
@@ -654,7 +686,9 @@ test.describe('verpleegkunde scenario editor', () => {
       const airwayRel = `gesprekstechnieken/${airwayName}`;
       await expect(page.getByTestId('nursing-step-choose-video')).toContainText(airwayName);
       await page.getByTestId('nursing-step-choose-video').selectOption(airwayRel);
-      await expect(page.getByTestId('nursing-step-video-path')).toContainText('gesprekstechnieken/');
+      await expect(page.getByTestId('nursing-step-video-path')).toContainText(
+        'gesprekstechnieken/',
+      );
       await page.getByTestId('input-nursing-step-replace').setInputFiles({
         name: airwayName,
         mimeType: 'video/mp4',
@@ -709,7 +743,9 @@ test.describe('verpleegkunde scenario editor', () => {
     await expect(page.getByText('Goed antwoord').first()).toBeVisible();
     await expect(page.getByText('Deels goed antwoord').first()).toBeVisible();
     await expect(page.getByText('Verkeerd antwoord').first()).toBeVisible();
-    await expect(page.locator('.node-overview input, .node-overview textarea, .node-overview select')).toHaveCount(0);
+    await expect(
+      page.locator('.node-overview input, .node-overview textarea, .node-overview select'),
+    ).toHaveCount(0);
     const board = await page.getByTestId('node-overview').evaluate((element) => {
       const style = getComputedStyle(element);
       const card = element.querySelector('.node-card');
@@ -733,7 +769,9 @@ test.describe('verpleegkunde scenario editor', () => {
     await expect(page.getByTestId('nursing-title')).toHaveValue('Opnamecasus');
     await expect(page.getByTestId('nursing-step-name')).toHaveValue('Eerste vraag');
     await expect(page.getByTestId('nursing-question')).toHaveValue('Wat zie je?');
-    await expect(page.getByTestId('nursing-answer-placeholder-partial')).toHaveValue('Nog filmen: de ademhaling.');
+    await expect(page.getByTestId('nursing-answer-placeholder-partial')).toHaveValue(
+      'Nog filmen: de ademhaling.',
+    );
   });
 
   test('drags good forward, wrong back to the same question, and keeps the partial line', async ({
@@ -773,11 +811,15 @@ test.describe('verpleegkunde scenario editor', () => {
     await page.getByTestId('nursing-answer-placeholder-partial').fill('Nog filmen: de ademhaling.');
     await page.getByTestId('btn-nursing-answer-placeholder-save-partial').click();
     await page.getByTestId('nursing-answer-mode-video-high').click();
-    await page.getByTestId('nursing-answer-choose-high').selectOption(`gesprekstechnieken/${videoName}`);
+    await page
+      .getByTestId('nursing-answer-choose-high')
+      .selectOption(`gesprekstechnieken/${videoName}`);
     await page.getByTestId('btn-add-nursing-step').click();
     await page.getByTestId('nursing-step-tab-n-1').click();
     await page.getByTestId('btn-nodes').click();
-    await expect(page.getByTestId('node-answer-n-1-partial')).toContainText('Nog filmen: de ademhaling.');
+    await expect(page.getByTestId('node-answer-n-1-partial')).toContainText(
+      'Nog filmen: de ademhaling.',
+    );
     await expect(page.getByTestId('node-answer-n-1-high')).toContainText(videoName);
     await expect(page.getByTestId('node-question-n-extra-1')).toBeVisible();
 
@@ -788,7 +830,9 @@ test.describe('verpleegkunde scenario editor', () => {
     await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(1);
     await expect(page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toHaveCount(1);
     await expect(page.locator('[data-wire-to="q-in-n-extra-1"]')).toHaveCount(2);
-    const loop = await page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1').getAttribute('d');
+    const loop = await page
+      .getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')
+      .getAttribute('d');
     expect(loop).toMatch(/C /);
     expect(loop).not.toContain(' L ');
 
@@ -801,7 +845,9 @@ test.describe('verpleegkunde scenario editor', () => {
 
     await page.getByTestId('btn-nodes-back').click();
     await expect(page.getByTestId('nursing-question')).toHaveValue('Wat zie je?');
-    await expect(page.getByTestId('nursing-answer-placeholder-partial')).toHaveValue('Nog filmen: de ademhaling.');
+    await expect(page.getByTestId('nursing-answer-placeholder-partial')).toHaveValue(
+      'Nog filmen: de ademhaling.',
+    );
     await page.getByTestId('nursing-question').fill('Wat zie je nu?');
     await page.getByTestId('btn-nodes').click();
     await expect(page.getByTestId('node-question-n-1')).toContainText('Wat zie je nu?');
@@ -816,19 +862,29 @@ test.describe('verpleegkunde scenario editor', () => {
       steps: { id: string; options: { quality: string; nextStepId: string }[] }[];
     };
     const first = saved.steps.find((step) => step.id === 'n-1');
-    expect(first?.options.find((option) => option.quality === 'high')?.nextStepId).toBe('n-extra-1');
-    expect(first?.options.find((option) => option.quality === 'partial')?.nextStepId).toBe('n-extra-1');
-    expect(first?.options.find((option) => option.quality === 'inappropriate')?.nextStepId).toBe('n-1');
+    expect(first?.options.find((option) => option.quality === 'high')?.nextStepId).toBe(
+      'n-extra-1',
+    );
+    expect(first?.options.find((option) => option.quality === 'partial')?.nextStepId).toBe(
+      'n-extra-1',
+    );
+    expect(first?.options.find((option) => option.quality === 'inappropriate')?.nextStepId).toBe(
+      'n-1',
+    );
 
     await page.goto('editor.html');
     await page.getByTestId('editor-module-nursing').click();
     await expect(page.getByTestId('nursing-question')).toHaveValue('Wat zie je nu?');
     await page.getByTestId('btn-nodes').click();
-    await expect(page.getByTestId('node-answer-n-1-partial')).toContainText('Nog filmen: de ademhaling.');
+    await expect(page.getByTestId('node-answer-n-1-partial')).toContainText(
+      'Nog filmen: de ademhaling.',
+    );
     await expect(page.getByTestId('node-answer-n-1-high')).toContainText(videoName);
     await expect(page.getByTestId('node-wire-a-out-n-1-high-to-q-in-n-extra-1')).toHaveCount(1);
     await expect(page.getByTestId('node-wire-a-out-n-1-partial-to-q-in-n-extra-1')).toHaveCount(1);
     await expect(page.getByTestId('node-wire-a-out-n-1-inappropriate-to-q-in-n-1')).toHaveCount(1);
-    await expect(page.locator('.node-overview input, .node-overview textarea, .node-overview select')).toHaveCount(0);
+    await expect(
+      page.locator('.node-overview input, .node-overview textarea, .node-overview select'),
+    ).toHaveCount(0);
   });
 });

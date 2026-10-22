@@ -133,6 +133,11 @@ jobs:
           npm ci
           node node_modules/esbuild/install.js
           npm run build
+      - name: Publish gesprekscasus
+        run: |
+          mkdir -p dist/resources/scenarios
+          cp resources/scenarios/verpleegkunde.json dist/resources/scenarios/verpleegkunde.json
+          test -s dist/resources/scenarios/verpleegkunde.json
       - name: Keep the app at / and the editor at /editor.html
         run: |
           cp dist/index.html dist/404.html

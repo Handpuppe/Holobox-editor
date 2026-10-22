@@ -8,9 +8,16 @@ import {
   openHoloboxCase,
   type HoloboxPackageListing,
 } from '../data/openHoloboxCase';
+import { resolveNursingScenario } from '../data/loadNursingScenario';
 import { APP_VERSION } from '../domain/types';
+import { canSaveToThisCopy } from '../editor/editorHost';
 import { withBaseUrl } from '../media/baseUrl';
 import { useAppState } from '../state/AppState';
+
+interface PublicQuestion {
+  name: string;
+  question: string;
+}
 
 export function HubScreen() {
   const navigate = useNavigate();
@@ -19,6 +26,9 @@ export function HubScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [publicTitle, setPublicTitle] = useState('');
+  const [publicQuestions, setPublicQuestions] = useState<PublicQuestion[] | null>(null);
+  const [publicChecked, setPublicChecked] = useState(() => canSaveToThisCopy());
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +45,31 @@ export function HubScreen() {
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (canSaveToThisCopy()) {
+      return;
+    }
+    let cancelled = false;
+    void resolveNursingScenario().then((loaded) => {
+      if (cancelled) {
+        return;
+      }
+      if (loaded.source === 'json') {
+        setPublicTitle(loaded.scenario.meta.title);
+        setPublicQuestions(
+          loaded.scenario.steps.map((step) => ({
+            name: step.stepName,
+            question: step.question,
+          })),
+        );
+      }
+      setPublicChecked(true);
+    });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -119,9 +154,20 @@ export function HubScreen() {
             {loadError}
           </p>
         ) : null}
-        {packages.length === 0 ? (
+        {packages.length === 0 && publicQuestions && publicQuestions.length > 0 ? (
+          <div data-testid="public-gesprekscasus">
+            <p className="scenario-tile-title">{publicTitle}</p>
+            <ol data-testid="public-question-list">
+              {publicQuestions.map((step) => (
+                <li key={step.name}>
+                  <strong>{step.name}</strong> {step.question}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : packages.length === 0 && publicChecked ? (
           <p data-testid="gesprek-menu-empty">Er is nog geen gesprekscasus.</p>
-        ) : (
+        ) : packages.length > 0 ? (
           <div className="scenario-tile-list">
             {packages.map((item) => (
               <button
@@ -136,7 +182,7 @@ export function HubScreen() {
               </button>
             ))}
           </div>
-        )}
+        ) : null}
       </section>
       <p className="notice" data-testid="fictional-notice">
         {copy.fictionalNotice} {copy.educationalNotice}

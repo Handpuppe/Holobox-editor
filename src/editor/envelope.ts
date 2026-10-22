@@ -1,5 +1,6 @@
 import { withBaseUrl } from '../media/baseUrl';
 import type { Scenario } from '../domain/types';
+import { downloadBlob } from './downloadFile';
 import { parseNodeLayout } from './nodeLayout';
 
 export const LOGOPEDIE_ENVELOPE_SCHEMA_VERSION = 1;
@@ -57,14 +58,8 @@ export async function saveEnvelopeToCopy(
   }
 }
 
-export function downloadEnvelope(scenario: Scenario): void {
-  const blob = new Blob([envelopeJson(scenario)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = LOGOPEDIE_ENVELOPE_FILENAME;
-  link.click();
-  URL.revokeObjectURL(url);
+export function downloadEnvelope(scenario: Scenario, fileName = LOGOPEDIE_ENVELOPE_FILENAME): void {
+  downloadBlob(new Blob([envelopeJson(scenario)], { type: 'application/json' }), fileName);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -3,6 +3,9 @@ import editorBanner from '../../Banner- Editor.png';
 import { Dialog } from '../components/Dialog';
 import { withBaseUrl } from '../media/baseUrl';
 import { APP_VERSION, type NodeLayout, type Scenario } from '../domain/types';
+import { downloadBytes } from './downloadFile';
+import { canSaveToThisCopy } from './editorHost';
+import { EDITOR_QUIT_TAB_MESSAGE, requestEditorQuit } from './editorQuit';
 import { sameNodeLayout } from './nodeLayout';
 import { saveNodeLayoutToCase } from './saveNodeLayout';
 import { logopedieSaveIssues, nursingSaveIssues } from './saveChecks';
@@ -24,7 +27,7 @@ import {
   listEditorCases,
   type EditorCaseListItem,
 } from './editorCases';
-import { overlayScenarioFileName } from './newCaseFile';
+import { newCaseFileName, overlayScenarioFileName } from './newCaseFile';
 import { saveEnvelopeAsNewCase } from './saveAsCase';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
 import { NursingEditor, NursingPreviewAside } from './NursingEditor';
@@ -82,12 +85,20 @@ import {
 } from './nursingEnvelope';
 import { NursingMediaPanel } from './NursingMediaPanel';
 import {
+  isNursingMediaPath,
   listNursingMedia,
   saveNursingMediaOp,
   type NursingMediaItem,
   type StagedNursingMediaOp,
 } from './nursingMedia';
-import { envelopeTextForModule, pickZipFileToImport, saveZipBytesAs } from './scenarioPackage';
+import {
+  buildEditorPackageZip,
+  envelopeTextForModule,
+  parseEditorPackageZip,
+  pickZipFileToImport,
+  saveZipBytesAs,
+  type PackageMediaFile,
+} from './scenarioPackage';
 import type { NursingScenario } from '../nursing/types';
 
 interface PendingHoloboxImport {
@@ -137,22 +148,6 @@ function questionFolders(draft: NursingScenario): string[] {
   return names;
 }
 
-async function quitEditor(): Promise<void> {
-  try {
-    await fetch(withBaseUrl('/editor-api/quit?immediate=1'), { method: 'POST' });
-  } catch {
-    // Het venster sluit ook als de server het script niet kon starten.
-  }
-  window.close();
-}
-
-function canSaveToThisCopy(): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  return window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-}
-
 type EditorModule = 'logopedie' | 'verpleegkunde';
 
 export function EditorApp() {
@@ -197,6 +192,7 @@ export function EditorApp() {
   const [holoboxPassword, setHoloboxPassword] = useState('');
   const [holoboxPasswordError, setHoloboxPasswordError] = useState<string | null>(null);
   const [holoboxFileName, setHoloboxFileName] = useState<string | null>(null);
+  const [quitNotice, setQuitNotice] = useState<string | null>(null);
   const [importReplaceOpen, setImportReplaceOpen] = useState(false);
   const [importReplaceTitle, setImportReplaceTitle] = useState('');
   const holoboxBusy = useRef(false);
@@ -234,6 +230,9 @@ export function EditorApp() {
   }, []);
 
   useEffect(() => {
+    if (!canSaveToThisCopy()) {
+      return;
+    }
     const sendClose = () => {
       const url = withBaseUrl('/editor-api/quit');
       if (typeof navigator.sendBeacon === 'function') {
@@ -654,6 +653,11 @@ export function EditorApp() {
   }
 
   async function deleteOpenCase() {
+    if (!saveOnThisPc) {
+      setDeleteStep(0);
+      startNewScenario();
+      return;
+    }
     const moduleId = editorModule;
     const file = moduleId === 'logopedie' ? logopedieCaseFile : nursingCaseFile;
     const folders = moduleId === 'verpleegkunde' ? questionFolders(nursingDraft) : [];
@@ -704,7 +708,22 @@ export function EditorApp() {
       : logopedieSaveIssues(scenario);
   }
 
+  function downloadCurrentCase(fileName?: string) {
+    if (editorModule === 'logopedie') {
+      downloadEnvelope(scenario, fileName);
+      return;
+    }
+    downloadNursingEnvelope(nursingDraft, fileName);
+  }
+
   function requestSave() {
+    if (!saveOnThisPc) {
+      setSaveBlockIssues(null);
+      setSaveError(null);
+      downloadCurrentCase();
+      setSaveMessage('De casus is gedownload.');
+      return;
+    }
     const found = currentSaveIssues();
     if (found.length > 0) {
       setSaveMessage(null);
@@ -718,6 +737,14 @@ export function EditorApp() {
   }
 
   function requestSaveAsNewCase() {
+    if (!saveOnThisPc) {
+      setSaveBlockIssues(null);
+      setSaveError(null);
+      const title = editorModule === 'logopedie' ? scenario.title : nursingDraft.meta.title;
+      downloadCurrentCase(newCaseFileName(editorModule, title));
+      setSaveMessage('De casus is gedownload als nieuw bestand.');
+      return;
+    }
     const found = currentSaveIssues();
     if (found.length > 0) {
       setSaveMessage(null);
@@ -921,7 +948,110 @@ export function EditorApp() {
     await encryptAndStoreHolobox();
   }
 
+  function stageNursingBytes(files: PackageMediaFile[]) {
+    for (const item of nursingStagedMedia) {
+      if (item.type !== 'delete') {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    }
+    setNursingStagedMedia(
+      files.map((file) => {
+        const copy = new Uint8Array(file.data.byteLength);
+        copy.set(file.data);
+        const blob = new Blob([copy]);
+        const base = file.relativePath.split('/').pop() || 'media';
+        return {
+          type: 'add' as const,
+          relativePath: file.relativePath,
+          file: new File([blob], base),
+          previewUrl: URL.createObjectURL(blob),
+        };
+      }),
+    );
+  }
+
+  async function collectBrowserMedia(): Promise<PackageMediaFile[]> {
+    const files: PackageMediaFile[] = [];
+    const seen = new Set<string>();
+    const deleted = new Set(
+      nursingStagedMedia
+        .filter((op) => op.type === 'delete')
+        .map((op) => op.relativePath.replaceAll('\\', '/')),
+    );
+    for (const op of nursingStagedMedia) {
+      if (op.type === 'delete') {
+        continue;
+      }
+      const relativePath = op.relativePath.replaceAll('\\', '/');
+      if (!isNursingMediaPath(relativePath) || seen.has(relativePath)) {
+        continue;
+      }
+      seen.add(relativePath);
+      files.push({ relativePath, data: new Uint8Array(await op.file.arrayBuffer()) });
+    }
+    const wanted: string[] = [];
+    for (const slot of nursingDraft.mediaSlots) {
+      for (const value of [slot.primaryMedia, slot.idleMedia, slot.posterImage]) {
+        if (!value) {
+          continue;
+        }
+        const relativePath = value.replaceAll('\\', '/');
+        if (
+          deleted.has(relativePath) ||
+          seen.has(relativePath) ||
+          !isNursingMediaPath(relativePath)
+        ) {
+          continue;
+        }
+        wanted.push(relativePath);
+        seen.add(relativePath);
+      }
+    }
+    for (const relativePath of wanted) {
+      try {
+        const encoded = relativePath.split('/').map(encodeURIComponent).join('/');
+        const response = await fetch(withBaseUrl(`/resources/${encoded}`), { cache: 'no-store' });
+        if (!response.ok) {
+          continue;
+        }
+        files.push({ relativePath, data: new Uint8Array(await response.arrayBuffer()) });
+      } catch {
+        // Op GitHub Pages staan de mediabestanden niet op schijf.
+      }
+    }
+    return files;
+  }
+
+  async function downloadCaseZipInBrowser() {
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    try {
+      const moduleId = editorModule;
+      const envelope = envelopeTextForModule(
+        moduleId,
+        moduleId === 'logopedie' ? scenario : nursingDraft,
+      );
+      const media = moduleId === 'verpleegkunde' ? await collectBrowserMedia() : [];
+      const zip = buildEditorPackageZip(moduleId, envelope, media);
+      const exportName = holoboxExportFileName() ?? 'casus';
+      downloadBytes(zip, `${exportName}.zip`, 'application/zip');
+      setSaveMessage('Casus geëxporteerd.');
+    } catch {
+      setSaveError('Het pakket kon niet worden gemaakt.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function requestHoloboxPackage() {
+    if (!saveOnThisPc) {
+      if (saving) {
+        return;
+      }
+      await downloadCaseZipInBrowser();
+      return;
+    }
     if (holoboxBusy.current || saving) {
       return;
     }
@@ -1006,7 +1136,106 @@ export function EditorApp() {
     }
   }
 
+  async function importJsonInBrowser(file: File) {
+    const text = await file.text();
+    openEnvelopeText(text, file.name);
+  }
+
+  async function importZipInBrowser(file: File) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const packed = parseEditorPackageZip(bytes);
+    if (packed.ok && packed.module === 'verpleegkunde') {
+      if (isBundledNursingExample(packed.scenario)) {
+        setOpenError('De voorbeeldcasus ABCDE/SBAR wordt niet geopend.');
+        return;
+      }
+      clearNodeUndo();
+      markNursingDirty();
+      setEditorModule('verpleegkunde');
+      setNursingDraft(packed.scenario);
+      setDraftNodeIds([]);
+      setSelectedStepId(packed.scenario.meta.startStepId);
+      setNursingPreviewOptionIndex(0);
+      setNursingLoadNotice(null);
+      setNursingCaseFile('verpleegkunde.json');
+      stageNursingBytes(packed.media);
+      setSaveMessage(`Casus ${packed.scenario.meta.title || file.name} is geïmporteerd.`);
+      return;
+    }
+    if (packed.ok && packed.module === 'logopedie') {
+      clearNodeUndo();
+      markDirty();
+      setEditorModule('logopedie');
+      setScenario(packed.scenario);
+      setSelectedNodeId(packed.scenario.startNodeId);
+      setPreviewOptionIndex(0);
+      setLoadNotice(null);
+      setLoadedLabel(editorSourceLabel('json', file.name));
+      setLogopedieCaseFile('logopedie.json');
+      setSaveMessage(`Casus ${file.name} is geïmporteerd.`);
+      return;
+    }
+    const opened = await decryptHoloboxPackage(bytes, HOLOBOX_PACKAGE_KEY);
+    if (!opened.ok) {
+      setOpenError('De casus kon niet worden geopend.');
+      return;
+    }
+    const planned = selectHoloboxImportFiles(opened.files);
+    if (!planned.ok) {
+      setOpenError(planned.error);
+      return;
+    }
+    const parsed = parseVerpleegkundeEnvelope(planned.envelopeText);
+    if (!parsed.ok || isBundledNursingExample(parsed.scenario)) {
+      setOpenError('De casus kon niet worden geopend.');
+      return;
+    }
+    clearNodeUndo();
+    markNursingDirty();
+    setEditorModule('verpleegkunde');
+    setNursingDraft(parsed.scenario);
+    setDraftNodeIds([]);
+    setSelectedStepId(parsed.scenario.meta.startStepId);
+    setNursingPreviewOptionIndex(0);
+    setNursingLoadNotice(null);
+    setNursingCaseFile(planned.caseFile.split('/').pop() ?? planned.caseFile);
+    stageNursingBytes(
+      planned.files
+        .filter((item) => isNursingMediaPath(item.name))
+        .map((item) => ({ relativePath: item.name, data: item.data })),
+    );
+    setSaveMessage(`Casus ${parsed.scenario.meta.title || file.name} is geïmporteerd.`);
+  }
+
+  async function importPackageInBrowser(file: File) {
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+    setOpenError(null);
+    setSaveBlockIssues(null);
+    try {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.json') || file.type.includes('json')) {
+        await importJsonInBrowser(file);
+        return;
+      }
+      if (name.endsWith('.zip')) {
+        await importZipInBrowser(file);
+        return;
+      }
+      setOpenError('Kies een JSON- of zip-bestand.');
+    } catch {
+      setOpenError('De casus kon niet worden geopend.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function importPackageFromPicker() {
+    if (!saveOnThisPc) {
+      importPackageRef.current?.click();
+      return;
+    }
     const picked = await pickZipFileToImport();
     if (picked === 'cancelled') {
       return;
@@ -1020,6 +1249,10 @@ export function EditorApp() {
 
   async function importPackageFile(file: File | undefined) {
     if (!file || saving) {
+      return;
+    }
+    if (!saveOnThisPc) {
+      await importPackageInBrowser(file);
       return;
     }
     setSaveError(null);
@@ -1256,39 +1489,29 @@ export function EditorApp() {
             >
               Test modus
             </button>
-            {saveOnThisPc ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                data-testid="btn-save-json"
-                onClick={() => requestSave()}
-                disabled={saving}
-              >
-                Opslaan
-              </button>
-            ) : null}
-            {saveOnThisPc ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                hidden
-                data-testid="btn-save-as-case"
-                onClick={() => requestSaveAsNewCase()}
-                disabled={saving}
-              >
-                Opslaan als nieuwe casus
-              </button>
-            ) : null}
             <button
               type="button"
               className="btn btn-secondary"
-              hidden
+              data-testid="btn-save-json"
+              onClick={() => requestSave()}
+              disabled={saving}
+            >
+              Opslaan
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-save-as-case"
+              onClick={() => requestSaveAsNewCase()}
+              disabled={saving}
+            >
+              Opslaan als nieuwe casus
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
               data-testid="btn-download-json"
-              onClick={() =>
-                editorModule === 'logopedie'
-                  ? downloadEnvelope(scenario)
-                  : downloadNursingEnvelope(nursingDraft)
-              }
+              onClick={() => downloadCurrentCase()}
             >
               Casus downloaden
             </button>
@@ -1302,21 +1525,23 @@ export function EditorApp() {
             >
               Herstel startkopie
             </button>
-            {saveOnThisPc ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                data-testid="btn-import-package"
-                onClick={() => void importPackageFromPicker()}
-                disabled={saving}
-              >
-                Importeren
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-import-package"
+              onClick={() => void importPackageFromPicker()}
+              disabled={saving}
+            >
+              Casus importeren
+            </button>
             <input
               ref={importPackageRef}
               type="file"
-              accept="application/zip,.zip"
+              accept={
+                saveOnThisPc
+                  ? 'application/zip,.zip'
+                  : '.json,application/json,.zip,application/zip'
+              }
               className="visually-hidden"
               data-testid="input-import-package"
               onChange={(event) => {
@@ -1325,17 +1550,15 @@ export function EditorApp() {
                 void importPackageFile(file);
               }}
             />
-            {saveOnThisPc ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                data-testid="btn-holobox-package"
-                onClick={() => void requestHoloboxPackage()}
-                disabled={saving}
-              >
-                Casus exporteren
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-holobox-package"
+              onClick={() => void requestHoloboxPackage()}
+              disabled={saving}
+            >
+              Casus exporteren
+            </button>
             <button
               type="button"
               className="btn btn-secondary"
@@ -1349,10 +1572,21 @@ export function EditorApp() {
               type="button"
               className="btn btn-secondary"
               data-testid="btn-editor-quit"
-              onClick={() => quitEditor()}
+              onClick={() => {
+                void requestEditorQuit().then((kind) => {
+                  if (kind === 'browser') {
+                    setQuitNotice(EDITOR_QUIT_TAB_MESSAGE);
+                  }
+                });
+              }}
             >
               Afsluiten
             </button>
+            {quitNotice ? (
+              <p className="editor-load-notice" data-testid="editor-quit-notice" role="status">
+                {quitNotice}
+              </p>
+            ) : null}
           </div>
           <NursingPreviewAside
             draft={nursingDraft}

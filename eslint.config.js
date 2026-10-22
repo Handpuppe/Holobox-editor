@@ -17,6 +17,7 @@ export default defineConfig(
       'docs/screenshots/**',
       'scripts/**',
       'pakketten/**',
+      'assets/**',
     ],
   },
   js.configs.recommended,

@@ -78,7 +78,7 @@ test.describe('logopedie scenario editor', () => {
     await expect(page.getByTestId('dialog-save-blocked')).toBeVisible();
     expect(existsSync(jsonPath)).toBe(false);
     await expect(page.getByTestId('btn-open-json')).toBeVisible();
-    await expect(page.getByTestId('btn-download-json')).toBeHidden();
+    await expect(page.getByTestId('btn-download-json')).toBeVisible();
     await expect(page.getByTestId('btn-export-package')).toHaveCount(0);
     await expect(page.getByTestId('btn-holobox-package')).toBeVisible();
     await expect(page.getByTestId('btn-import-package')).toBeVisible();
@@ -109,7 +109,7 @@ test.describe('logopedie scenario editor', () => {
     await prompt.fill('Vraag gewijzigd in de editor.');
 
     const downloadPromise = page.waitForEvent('download');
-    await page.getByTestId('btn-download-json').click({ force: true });
+    await page.getByTestId('btn-download-json').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe('logopedie.json');
     const filePath = await download.path();
@@ -143,7 +143,7 @@ test.describe('logopedie scenario editor', () => {
 
     await page.getByTestId('prompt-text').fill('Vraag voor roundtrip-JSON.');
     const downloadPromise = page.waitForEvent('download');
-    await page.getByTestId('btn-download-json').click({ force: true });
+    await page.getByTestId('btn-download-json').click();
     const download = await downloadPromise;
     const savedPath = await download.path();
     expect(savedPath).toBeTruthy();
@@ -258,7 +258,7 @@ test.describe('logopedie scenario editor', () => {
     await expect(page.getByTestId('prompt-text')).toHaveValue(extra);
     await expect(page.getByTestId('editor-loaded-source')).toHaveText('Geladen: logopedie.json');
     await expect(page.getByTestId('btn-open-json')).toBeVisible();
-    await expect(page.getByTestId('btn-download-json')).toBeHidden();
+    await expect(page.getByTestId('btn-download-json')).toBeVisible();
 
     await page.getByTestId('btn-reset-seed').click();
     await expect(page.getByTestId('prompt-text')).toHaveValue(seedPrompt);
@@ -534,8 +534,8 @@ test.describe('verpleegkunde scenario editor', () => {
       await fillSavableNursing(page, 'Vraag voor extra casus');
       await saveStepPlaceholder(page);
       await page.getByTestId('nursing-title').fill('Extra verpleegkunde-casus');
-      await expect(page.getByTestId('btn-save-as-case')).toBeHidden();
-      await page.getByTestId('btn-save-as-case').click({ force: true });
+      await expect(page.getByTestId('btn-save-as-case')).toBeVisible();
+      await page.getByTestId('btn-save-as-case').click();
       await expect(page.getByTestId('editor-save-ok')).toContainText('nieuwe casus');
       expect(existsSync(overlay)).toBe(false);
       const dir = join(process.cwd(), 'resources', 'scenarios');

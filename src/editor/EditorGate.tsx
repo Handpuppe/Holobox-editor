@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { withBaseUrl } from '../media/baseUrl';
 import { EditorApp } from './EditorApp';
+import { EDITOR_QUIT_TAB_MESSAGE, requestEditorQuit } from './editorQuit';
 import {
   closeEditorSession,
   createAdminCode,
@@ -16,25 +16,30 @@ import {
   type EditorLockRecord,
 } from './editorLock';
 
-async function quitEditor(): Promise<void> {
-  try {
-    await fetch(withBaseUrl('/editor-api/quit?immediate=1'), { method: 'POST' });
-  } catch {
-    // Het venster sluit ook als de server het script niet kon starten.
-  }
-  window.close();
-}
-
 function EditorQuitButton() {
+  const [quitNotice, setQuitNotice] = useState<string | null>(null);
   return (
-    <button
-      type="button"
-      className="btn btn-secondary"
-      data-testid="btn-editor-quit"
-      onClick={() => quitEditor()}
-    >
-      Afsluiten
-    </button>
+    <>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        data-testid="btn-editor-quit"
+        onClick={() => {
+          void requestEditorQuit().then((kind) => {
+            if (kind === 'browser') {
+              setQuitNotice(EDITOR_QUIT_TAB_MESSAGE);
+            }
+          });
+        }}
+      >
+        Afsluiten
+      </button>
+      {quitNotice ? (
+        <p className="editor-load-notice" data-testid="editor-quit-notice" role="status">
+          {quitNotice}
+        </p>
+      ) : null}
+    </>
   );
 }
 

@@ -86,7 +86,9 @@ describe('EditorApp', () => {
     expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
     expect(screen.queryByText(/Los van de studentensimulatie/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Phosaner Casus Editor' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Phosaner Casus Editor' }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId('editor-logo')).not.toBeInTheDocument();
     const banner = screen.getByTestId('editor-banner');
     expect(banner).toHaveAttribute('alt', 'Phosaner Casus Editor');
@@ -120,26 +122,28 @@ describe('EditorApp', () => {
       transform: 'scale(1.5)',
     });
     expect(screen.getByTestId('btn-open-json')).toHaveTextContent('Casus openen');
-    expect(screen.getByTestId('btn-download-json')).not.toBeVisible();
+    expect(screen.getByTestId('btn-download-json')).toBeVisible();
     expect(screen.getByTestId('btn-start-test')).toHaveTextContent('Test modus');
     expect(screen.getByTestId('btn-nodes')).toHaveTextContent('Node Editor');
     expect(
-      [...document.querySelectorAll('.editor-actions > button')]
-        .filter((button) => !button.hasAttribute('hidden'))
-        .map((button) => button.textContent?.trim()),
+      [...document.querySelectorAll('.editor-actions > button')].map((button) =>
+        button.textContent?.trim(),
+      ),
     ).toEqual([
       'Nieuwe Casus',
       'Casus openen',
       'Node Editor',
       'Test modus',
       'Opslaan',
+      'Opslaan als nieuwe casus',
+      'Casus downloaden',
       'Herstel startkopie',
-      'Importeren',
+      'Casus importeren',
       'Casus exporteren',
       'Casus verwijderen',
       'Afsluiten',
     ]);
-    expect(screen.getByTestId('btn-save-as-case')).not.toBeVisible();
+    expect(screen.getByTestId('btn-save-as-case')).toBeVisible();
     expect(screen.getByTestId('btn-download-json')).toHaveTextContent('Casus downloaden');
     const loadedLine = screen.getByTestId('editor-loaded-source');
     const credit = screen.getByTestId('editor-credit');
@@ -1743,7 +1747,7 @@ describe('EditorApp', () => {
       expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     });
     fillNursingTexts('Casus om apart op te slaan.');
-    expect(screen.getByTestId('btn-save-as-case')).not.toBeVisible();
+    expect(screen.getByTestId('btn-save-as-case')).toBeVisible();
     fireEvent.click(screen.getByTestId('btn-save-as-case'));
     expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
       'Opgeslagen als nieuwe casus',

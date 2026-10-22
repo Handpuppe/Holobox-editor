@@ -1,4 +1,5 @@
 import { withBaseUrl } from '../media/baseUrl';
+import { downloadBlob } from './downloadFile';
 import type { MediaSlotConfig } from '../media/types';
 import { builtInNursingScenario } from '../nursing/scenario';
 import type { NodeLayout } from '../domain/types';
@@ -97,14 +98,11 @@ export async function saveNursingEnvelopeToCopy(
   }
 }
 
-export function downloadNursingEnvelope(scenario: NursingScenario): void {
-  const blob = new Blob([nursingEnvelopeJson(scenario)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = VERPLEEGKUNDE_ENVELOPE_FILENAME;
-  link.click();
-  URL.revokeObjectURL(url);
+export function downloadNursingEnvelope(
+  scenario: NursingScenario,
+  fileName = VERPLEEGKUNDE_ENVELOPE_FILENAME,
+): void {
+  downloadBlob(new Blob([nursingEnvelopeJson(scenario)], { type: 'application/json' }), fileName);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

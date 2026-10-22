@@ -2,12 +2,13 @@ import { withBaseUrl } from '../media/baseUrl';
 import type { MediaSlotConfig } from '../media/types';
 import { builtInNursingScenario } from '../nursing/scenario';
 import type { NodeLayout } from '../domain/types';
-import type {
-  NursingOption,
-  NursingPatient,
-  NursingScenario,
-  NursingScenarioMeta,
-  NursingStep,
+import {
+  answerScoreOf,
+  type NursingOption,
+  type NursingPatient,
+  type NursingScenario,
+  type NursingScenarioMeta,
+  type NursingStep,
 } from '../nursing/types';
 import { isMediaSlotConfig } from '../nursing/validateNursing';
 import { parseNodeLayout } from './nodeLayout';
@@ -31,6 +32,21 @@ export interface VerpleegkundeScenarioEnvelope {
 export type NursingEnvelopeParseResult =
   { ok: true; scenario: NursingScenario } | { ok: false; error: string };
 
+function optionWithAnswerScore(option: NursingOption): NursingOption {
+  return { ...option, answerScore: answerScoreOf(option.answerScore) };
+}
+
+function stepsWithAnswerScores(steps: NursingStep[]): NursingStep[] {
+  return steps.map((step) => ({
+    ...step,
+    options: [
+      optionWithAnswerScore(step.options[0]),
+      optionWithAnswerScore(step.options[1]),
+      optionWithAnswerScore(step.options[2]),
+    ],
+  }));
+}
+
 export function toVerpleegkundeEnvelope(scenario: NursingScenario): VerpleegkundeScenarioEnvelope {
   const envelope: VerpleegkundeScenarioEnvelope = {
     schemaVersion: VERPLEEGKUNDE_ENVELOPE_SCHEMA_VERSION,
@@ -38,7 +54,7 @@ export function toVerpleegkundeEnvelope(scenario: NursingScenario): Verpleegkund
     meta: scenario.meta,
     patient: scenario.patient,
     learningObjectives: scenario.learningObjectives,
-    steps: scenario.steps,
+    steps: stepsWithAnswerScores(scenario.steps),
     mediaSlots: scenario.mediaSlots,
   };
   if (scenario.nodeLayout && Object.keys(scenario.nodeLayout).length > 0) {
@@ -214,6 +230,7 @@ export function parseVerpleegkundeEnvelope(text: string): NursingEnvelopeParseRe
     if (openError) {
       return { ok: false, error: openError };
     }
+    scenario.steps = stepsWithAnswerScores(scenario.steps);
     return { ok: true, scenario };
   } catch {
     return { ok: false, error: 'Het scenario kon niet worden geladen.' };

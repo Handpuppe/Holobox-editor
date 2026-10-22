@@ -2,7 +2,14 @@ import { useMemo } from 'react';
 import { publicResourceUrl } from '../media/logopedie/resolveAvatar';
 import { mediaItemFromRelativePath } from '../media/matching';
 import type { OptionQuality } from '../domain/types';
-import { type NursingOption, type NursingScenario, type NursingStep } from '../nursing/types';
+import {
+  ANSWER_SCORES,
+  answerScoreOf,
+  type AnswerScore,
+  type NursingOption,
+  type NursingScenario,
+  type NursingStep,
+} from '../nursing/types';
 import { appendNursingStep } from './nursingSteps';
 import { nursingSaveIssues } from './saveChecks';
 import { NursingAnswerVideos } from './NursingAnswerVideos';
@@ -64,6 +71,32 @@ export function previewQuestionHeading(step: NursingStep | undefined, index: num
 
 function fieldClass(value: string, required: boolean): string {
   return required && !value.trim() ? 'field is-empty' : 'field';
+}
+
+export function AnswerScoreField({
+  option,
+  onScore,
+}: {
+  option: NursingOption;
+  onScore: (score: AnswerScore) => void;
+}) {
+  return (
+    <div className="field field-score">
+      <label htmlFor={`nursing-score-${option.id}`}>Score</label>
+      <select
+        id={`nursing-score-${option.id}`}
+        data-testid={`nursing-option-score-${option.id}`}
+        value={String(answerScoreOf(option.answerScore))}
+        onChange={(event) => onScore(answerScoreOf(Number(event.target.value)))}
+      >
+        {ANSWER_SCORES.map((score) => (
+          <option key={score} value={score}>
+            {String(score)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 function withoutStep(scenario: NursingScenario, stepId: string): NursingScenario {
@@ -486,7 +519,7 @@ export function NursingEditor({
                   return (
                     <div className="nursing-step-answer-col" key={option.id}>
                       <section
-                        className={`editor-card option-card${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
+                        className={`editor-card option-card is-quality-${option.quality}${previewOptionIndex === optionIndex ? ' is-previewed' : ''}`}
                         data-testid={`nursing-option-editor-${option.id}`}
                       >
                         <div className="option-card-head">
@@ -522,6 +555,14 @@ export function NursingEditor({
                             ))}
                           </select>
                         </div>
+                        <AnswerScoreField
+                          option={option}
+                          onScore={(answerScore) =>
+                            updateSelected(
+                              replaceOption(step, optionIndex, { ...option, answerScore }),
+                            )
+                          }
+                        />
                         <div className={fieldClass(option.text, true)}>
                           <label htmlFor={`nursing-option-text-${option.id}`}>Antwoord keuze</label>
                           <textarea

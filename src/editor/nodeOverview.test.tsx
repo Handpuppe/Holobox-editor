@@ -548,9 +548,18 @@ describe('NodeOverview', () => {
       '--node-row-gap': `${NODE_ROW_GAP}px`,
       '--node-answer-gap': `${NODE_ANSWER_GAP}px`,
       '--node-question-head': '#243044',
-      '--node-answer-head': '#6b5200',
       '--node-board-bg': '#141414',
     });
+    const stepId = draft.steps[0]!.id;
+    expect(
+      screen.getByTestId(`node-answer-${stepId}-high`).querySelector('.node-card-head'),
+    ).toHaveStyle({ backgroundColor: '#347C00' });
+    expect(
+      screen.getByTestId(`node-answer-${stepId}-partial`).querySelector('.node-card-head'),
+    ).toHaveStyle({ backgroundColor: '#BA8200' });
+    expect(
+      screen.getByTestId(`node-answer-${stepId}-inappropriate`).querySelector('.node-card-head'),
+    ).toHaveStyle({ backgroundColor: '#D80000' });
     expect(screen.getByTestId(`node-question-${draft.steps[0]!.id}`)).toHaveClass(
       'node-card-question',
     );

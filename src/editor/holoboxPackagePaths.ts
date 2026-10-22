@@ -42,6 +42,14 @@ export function holoboxZipRelative(title: string, previous = false): string | nu
     : `${HOLOBOX_PACKAGE_DIR}/${safe}.zip`;
 }
 
+/** Bestandsnaam van een nieuw pakket: het exporteermoment, zonder dubbele punt. */
+export function holoboxExportFileName(at = new Date()): string | null {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const date = `${pad(at.getDate())}-${pad(at.getMonth() + 1)}-${at.getFullYear()}`;
+  const time = `${pad(at.getHours())}-${pad(at.getMinutes())}`;
+  return safeHoloboxPackageTitle(`Export ${date} ${time}`);
+}
+
 export function isHoloboxVideoPath(relativePath: string): boolean {
   const normalized = relativePath.replaceAll('\\', '/').toLowerCase();
   return VIDEO_EXTENSIONS.some((extension) => normalized.endsWith(extension));

@@ -11,8 +11,59 @@ import { rememberPackageMedia } from '../media/packageMedia';
 import type { NursingScenario } from '../nursing/types';
 
 export interface HoloboxPackageListing {
+  file: string;
   title: string;
   zip: string;
+}
+
+const caseTitleCache = new Map<string, Promise<string | null>>();
+
+async function readHoloboxCaseTitle(bytes: Uint8Array): Promise<string | null> {
+  const opened = await decryptHoloboxPackage(bytes, HOLOBOX_PACKAGE_KEY);
+  if (!opened.ok) {
+    return null;
+  }
+  const text = caseText(opened.files);
+  if (!text) {
+    return null;
+  }
+  const parsed = parseVerpleegkundeEnvelope(text);
+  if (!parsed.ok) {
+    return null;
+  }
+  const title = parsed.scenario.meta.title.trim();
+  return title || null;
+}
+
+async function caseTitleForFile(
+  file: string,
+  fetchFn: typeof fetch,
+  useCache: boolean,
+): Promise<string | null> {
+  const load = async (): Promise<string | null> => {
+    try {
+      const response = await fetchFn(
+        withBaseUrl(`/app-api/holobox-package?name=${encodeURIComponent(file)}`),
+        { cache: 'no-store' },
+      );
+      if (!response.ok) {
+        return null;
+      }
+      return readHoloboxCaseTitle(new Uint8Array(await response.arrayBuffer()));
+    } catch {
+      return null;
+    }
+  };
+  if (!useCache) {
+    return load();
+  }
+  const pending = caseTitleCache.get(file) ?? load();
+  caseTitleCache.set(file, pending);
+  const title = await pending;
+  if (!title) {
+    caseTitleCache.delete(file);
+  }
+  return title;
 }
 
 export async function fetchHoloboxPackages(
@@ -36,15 +87,19 @@ export async function fetchHoloboxPackages(
       if (!item || typeof item !== 'object') {
         continue;
       }
-      const title = (item as { title?: unknown }).title;
-      if (typeof title !== 'string' || safeHoloboxPackageTitle(title) !== title) {
+      const file = (item as { file?: unknown }).file;
+      if (typeof file !== 'string' || safeHoloboxPackageTitle(file) !== file) {
         continue;
       }
-      const zip = holoboxZipRelative(title);
+      const zip = holoboxZipRelative(file);
       if (!zip) {
         continue;
       }
-      listings.push({ title, zip });
+      const title = await caseTitleForFile(file, fetchFn, !fetchImpl);
+      if (!title) {
+        continue;
+      }
+      listings.push({ file, title, zip });
     }
     return listings;
   } catch {
@@ -90,16 +145,16 @@ export async function openHoloboxPackageBytes(
 }
 
 export async function openHoloboxCase(
-  title: string,
+  file: string,
   fetchImpl?: typeof fetch,
 ): Promise<{ ok: true; scenario: NursingScenario } | { ok: false; error: string }> {
-  if (safeHoloboxPackageTitle(title) !== title) {
+  if (safeHoloboxPackageTitle(file) !== file) {
     return { ok: false, error: 'De casus heeft geen naam voor een pakket.' };
   }
   try {
     const fetchFn = fetchImpl ?? fetch;
     const response = await fetchFn(
-      withBaseUrl(`/app-api/holobox-package?name=${encodeURIComponent(title)}`),
+      withBaseUrl(`/app-api/holobox-package?name=${encodeURIComponent(file)}`),
       { cache: 'no-store' },
     );
     if (!response.ok) {

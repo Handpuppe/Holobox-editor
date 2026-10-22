@@ -144,9 +144,15 @@ a {
   font-weight: 700;
 }
 
-[data-testid='screen-home'] .screen-header h1 {
-  font-size: 36px;
-  white-space: nowrap;
+[data-testid='screen-home'] .screen-header {
+  align-items: stretch;
+}
+
+.home-banner {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
 }
 
 .screen-header h1:focus {

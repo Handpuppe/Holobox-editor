@@ -6,9 +6,10 @@ interface ScreenProps {
   children: ReactNode;
   footer?: ReactNode;
   eyebrow?: string;
+  bannerSrc?: string;
 }
 
-export function Screen({ title, testId, children, footer, eyebrow }: ScreenProps) {
+export function Screen({ title, testId, children, footer, eyebrow, bannerSrc }: ScreenProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -19,7 +20,15 @@ export function Screen({ title, testId, children, footer, eyebrow }: ScreenProps
     <div className="screen" data-testid={testId}>
       <header className="screen-header">
         {eyebrow ? <p className="muted">{eyebrow}</p> : null}
-        <h1 id="screen-title" tabIndex={-1} ref={headingRef}>
+        {bannerSrc ? (
+          <img className="home-banner" data-testid="home-banner" src={bannerSrc} alt="" />
+        ) : null}
+        <h1
+          id="screen-title"
+          className={bannerSrc ? 'visually-hidden' : undefined}
+          tabIndex={-1}
+          ref={headingRef}
+        >
           {title}
         </h1>
       </header>

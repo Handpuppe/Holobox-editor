@@ -298,6 +298,40 @@ function automatedBrowser(): boolean {
   return typeof navigator !== 'undefined' && Boolean(navigator.webdriver);
 }
 
+/** Opslagvenster voor de student-zip. Annuleren schrijft niets. */
+export async function saveZipBytesAs(
+  bytes: Uint8Array,
+  suggestedName: string,
+): Promise<{ ok: true; name: string } | { ok: false; cancelled: boolean; error: string }> {
+  const picker = window.showSaveFilePicker;
+  if (typeof picker !== 'function') {
+    return { ok: false, cancelled: false, error: 'Het opslagvenster is niet beschikbaar.' };
+  }
+  const name = suggestedZipName(suggestedName);
+  try {
+    const handle = await picker({
+      suggestedName: name,
+      types: [
+        {
+          description: 'Zip-pakket voor de studentapp',
+          accept: { 'application/zip': ['.zip'] },
+        },
+      ],
+    });
+    const writable = await handle.createWritable();
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    await writable.write(new Blob([copy]));
+    await writable.close();
+    return { ok: true, name: handle.name || name };
+  } catch (error) {
+    if (isAbortError(error)) {
+      return { ok: false, cancelled: true, error: '' };
+    }
+    return { ok: false, cancelled: false, error: 'Het pakket is niet opgeslagen.' };
+  }
+}
+
 export async function saveExportedZipAs(
   zipRelativePath: string,
 ): Promise<'saved' | 'cancelled' | 'skipped'> {

@@ -27,11 +27,11 @@ internal static class Program
         var url = editor
             ? "http://127.0.0.1:" + port + appBase + "editor.html"
             : "http://127.0.0.1:" + port + appBase;
-        var title = editor ? "Phosaner scenariobewerker" : "Phosaner";
+        var title = editor ? "Phosaner Casus Editor" : "Phosaner";
         var npmPreview = editor ? "run preview:editor" : "run preview";
         var distFile = Path.Combine(root, "dist", editor ? "editor.html" : "index.html");
 
-        var nodeDir = FindNodeDir();
+        var nodeDir = FindNodeDir(root);
         if (nodeDir == null)
         {
             MessageBox.Show(
@@ -131,7 +131,17 @@ internal static class Program
         }
     }
 
-    private static string FindNodeDir()
+    private static string FindNodeDir(string root)
+    {
+        var bundled = Path.Combine(root, "node");
+        if (File.Exists(Path.Combine(bundled, "npm.cmd")))
+        {
+            return bundled;
+        }
+        return FindInstalledNodeDir();
+    }
+
+    private static string FindInstalledNodeDir()
     {
         var candidates = new[]
         {

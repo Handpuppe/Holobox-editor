@@ -18,6 +18,7 @@ import {
 } from './holoboxPackageDisk';
 import { nursingEnvelopeJson, parseVerpleegkundeEnvelope } from './nursingEnvelope';
 import { isQuestionFolderPath, resolvedQuestionFolder, startVideoRelative } from './questionFolder';
+import { holoboxExportFileName, holoboxZipRelative } from './holoboxPackagePaths';
 import { unzipStore } from './zipStore';
 
 const password = 'editor-geheim-voor-pakket';
@@ -92,6 +93,16 @@ function loadTempCase(resourcesRoot: string) {
     ),
   };
 }
+
+describe('holobox export filename', () => {
+  it('names the zip after the export moment without a colon', () => {
+    const name = holoboxExportFileName(new Date(2026, 9, 11, 17, 16, 45));
+    expect(name).toBe('Export 11-10-2026 17-16');
+    expect(name).not.toContain(':');
+    expect(holoboxZipRelative(name ?? '')).toBe('pakketten/Export 11-10-2026 17-16.zip');
+    expect(holoboxExportFileName(new Date(2026, 0, 2, 3, 4, 59))).toBe('Export 02-01-2026 03-04');
+  });
+});
 
 describe('holobox package', () => {
   it('hides the case, placeholders and videos until the editor password is used', async () => {

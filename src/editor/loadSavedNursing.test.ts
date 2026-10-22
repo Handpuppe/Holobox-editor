@@ -7,7 +7,7 @@ import {
   isBundledNursingExample,
   loadEditorStartupNursing,
   loadNursingCaseByName,
-  nursingEditorSourceLabel,
+  loadedCaseLabel,
 } from './loadSavedNursing';
 
 describe('nursing editor startup JSON', () => {
@@ -23,7 +23,7 @@ describe('nursing editor startup JSON', () => {
     );
     expect(isBundledNursingExample(example)).toBe(true);
     expect(skipped.source).toBe('seed');
-    expect(skipped.label).toBe('Geladen: startkopie');
+    expect(skipped.label).toBe('Geladen: nieuwe casus');
     expect(skipped.notice).toBeNull();
     expect(skipped.scenario.meta.id).toBe('editor-leeg');
     expect(skipped.scenario.meta.title).toBe('');
@@ -49,7 +49,7 @@ describe('nursing editor startup JSON', () => {
         }),
     );
     expect(loaded.source).toBe('json');
-    expect(loaded.label).toBe('Geladen: verpleegkunde.json');
+    expect(loaded.label).toBe('Geladen: Opname op de afdeling');
     expect(loaded.notice).toBeNull();
     expect(loaded.scenario.steps[0]?.question).toBe('Wat zie je?');
 
@@ -57,7 +57,7 @@ describe('nursing editor startup JSON', () => {
       async () => new Response('missing', { status: 404 }),
     );
     expect(missing.source).toBe('seed');
-    expect(missing.label).toBe('Geladen: startkopie');
+    expect(missing.label).toBe('Geladen: nieuwe casus');
     expect(missing.notice).toBe('Geen opgeslagen verpleegkunde.json gevonden.');
     expect(missing.scenario.steps).toHaveLength(1);
     expect(missing.scenario.steps[0]?.question).toBe('');
@@ -128,7 +128,7 @@ describe('nursing editor startup JSON', () => {
     expect(loaded.source).toBe('json');
     expect(loaded.fileName).toBe('verpleegkunde-nieuw.json');
     expect(loaded.scenario.steps[0]?.question).toBe('Nieuw');
-    expect(loaded.label).toBe('Geladen: verpleegkunde-nieuw.json');
+    expect(loaded.label).toBe('Geladen: Nieuwe casus');
 
     const fallback = await loadEditorStartupNursing(async (url) => {
       const target = String(url);
@@ -158,11 +158,11 @@ describe('nursing editor startup JSON', () => {
     expect(restored.scenario.meta.title).toBe('Slechtnieuwsgesprek oefenen');
   });
 
-  it('labels the built-in copy and a saved file', () => {
-    expect(nursingEditorSourceLabel('seed')).toBe('Geladen: startkopie');
-    expect(nursingEditorSourceLabel('json')).toBe('Geladen: verpleegkunde.json');
-    expect(nursingEditorSourceLabel('json', 'mijn-scenario.json')).toBe(
-      'Geladen: mijn-scenario.json',
+  it('labels the case by its name', () => {
+    expect(loadedCaseLabel('')).toBe('Geladen: nieuwe casus');
+    expect(loadedCaseLabel('   ')).toBe('Geladen: nieuwe casus');
+    expect(loadedCaseLabel('Slechtnieuwsgesprek oefenen')).toBe(
+      'Geladen: Slechtnieuwsgesprek oefenen',
     );
   });
 });

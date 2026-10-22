@@ -39,9 +39,10 @@ import {
   listHoloboxDiskFiles,
   listHoloboxPackageTitles,
   packageZipPath,
+  restoreHoloboxCase,
   writeHoloboxPackageFile,
 } from './src/editor/holoboxPackageDisk';
-import { zipStore, type ZipEntry } from './src/editor/zipStore';
+import { unzipStore, zipStore, type ZipEntry } from './src/editor/zipStore';
 import {
   removeQuestionFolder,
   restoreQuestionFolderBackup,
@@ -103,6 +104,11 @@ function isQuestionFolderRequest(url: string | undefined): boolean {
   return path === '/editor-api/question-folder' || path.endsWith('/editor-api/question-folder');
 }
 
+function isHoloboxImportPath(url: string | undefined): boolean {
+  const path = requestPath(url);
+  return path === '/editor-api/import-holobox' || path.endsWith('/editor-api/import-holobox');
+}
+
 function isHoloboxPackageFilesPath(url: string | undefined): boolean {
   const path = requestPath(url);
   return (
@@ -131,7 +137,13 @@ function isEditorImportMediaPath(url: string | undefined): boolean {
   return path === '/editor-api/import-media' || path.includes('/editor-api/import-media');
 }
 
-const STOP_HOLOBOX_SCRIPT = 'D:\\GrokBuild\\HoloBox2\\Stop-Holobox.ps1';
+function stopHoloboxScript(): string {
+  const local = join(process.cwd(), 'Stop-Holobox.ps1');
+  if (existsSync(local)) {
+    return local;
+  }
+  return 'D:\\GrokBuild\\HoloBox2\\Stop-Holobox.ps1';
+}
 const STOP_HOLOBOX_LOCK = join(tmpdir(), 'holobox-stop-holobox.lock');
 const STOP_HOLOBOX_LOCK_MS = 20_000;
 
@@ -175,7 +187,7 @@ function launchVisibleStopScript(): void {
       '-ExecutionPolicy',
       'Bypass',
       '-Command',
-      `Start-Process -FilePath powershell.exe -ArgumentList '-ExecutionPolicy','Bypass','-File','${STOP_HOLOBOX_SCRIPT}'`,
+      `Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${stopHoloboxScript().replaceAll("'", "''")}'`,
     ],
     { stdio: 'ignore', windowsHide: true },
   );
@@ -1012,6 +1024,47 @@ function copyModuleMedia(
 
 function editorHoloboxPackageMiddleware(resourcesRoot: string, projectRoot: string) {
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    if (isHoloboxImportPath(req.url)) {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
+        return;
+      }
+      const replace = headerValue(req.headers['x-holobox-replace']) === '1';
+      void readRequestBuffer(req, MAX_HOLOBOX_PACKAGE_BYTES)
+        .then((body) => {
+          if (
+            body.length < 4 ||
+            body[0] !== 0x50 ||
+            body[1] !== 0x4b ||
+            body[2] !== 0x03 ||
+            body[3] !== 0x04
+          ) {
+            sendJson(res, 400, { ok: false, error: 'Het pakket is geen zip.' });
+            return;
+          }
+          let entries: ZipEntry[];
+          try {
+            entries = unzipStore(new Uint8Array(body));
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'Het pakket is geen zip.' });
+            return;
+          }
+          const restored = restoreHoloboxCase(resourcesRoot, entries, replace);
+          if (!restored.ok) {
+            sendJson(res, restored.exists ? 409 : 400, restored);
+            return;
+          }
+          sendJson(res, 200, restored);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof Error && error.message === 'too-large') {
+            sendJson(res, 413, { ok: false, error: 'Het pakket is te groot.' });
+            return;
+          }
+          sendJson(res, 500, { ok: false, error: 'De casus kon niet worden geïmporteerd.' });
+        });
+      return;
+    }
     if (isHoloboxPackageFilesPath(req.url)) {
       if (req.method !== 'POST') {
         sendJson(res, 405, { ok: false, error: 'Alleen POST is toegestaan.' });
@@ -1623,9 +1676,9 @@ function holoboxCaseMiddleware(projectRoot: string) {
       }
       sendJson(res, 200, {
         ok: true,
-        packages: listHoloboxPackageTitles(projectRoot).flatMap((title) => {
-          const zip = holoboxZipRelative(title);
-          return zip ? [{ title, zip }] : [];
+        packages: listHoloboxPackageTitles(projectRoot).flatMap((file) => {
+          const zip = holoboxZipRelative(file);
+          return zip ? [{ file, zip }] : [];
         }),
       });
       return;

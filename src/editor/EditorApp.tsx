@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import editorBanner from '../../Banner- Editor.png';
 import { Dialog } from '../components/Dialog';
 import { withBaseUrl } from '../media/baseUrl';
 import { APP_VERSION, type NodeLayout, type Scenario } from '../domain/types';
@@ -14,8 +15,8 @@ import {
   isBundledNursingExample,
   isGesprekCaseFile,
   loadEditorStartupNursing,
+  loadedCaseLabel,
   loadNursingCaseByName,
-  nursingEditorSourceLabel,
 } from './loadSavedNursing';
 import {
   deleteEditorCaseOnDisk,
@@ -35,15 +36,18 @@ import {
   verifyEditorPassword,
 } from './editorLock';
 import {
+  decryptHoloboxPackage,
   encryptHoloboxPackage,
   fetchHoloboxDiskFiles,
-  fetchHoloboxPackageStatus,
+  holoboxExportFileName,
   HOLOBOX_PACKAGE_KEY,
+  type HoloboxPackageFile,
   openCasePackageFiles,
   safeCaseFileName,
   safeHoloboxPackageTitle,
-  storeHoloboxPackage,
+  storeHoloboxImport,
 } from './holoboxPackage';
+import { selectHoloboxImportFiles } from './holoboxImportPaths';
 import {
   deleteQuestionFolder,
   isQuestionFolderPath,
@@ -83,16 +87,15 @@ import {
   type NursingMediaItem,
   type StagedNursingMediaOp,
 } from './nursingMedia';
-import {
-  editorPackageIssues,
-  envelopeTextForModule,
-  exportPackageToCopy,
-  importPackageMedia,
-  parseEditorPackageZip,
-  pickZipFileToImport,
-  saveExportedZipAs,
-} from './scenarioPackage';
+import { envelopeTextForModule, pickZipFileToImport, saveZipBytesAs } from './scenarioPackage';
 import type { NursingScenario } from '../nursing/types';
+
+interface PendingHoloboxImport {
+  fileName: string;
+  caseFile: string;
+  scenario: NursingScenario;
+  files: HoloboxPackageFile[];
+}
 
 interface FolderBackup {
   folder: string;
@@ -152,15 +155,6 @@ function canSaveToThisCopy(): boolean {
 
 type EditorModule = 'logopedie' | 'verpleegkunde';
 
-async function fileToBase64(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
 export function EditorApp() {
   const importPackageRef = useRef<HTMLInputElement>(null);
   const nodeUndoRef = useRef<NodeUndoEntry[]>([]);
@@ -179,9 +173,6 @@ export function EditorApp() {
   const [loadNotice, setLoadNotice] = useState<string | null>(null);
   const [nursingLoadNotice, setNursingLoadNotice] = useState<string | null>(null);
   const [loadedLabel, setLoadedLabel] = useState(() => editorSourceLabel('seed'));
-  const [nursingLoadedLabel, setNursingLoadedLabel] = useState(() =>
-    nursingEditorSourceLabel('seed'),
-  );
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -205,11 +196,20 @@ export function EditorApp() {
   const [holoboxPasswordOpen, setHoloboxPasswordOpen] = useState(false);
   const [holoboxPassword, setHoloboxPassword] = useState('');
   const [holoboxPasswordError, setHoloboxPasswordError] = useState<string | null>(null);
-  const [holoboxWillReplace, setHoloboxWillReplace] = useState(false);
+  const [holoboxFileName, setHoloboxFileName] = useState<string | null>(null);
+  const [importReplaceOpen, setImportReplaceOpen] = useState(false);
+  const [importReplaceTitle, setImportReplaceTitle] = useState('');
   const holoboxBusy = useRef(false);
+  const holoboxExportName = useRef<string | null>(null);
+  const pendingImportRef = useRef<PendingHoloboxImport | null>(null);
   const saveOnThisPc = canSaveToThisCopy();
+
+  useEffect(() => {
+    document.title = 'Phosaner Casus Editor';
+  }, []);
   const activeLoadNotice = editorModule === 'logopedie' ? loadNotice : nursingLoadNotice;
-  const activeLoadedLabel = editorModule === 'logopedie' ? loadedLabel : nursingLoadedLabel;
+  const activeLoadedLabel =
+    editorModule === 'logopedie' ? loadedLabel : loadedCaseLabel(nursingDraft.meta.title);
 
   useEffect(() => {
     writeLastOpenedModule('verpleegkunde');
@@ -225,7 +225,6 @@ export function EditorApp() {
       setDraftNodeIds([]);
       setSelectedStepId(result.scenario.meta.startStepId);
       setNursingPreviewOptionIndex(0);
-      setNursingLoadedLabel(result.label);
       setNursingLoadNotice(result.notice);
       setNursingCaseFile(result.source === 'json' ? result.fileName : null);
     });
@@ -499,7 +498,6 @@ export function EditorApp() {
     setSelectedStepId(result.scenario.meta.startStepId);
     setNursingPreviewOptionIndex(0);
     setNursingLoadNotice(result.notice);
-    setNursingLoadedLabel(result.label);
     setNursingCaseFile(result.source === 'json' ? result.fileName : null);
   }
 
@@ -518,7 +516,6 @@ export function EditorApp() {
       setSelectedStepId(empty.meta.startStepId);
       setNursingPreviewOptionIndex(0);
       setNursingLoadNotice(null);
-      setNursingLoadedLabel('Nieuw scenario (niet opgeslagen)');
       setNursingStagedMedia([]);
       return;
     }
@@ -552,7 +549,6 @@ export function EditorApp() {
       setNursingPreviewOptionIndex(0);
       setOpenError(null);
       setNursingLoadNotice(null);
-      setNursingLoadedLabel(nursingEditorSourceLabel('json', fileName));
       rememberOpenCaseFile(fileName);
       return;
     }
@@ -649,7 +645,6 @@ export function EditorApp() {
         setLoadedLabel('Niet opgeslagen');
       } else {
         setNursingCaseFile(null);
-        setNursingLoadedLabel('Niet opgeslagen');
       }
     }
     closeListDelete();
@@ -681,7 +676,6 @@ export function EditorApp() {
       setLoadedLabel('Niet opgeslagen');
     } else {
       setNursingCaseFile(null);
-      setNursingLoadedLabel('Niet opgeslagen');
     }
     setSaveMessage(null);
     await showCaseChooser();
@@ -758,7 +752,6 @@ export function EditorApp() {
         } catch {
           // catalog refresh is optional; JSON and files are already written
         }
-        setNursingLoadedLabel(nursingEditorSourceLabel('json'));
         setNursingCaseFile(overlayScenarioFileName('verpleegkunde'));
         setNursingLoadNotice(null);
         setSaveMessage(
@@ -815,7 +808,6 @@ export function EditorApp() {
     const fileName = result.file.replaceAll('\\', '/').split('/').pop() ?? result.file;
     if (editorModule === 'verpleegkunde') {
       setNursingCaseFile(fileName);
-      setNursingLoadedLabel(`Geladen: ${fileName}`);
       setNursingLoadNotice(null);
     } else {
       setLogopedieCaseFile(fileName);
@@ -826,61 +818,6 @@ export function EditorApp() {
     setSaveMessage(
       `Opgeslagen als nieuwe casus (${result.file}). ${overlayScenarioFileName(editorModule)} is niet overschreven.`,
     );
-  }
-
-  async function extraMediaForExport(): Promise<
-    Array<{ relativePath: string; contentBase64: string }>
-  > {
-    const extra: Array<{ relativePath: string; contentBase64: string }> = [];
-    if (editorModule === 'verpleegkunde') {
-      for (const op of nursingStagedMedia) {
-        if (op.type === 'delete') {
-          continue;
-        }
-        extra.push({
-          relativePath: op.relativePath,
-          contentBase64: await fileToBase64(op.file),
-        });
-      }
-      return extra;
-    }
-    for (const op of stagedMedia) {
-      if (op.type === 'delete') {
-        continue;
-      }
-      extra.push({
-        relativePath: op.relativePath,
-        contentBase64: await fileToBase64(op.file),
-      });
-    }
-    return extra;
-  }
-
-  async function exportPackage() {
-    setSaving(true);
-    setSaveError(null);
-    setSaveMessage(null);
-    setSaveBlockIssues(null);
-    const envelopeText =
-      editorModule === 'logopedie'
-        ? envelopeTextForModule('logopedie', scenario)
-        : envelopeTextForModule('verpleegkunde', nursingDraft);
-    const result = await exportPackageToCopy(
-      editorModule,
-      envelopeText,
-      await extraMediaForExport(),
-    );
-    setSaving(false);
-    if (!result.ok) {
-      setSaveError(result.error);
-      return;
-    }
-    const chosen = await saveExportedZipAs(result.zip);
-    if (chosen === 'saved') {
-      setSaveMessage(`Opgeslagen via Opslaan als. Kopie blijft in ${result.zip}.`);
-      return;
-    }
-    setSaveMessage(`Geëxporteerd naar ${result.zip}`);
   }
 
   function holoboxCaseTitle(): string {
@@ -936,7 +873,7 @@ export function EditorApp() {
     );
   }
 
-  async function encryptAndStoreHolobox(replace: boolean) {
+  async function encryptAndStoreHolobox() {
     setSaving(true);
     setSaveError(null);
     setSaveMessage(null);
@@ -945,21 +882,21 @@ export function EditorApp() {
       if (!files) {
         return;
       }
+      const exportName = holoboxExportName.current;
+      if (!exportName) {
+        setSaveError('De casus heeft geen naam voor een pakket.');
+        return;
+      }
       const zip = await encryptHoloboxPackage(files, HOLOBOX_PACKAGE_KEY);
-      const saved = await storeHoloboxPackage(holoboxCaseTitle(), zip, replace);
+      const saved = await saveZipBytesAs(zip, `${exportName}.zip`);
       if (!saved.ok) {
-        if (saved.exists) {
-          setHoloboxReplaceOpen(true);
+        if (saved.cancelled) {
           return;
         }
         setSaveError(saved.error);
         return;
       }
-      setSaveMessage(
-        saved.replaced
-          ? `Pakket voor HoloBox staat in ${saved.zip}. Het vorige pakket staat in pakketten/vorige/.`
-          : `Pakket voor HoloBox staat in ${saved.zip}.`,
-      );
+      setSaveMessage(`Casus geëxporteerd naar ${saved.name}.`);
     } catch {
       setSaveError('Het pakket kon niet worden gemaakt.');
     } finally {
@@ -967,7 +904,7 @@ export function EditorApp() {
     }
   }
 
-  async function runHoloboxPackage(replace: boolean) {
+  async function runHoloboxPackage() {
     const record = readEditorLock();
     if (!record) {
       setSaveError('Stel eerst een editorwachtwoord in.');
@@ -976,13 +913,12 @@ export function EditorApp() {
     const held = heldEditorPassword();
     if (!held || !(await verifyEditorPassword(record, held))) {
       clearHeldEditorPassword();
-      setHoloboxWillReplace(replace);
       setHoloboxPassword('');
       setHoloboxPasswordError(null);
       setHoloboxPasswordOpen(true);
       return;
     }
-    await encryptAndStoreHolobox(replace);
+    await encryptAndStoreHolobox();
   }
 
   async function requestHoloboxPackage() {
@@ -997,16 +933,14 @@ export function EditorApp() {
         setSaveError('De casus heeft geen naam voor een pakket.');
         return;
       }
-      const status = await fetchHoloboxPackageStatus(holoboxCaseTitle());
-      if (!status.ok) {
-        setSaveError(status.error);
+      const exportName = holoboxExportFileName();
+      holoboxExportName.current = exportName;
+      setHoloboxFileName(exportName);
+      if (!exportName) {
+        setSaveError('De casus heeft geen naam voor een pakket.');
         return;
       }
-      if (status.exists) {
-        setHoloboxReplaceOpen(true);
-        return;
-      }
-      await runHoloboxPackage(false);
+      await runHoloboxPackage();
     } finally {
       holoboxBusy.current = false;
     }
@@ -1019,12 +953,57 @@ export function EditorApp() {
       return;
     }
     const secret = holoboxPassword;
-    const replace = holoboxWillReplace;
     setHoloboxPassword('');
     setHoloboxPasswordError(null);
     setHoloboxPasswordOpen(false);
     holdEditorPassword(secret);
-    await encryptAndStoreHolobox(replace);
+    await encryptAndStoreHolobox();
+  }
+
+  function cancelImportReplace() {
+    pendingImportRef.current = null;
+    setImportReplaceOpen(false);
+    setImportReplaceTitle('');
+  }
+
+  function applyImportedCase(pending: PendingHoloboxImport) {
+    markNursingDirty();
+    setEditorModule('verpleegkunde');
+    setNursingDraft(pending.scenario);
+    setDraftNodeIds([]);
+    setSelectedStepId(pending.scenario.meta.startStepId);
+    setNursingPreviewOptionIndex(0);
+    setNursingStagedMedia([]);
+    setNursingCaseFile(pending.caseFile);
+    setNursingLoadNotice(null);
+    setSaveMessage(`Casus ${pending.scenario.meta.title} is geïmporteerd.`);
+    void listNursingMedia()
+      .then((items) => setNursingDiskMedia(items))
+      .catch(() => undefined);
+  }
+
+  async function finishHoloboxImport(pending: PendingHoloboxImport, replace: boolean) {
+    setSaving(true);
+    setSaveError(null);
+    setOpenError(null);
+    try {
+      const stored = await storeHoloboxImport(pending.files, replace);
+      if (!stored.ok) {
+        if (stored.exists && !replace) {
+          setImportReplaceTitle(pending.scenario.meta.title);
+          setImportReplaceOpen(true);
+          return;
+        }
+        pendingImportRef.current = null;
+        setOpenError(stored.error);
+        return;
+      }
+      pendingImportRef.current = null;
+      setImportReplaceOpen(false);
+      applyImportedCase({ ...pending, caseFile: stored.caseFile });
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function importPackageFromPicker() {
@@ -1040,54 +1019,56 @@ export function EditorApp() {
   }
 
   async function importPackageFile(file: File | undefined) {
-    if (!file) {
+    if (!file || saving) {
       return;
     }
     setSaveError(null);
     setSaveMessage(null);
     setOpenError(null);
     setSaveBlockIssues(null);
+    pendingImportRef.current = null;
+    setImportReplaceOpen(false);
+    setImportReplaceTitle('');
     try {
-      const parsed = parseEditorPackageZip(new Uint8Array(await file.arrayBuffer()));
-      if (!parsed.ok) {
-        setOpenError(parsed.error);
+      const record = readEditorLock();
+      const held = heldEditorPassword();
+      if (!record || !held || !(await verifyEditorPassword(record, held))) {
+        setOpenError('De casus kon niet worden geopend.');
         return;
       }
-      if (parsed.module === 'logopedie') {
-        setOpenError('Logopedie-pakketten worden niet meer geopend.');
+      const opened = await decryptHoloboxPackage(
+        new Uint8Array(await file.arrayBuffer()),
+        HOLOBOX_PACKAGE_KEY,
+      );
+      if (!opened.ok) {
+        setOpenError('De casus kon niet worden geopend.');
         return;
       }
-      const issues = editorPackageIssues(parsed);
-      if (issues.length > 0) {
-        setBlockKind('import');
-        setSaveBlockIssues(issues);
+      const planned = selectHoloboxImportFiles(opened.files);
+      if (!planned.ok) {
+        setOpenError(planned.error);
         return;
       }
-      if (parsed.media.length > 0) {
-        const applied = await importPackageMedia(parsed.module, parsed.media);
-        if (!applied.ok) {
-          setSaveError(applied.error);
-          return;
-        }
+      const parsed = parseVerpleegkundeEnvelope(planned.envelopeText);
+      if (
+        !parsed.ok ||
+        isBundledNursingExample(parsed.scenario) ||
+        nursingSaveIssues(parsed.scenario).length > 0
+      ) {
+        setOpenError('Het pakket bevat geen casus.');
+        return;
       }
-      markNursingDirty();
-      setEditorModule('verpleegkunde');
-      setNursingDraft(parsed.scenario);
-      setDraftNodeIds([]);
-      setSelectedStepId(parsed.scenario.meta.startStepId);
-      setNursingPreviewOptionIndex(0);
-      setNursingStagedMedia([]);
-      setNursingCaseFile(null);
-      setNursingLoadedLabel(`Geladen: ${file.name}`);
-      setNursingLoadNotice(null);
-      try {
-        setNursingDiskMedia(await listNursingMedia());
-      } catch {
-        // preview still uses the written files
-      }
-      setSaveMessage(`Pakket ${file.name} is geladen in de editor.`);
+      const pending: PendingHoloboxImport = {
+        fileName: file.name,
+        caseFile: planned.caseFile,
+        scenario: parsed.scenario,
+        files: planned.files,
+      };
+      pendingImportRef.current = pending;
+      await finishHoloboxImport(pending, false);
     } catch {
-      setOpenError('Het pakket kon niet worden gelezen.');
+      pendingImportRef.current = null;
+      setOpenError('De casus kon niet worden geopend.');
     }
   }
 
@@ -1232,14 +1213,12 @@ export function EditorApp() {
     <div className="scenario-editor" data-testid="screen-scenario-editor" lang="nl">
       <header className="editor-header">
         <div>
-          <p className="editor-kicker">Los van de studentensimulatie</p>
-          <h1>Gesprekstechnieken-scenariobewerker</h1>
-          <p className="editor-meta">
-            {`${nursingDraft.meta.title} · v${nursingDraft.meta.version}`}
-          </p>
-          <p className="editor-loaded" data-testid="editor-loaded-source">
-            {activeLoadedLabel}
-          </p>
+          <img
+            className="editor-banner"
+            data-testid="editor-banner"
+            src={editorBanner}
+            alt="Phosaner Casus Editor"
+          />
         </div>
         <div className="editor-header-side">
           <div className="editor-actions">
@@ -1249,7 +1228,7 @@ export function EditorApp() {
               data-testid="btn-new-scenario"
               onClick={startNewScenario}
             >
-              Nieuw scenario
+              Nieuwe Casus
             </button>
             <button
               type="button"
@@ -1292,6 +1271,7 @@ export function EditorApp() {
               <button
                 type="button"
                 className="btn btn-secondary"
+                hidden
                 data-testid="btn-save-as-case"
                 onClick={() => requestSaveAsNewCase()}
                 disabled={saving}
@@ -1302,6 +1282,7 @@ export function EditorApp() {
             <button
               type="button"
               className="btn btn-secondary"
+              hidden
               data-testid="btn-download-json"
               onClick={() =>
                 editorModule === 'logopedie'
@@ -1348,22 +1329,11 @@ export function EditorApp() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                data-testid="btn-export-package"
-                onClick={() => void exportPackage()}
-                disabled={saving}
-              >
-                Exporteren
-              </button>
-            ) : null}
-            {saveOnThisPc ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
                 data-testid="btn-holobox-package"
                 onClick={() => void requestHoloboxPackage()}
                 disabled={saving}
               >
-                Pakket voor HoloBox
+                Casus exporteren
               </button>
             ) : null}
             <button
@@ -1404,6 +1374,9 @@ export function EditorApp() {
         </button>
       </nav>
 
+      <p className="editor-loaded" data-testid="editor-loaded-source">
+        {activeLoadedLabel}
+      </p>
       <p className="editor-notice" data-testid="editor-credit">
         {APP_VERSION} Made by Rutger van Horssen
       </p>
@@ -1543,6 +1516,41 @@ export function EditorApp() {
         </Dialog>
       ) : null}
 
+      {importReplaceOpen ? (
+        <Dialog title="Vervangen" testId="dialog-import-replace" onClose={cancelImportReplace}>
+          <p>
+            Er bestaat al een casus voor &quot;{importReplaceTitle}&quot;. De bestaande casus
+            vervangen?
+          </p>
+          <div className="stack" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-import-replace-no"
+              onClick={cancelImportReplace}
+            >
+              Nee
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="btn-import-replace-yes"
+              onClick={() => {
+                const pending = pendingImportRef.current;
+                setImportReplaceOpen(false);
+                if (!pending) {
+                  return;
+                }
+                void finishHoloboxImport(pending, true);
+              }}
+              disabled={saving}
+            >
+              Ja
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+
       {holoboxReplaceOpen ? (
         <Dialog
           title="Vervangen"
@@ -1550,7 +1558,7 @@ export function EditorApp() {
           onClose={() => setHoloboxReplaceOpen(false)}
         >
           <p>
-            Er bestaat al een pakket voor &quot;{holoboxCaseTitle()}&quot;. Het hele pakket
+            Er bestaat al een pakket met de naam &quot;{holoboxFileName}.zip&quot;. Het hele pakket
             vervangen?
           </p>
           <div className="stack" style={{ marginTop: 24 }}>
@@ -1568,7 +1576,7 @@ export function EditorApp() {
               data-testid="btn-holobox-replace-yes"
               onClick={() => {
                 setHoloboxReplaceOpen(false);
-                void runHoloboxPackage(true);
+                void runHoloboxPackage();
               }}
             >
               Ja

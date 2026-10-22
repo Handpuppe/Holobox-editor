@@ -67,11 +67,20 @@ describe('application flow', () => {
       });
     try {
       renderApp();
+      expect(screen.getByTestId('home-banner')).toHaveAttribute(
+        'src',
+        expect.stringMatching(/Scenario-gedreven%20holografisch%20onderwijs/),
+      );
+      const bannerRule = readFileSync(join('src', 'styles', 'global.css'), 'utf8').match(
+        /\.home-banner\s*\{[^}]*\}/,
+      )?.[0];
+      expect(bannerRule).toMatch(/width:\s*100%/);
+      expect(bannerRule).not.toMatch(/837px|112px/);
       expect(
         screen.getByRole('heading', {
           name: 'Phosaner — Scenario-gedreven holografisch onderwijs.',
         }),
-      ).toBeInTheDocument();
+      ).toHaveClass('visually-hidden');
       expect(screen.getByRole('heading', { name: 'Gesprekstechnieken' })).toBeInTheDocument();
       expect(screen.getByTestId('gesprek-menu-empty')).toBeInTheDocument();
       expect(screen.queryByTestId('btn-module-logopedie')).not.toBeInTheDocument();
@@ -114,16 +123,23 @@ describe('application flow', () => {
       HOLOBOX_PACKAGE_KEY,
       { iterations: 1000 },
     );
+    const exportFile = 'Export 11-10-2026 17-16';
+    const otherFile = 'Export 11-10-2026 17-17';
     const packages = vi.spyOn(openHoloboxCase, 'fetchHoloboxPackages').mockResolvedValue([
       {
+        file: exportFile,
         title: 'Slechtnieuwsgesprek oefenen',
-        zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+        zip: `pakketten/${exportFile}.zip`,
       },
-      { title: 'Phosaner testcasus', zip: 'pakketten/Phosaner testcasus.zip' },
+      {
+        file: otherFile,
+        title: 'Phosaner testcasus',
+        zip: `pakketten/${otherFile}.zip`,
+      },
     ]);
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
-      if (url.includes('Slechtnieuwsgesprek%20oefenen')) {
+      if (url.includes('Export%2011-10-2026%2017-16')) {
         const body = new ArrayBuffer(zip.byteLength);
         new Uint8Array(body).set(zip);
         return new Response(body, { status: 200 });
@@ -134,14 +150,15 @@ describe('application flow', () => {
     try {
       renderApp();
       const slechtnieuws = await screen.findByTestId(
-        'btn-scenario-tile-pakketten_Slechtnieuwsgesprek oefenen.zip',
+        `btn-scenario-tile-pakketten_${exportFile}.zip`,
       );
       expect(slechtnieuws).toHaveTextContent('Slechtnieuwsgesprek oefenen');
+      expect(slechtnieuws).not.toHaveTextContent('Export 11-10-2026');
       expect(slechtnieuws).not.toHaveTextContent('Versleuteld pakket');
       expect(slechtnieuws).not.toHaveTextContent('mevrouw De Boer');
-      expect(
-        screen.getByTestId('btn-scenario-tile-pakketten_Phosaner testcasus.zip'),
-      ).toHaveTextContent('Phosaner testcasus');
+      const other = screen.getByTestId(`btn-scenario-tile-pakketten_${otherFile}.zip`);
+      expect(other).toHaveTextContent('Phosaner testcasus');
+      expect(other).not.toHaveTextContent(otherFile);
       expect(
         screen.queryByText('Wat zeg je als eerste?', { exact: false }),
       ).not.toBeInTheDocument();

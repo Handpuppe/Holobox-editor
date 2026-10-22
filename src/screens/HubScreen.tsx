@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import homeBanner from '../../Banner -Scenario-gedreven holografisch onderwijs.png';
 import { useNavigate } from 'react-router-dom';
 import { Screen } from '../components/Screen';
 import { copy } from '../content/nl';
@@ -37,13 +38,13 @@ export function HubScreen() {
     };
   }, []);
 
-  async function openPackage(title: string) {
+  async function openPackage(file: string) {
     if (opening) {
       return;
     }
     setOpening(true);
     setLoadError(null);
-    const opened = await openHoloboxCase(title);
+    const opened = await openHoloboxCase(file);
     setOpening(false);
     if (!opened.ok) {
       setLoadError(opened.error);
@@ -69,6 +70,7 @@ export function HubScreen() {
   return (
     <Screen
       title="Phosaner — Scenario-gedreven holografisch onderwijs."
+      bannerSrc={homeBanner}
       testId="screen-home"
       footer={
         <>
@@ -127,7 +129,7 @@ export function HubScreen() {
                 type="button"
                 className="scenario-tile"
                 data-testid={`btn-scenario-tile-${item.zip.replaceAll('/', '_')}`}
-                onClick={() => void openPackage(item.title)}
+                onClick={() => void openPackage(item.file)}
               >
                 <span className="scenario-tile-module">Gesprekstechnieken</span>
                 <span className="scenario-tile-title">{item.title}</span>

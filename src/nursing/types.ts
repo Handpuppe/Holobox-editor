@@ -14,6 +14,16 @@ export const NURSING_COMPETENCIES = [
 
 export type NursingCompetency = (typeof NURSING_COMPETENCIES)[number];
 
+/** Score per antwoord in de casus. Oude casussen laten dit weg en openen als 1. */
+export const ANSWER_SCORES = [-1, 0, 1, 2, 3] as const;
+export type AnswerScore = (typeof ANSWER_SCORES)[number];
+
+export function answerScoreOf(value: unknown): AnswerScore {
+  return typeof value === 'number' && (ANSWER_SCORES as readonly number[]).includes(value)
+    ? (value as AnswerScore)
+    : 1;
+}
+
 export const NURSING_WEIGHTS: Record<NursingCompetency, number> = {
   abcdeSystematics: 0.3,
   observation: 0.2,
@@ -42,6 +52,8 @@ export interface NursingOption {
   answerCardPlaceholder?: string;
   /** Editor: mediaslot van de optionele video. Oude scenario's laten dit weg. */
   answerCardSlotId?: string;
+  /** Score van dit antwoord: -1, 0, 1, 2 of 3. Standaard 1. */
+  answerScore?: AnswerScore;
   nextStepId: string;
 }
 

@@ -54,6 +54,40 @@ describe('verpleegkunde editor envelope', () => {
     expect(opened.scenario.meta.educationType).toBeUndefined();
   });
 
+  it('keeps answer scores -1, 1 and 3, and opens an old case as 1', () => {
+    const draft = cloneNursingScenario();
+    const step = draft.steps[0]!;
+    step.options = [
+      { ...step.options[0], answerScore: -1 },
+      { ...step.options[1], answerScore: 1 },
+      { ...step.options[2], answerScore: 3 },
+    ];
+    const parsed = parseVerpleegkundeEnvelope(nursingEnvelopeJson(draft));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.scenario.steps[0]?.options.map((option) => option.answerScore)).toEqual([
+      -1, 1, 3,
+    ]);
+
+    const raw = JSON.parse(nursingEnvelopeJson(cloneNursingScenario())) as {
+      steps: Array<{ options: Array<{ answerScore?: number }> }>;
+    };
+    for (const option of raw.steps[0]?.options ?? []) {
+      delete option.answerScore;
+    }
+    raw.steps[0]!.options[1]!.answerScore = 9;
+    const opened = parseVerpleegkundeEnvelope(JSON.stringify(raw));
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) {
+      return;
+    }
+    expect(opened.scenario.steps[0]?.options.map((option) => option.answerScore)).toEqual([
+      1, 1, 1,
+    ]);
+  });
+
   it('keeps node positions through save and open', () => {
     const draft = cloneNursingScenario();
     draft.nodeLayout = { 'q:n-1': { x: 180, y: 64 }, 'a:n-1:high': { x: 640, y: 90 } };

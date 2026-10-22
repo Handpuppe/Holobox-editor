@@ -111,6 +111,7 @@ function emptyNursingOption(stepId: string, quality: NursingOption['quality']): 
     competencyAwards: { observation: quality === 'high' ? 1 : quality === 'partial' ? 0.5 : 0 },
     delayedFeedback: '',
     educationalRationale: '',
+    answerScore: 1,
     nextStepId: 'completed',
   };
 }

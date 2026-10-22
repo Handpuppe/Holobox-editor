@@ -10,6 +10,6 @@ if not exist "%CSC%" (
 "%CSC%" /nologo /target:winexe /win32icon:"Phosaner.ico" /r:System.Windows.Forms.dll /r:System.Management.dll /out:"Phosaner.exe" "tools\HoloboxLauncher.cs"
 if errorlevel 1 exit /b 1
 echo Gemaakt: Phosaner.exe
-"%CSC%" /nologo /target:winexe /r:System.Windows.Forms.dll /r:System.Management.dll /out:"Editor.exe" "tools\HoloboxLauncher.cs"
+"%CSC%" /nologo /target:winexe /win32icon:"Phosaner.ico" /r:System.Windows.Forms.dll /r:System.Management.dll /out:"Editor.exe" "tools\HoloboxLauncher.cs"
 if errorlevel 1 exit /b 1
 echo Gemaakt: Editor.exe

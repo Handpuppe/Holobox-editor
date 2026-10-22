@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
+import { selectHoloboxImportFiles, type HoloboxImportFile } from './holoboxImportPaths';
 import {
   HOLOBOX_PACKAGE_DIR,
   holoboxStartPrefix,
@@ -151,6 +152,56 @@ export function listHoloboxDiskFiles(
     }
   }
   return [...found].sort();
+}
+
+export function restoreHoloboxCase(
+  resourcesRoot: string,
+  files: HoloboxImportFile[],
+  replace: boolean,
+): { ok: true; caseFile: string } | { ok: false; error: string; exists?: boolean } {
+  const selected = selectHoloboxImportFiles(files);
+  if (!selected.ok) {
+    return selected;
+  }
+  const root = resolve(resourcesRoot);
+  const targets: Array<{ abs: string; data: Uint8Array }> = [];
+  for (const file of selected.files) {
+    const abs = resolve(root, ...file.name.split('/'));
+    if (!insideRoot(root, abs)) {
+      return { ok: false, error: 'Het pakket bevat bestanden buiten deze casus.' };
+    }
+    targets.push({ abs, data: file.data });
+  }
+  if (!replace && targets.some((target) => existsSync(target.abs))) {
+    return {
+      ok: false,
+      exists: true,
+      error: 'Er bestaat al een casus met deze naam.',
+    };
+  }
+  const partials: Array<{ partial: string; dest: string }> = [];
+  try {
+    for (const target of targets) {
+      mkdirSync(dirname(target.abs), { recursive: true });
+      const partial = join(dirname(target.abs), `.${basename(target.abs)}.partial`);
+      writeFileSync(partial, target.data);
+      partials.push({ partial, dest: target.abs });
+    }
+    for (const item of partials) {
+      if (existsSync(item.dest)) {
+        unlinkSync(item.dest);
+      }
+      renameSync(item.partial, item.dest);
+    }
+    return { ok: true, caseFile: selected.caseFile };
+  } catch {
+    for (const item of partials) {
+      if (existsSync(item.partial)) {
+        unlinkSync(item.partial);
+      }
+    }
+    return { ok: false, error: 'De casus kon niet worden geïmporteerd.' };
+  }
 }
 
 export function writeHoloboxPackageFile(

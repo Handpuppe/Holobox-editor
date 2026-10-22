@@ -1,7 +1,7 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { OptionQuality } from '../domain/types';
 import type { NursingOption, NursingScenario, NursingStep } from '../nursing/types';
-import { AnswerColumnMedia } from './NursingEditor';
+import { AnswerColumnMedia, AnswerScoreField } from './NursingEditor';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
 import {
   applyStagedNursingMedia,
@@ -334,6 +334,14 @@ function AnswerStep({
           ))}
         </select>
       </div>
+      <AnswerScoreField
+        option={option}
+        onScore={(answerScore) =>
+          onChange(
+            replaceStep(draft, replaceOption(step, optionIndex, { ...option, answerScore })),
+          )
+        }
+      />
       <div className="field">
         <label htmlFor={`nursing-option-text-${option.id}`}>Antwoord keuze</label>
         <textarea

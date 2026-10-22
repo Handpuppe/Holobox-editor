@@ -35,21 +35,17 @@ export interface NursingEditorStartupLoad {
   fileName: string | null;
 }
 
-export function nursingEditorSourceLabel(
-  source: NursingEditorStartupSource,
-  fileName?: string,
-): string {
-  if (source === 'json') {
-    return `Geladen: ${fileName?.trim() || VERPLEEGKUNDE_ENVELOPE_FILENAME}`;
-  }
-  return 'Geladen: startkopie';
+/** Tekst bovenaan de editor: de casusnaam, of een lege casus. */
+export function loadedCaseLabel(title: string | null | undefined): string {
+  const name = (title ?? '').replace(/\s+/g, ' ').trim();
+  return name.length > 0 ? `Geladen: ${name}` : 'Geladen: nieuwe casus';
 }
 
 function seedLoad(notice: string | null): NursingEditorStartupLoad {
   return {
     scenario: emptyNursingScenario(),
     source: 'seed',
-    label: nursingEditorSourceLabel('seed'),
+    label: loadedCaseLabel(''),
     notice,
     fileName: null,
   };
@@ -73,7 +69,7 @@ async function readGesprekCaseFile(
   return {
     scenario: parsed.scenario,
     source: 'json',
-    label: nursingEditorSourceLabel('json', fileName),
+    label: loadedCaseLabel(parsed.scenario.meta.title),
     notice: null,
     fileName,
   };
@@ -125,7 +121,7 @@ async function loadVerpleegkundeOverlay(fetchFn: typeof fetch): Promise<NursingE
     return {
       scenario: parsed.scenario,
       source: 'json',
-      label: nursingEditorSourceLabel('json'),
+      label: loadedCaseLabel(parsed.scenario.meta.title),
       notice: null,
       fileName: VERPLEEGKUNDE_ENVELOPE_FILENAME,
     };

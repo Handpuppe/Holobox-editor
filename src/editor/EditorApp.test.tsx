@@ -15,9 +15,12 @@ import {
   writeEditorLock,
   EDITOR_LOCK_STORAGE_KEY,
 } from './editorLock';
-import { decryptHoloboxPackage, HOLOBOX_PACKAGE_KEY } from './holoboxPackage';
-import { envelopeJson } from './envelope';
-import { cloneScenario } from './cloneScenario';
+import {
+  decryptHoloboxPackage,
+  encryptHoloboxPackage,
+  HOLOBOX_PACKAGE_KEY,
+  openCasePackageFiles,
+} from './holoboxPackage';
 import { emptyNursingScenario } from './emptyScenario';
 import { alignFlowCards, nursingNodeOverview } from './nodeBoard';
 import { embedNodeLayout } from './nodeLayoutFile';
@@ -28,7 +31,6 @@ import {
   restoreQuestionFolderBackup,
   writeQuestionFolderFiles,
 } from './questionFolderWrite';
-import { buildEditorPackageZip } from './scenarioPackage';
 
 function fillNursingTexts(question: string) {
   fireEvent.change(screen.getByTestId('nursing-patient-name'), {
@@ -53,7 +55,6 @@ function fillNursingTexts(question: string) {
 
 describe('EditorApp', () => {
   it('edits a question on a clone, shows validation issues, and downloads JSON', async () => {
-    const user = userEvent.setup();
     const originalPrompt = aphasiaIntakeScenario.nodes[0]?.prompt.text ?? '';
     const originalOption = aphasiaIntakeScenario.nodes[0]?.options[0]?.text ?? '';
     let captured: unknown;
@@ -84,11 +85,32 @@ describe('EditorApp', () => {
     expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
     expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
     expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Gesprekstechnieken-scenariobewerker' }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Los van de studentensimulatie/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Phosaner Casus Editor' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('editor-logo')).not.toBeInTheDocument();
+    const banner = screen.getByTestId('editor-banner');
+    expect(banner).toHaveAttribute('alt', 'Phosaner Casus Editor');
+    expect(banner).toHaveAttribute('src', expect.stringMatching(/Banner-%20Editor/));
+    expect(screen.queryByText(/· v/)).not.toBeInTheDocument();
+    expect(document.querySelector('.editor-meta')).toBeNull();
     expect(screen.queryByTestId('input-open-json')).not.toBeInTheDocument();
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
+    expect(screen.getByTestId('nursing-option-editor-n-1-high')).toHaveClass('is-quality-high');
+    expect(screen.getByTestId('nursing-option-editor-n-1-partial')).toHaveClass(
+      'is-quality-partial',
+    );
+    expect(screen.getByTestId('nursing-option-editor-n-1-inappropriate')).toHaveClass(
+      'is-quality-inappropriate',
+    );
+    fireEvent.change(screen.getByTestId('nursing-option-quality-n-1-high'), {
+      target: { value: 'inappropriate' },
+    });
+    expect(screen.getByTestId('nursing-option-editor-n-1-high')).toHaveClass(
+      'is-quality-inappropriate',
+    );
+    fireEvent.change(screen.getByTestId('nursing-option-quality-n-1-high'), {
+      target: { value: 'high' },
+    });
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
     expect(screen.getAllByText('Antwoord keuze').length).toBeGreaterThan(0);
     expect(screen.queryByText('Wat zegt de student?')).not.toBeInTheDocument();
@@ -98,28 +120,35 @@ describe('EditorApp', () => {
       transform: 'scale(1.5)',
     });
     expect(screen.getByTestId('btn-open-json')).toHaveTextContent('Casus openen');
-    expect(screen.getByTestId('btn-download-json')).toHaveTextContent('Casus downloaden');
+    expect(screen.getByTestId('btn-download-json')).not.toBeVisible();
     expect(screen.getByTestId('btn-start-test')).toHaveTextContent('Test modus');
     expect(screen.getByTestId('btn-nodes')).toHaveTextContent('Node Editor');
     expect(
-      [...document.querySelectorAll('.editor-actions > button')].map((button) =>
-        button.textContent?.trim(),
-      ),
+      [...document.querySelectorAll('.editor-actions > button')]
+        .filter((button) => !button.hasAttribute('hidden'))
+        .map((button) => button.textContent?.trim()),
     ).toEqual([
-      'Nieuw scenario',
+      'Nieuwe Casus',
       'Casus openen',
       'Node Editor',
       'Test modus',
       'Opslaan',
-      'Opslaan als nieuwe casus',
-      'Casus downloaden',
       'Herstel startkopie',
       'Importeren',
-      'Exporteren',
-      'Pakket voor HoloBox',
+      'Casus exporteren',
       'Casus verwijderen',
       'Afsluiten',
     ]);
+    expect(screen.getByTestId('btn-save-as-case')).not.toBeVisible();
+    expect(screen.getByTestId('btn-download-json')).toHaveTextContent('Casus downloaden');
+    const loadedLine = screen.getByTestId('editor-loaded-source');
+    const credit = screen.getByTestId('editor-credit');
+    expect(loadedLine.previousElementSibling).toBe(
+      screen.getByTestId('editor-module-nursing').closest('nav'),
+    );
+    expect(loadedLine.nextElementSibling).toBe(credit);
+    expect(screen.getByTestId('btn-new-scenario')).toHaveTextContent('Nieuwe Casus');
+    expect(document.title).toBe('Phosaner Casus Editor');
     for (const button of document.querySelectorAll('.editor-actions > button')) {
       expect(button).toHaveClass('btn-secondary');
     }
@@ -141,7 +170,7 @@ describe('EditorApp', () => {
       'Aangepaste gesprekstechniekvraag in de editor.',
     );
 
-    await user.click(screen.getByTestId('btn-download-json'));
+    fireEvent.click(screen.getByTestId('btn-download-json'));
     expect(click).toHaveBeenCalled();
     expect(createObjectURL).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalled();
@@ -215,12 +244,12 @@ describe('EditorApp', () => {
       expect(await screen.findByTestId('nursing-question')).toHaveValue(
         'Vraag uit geopend JSON-bestand.',
       );
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(`Geladen: ${fileName}`);
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: Extra casus');
       expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
       expect(screen.queryByTestId('dialog-open-case')).not.toBeInTheDocument();
       expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
 
-      await user.click(screen.getByTestId('btn-download-json'));
+      fireEvent.click(screen.getByTestId('btn-download-json'));
       expect(captured).toBeInstanceOf(Blob);
       const json = JSON.parse(await (captured as Blob).text()) as {
         module: string;
@@ -541,12 +570,83 @@ describe('EditorApp', () => {
       first.unmount();
       render(<EditorApp />);
       await waitFor(() => {
-        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('verpleegkunde.json');
+        expect(screen.getByTestId('nursing-question')).toHaveValue('Waar staat de vraag?');
       });
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
       await user.click(screen.getByTestId('btn-nodes'));
       const restored = await screen.findByTestId('node-question-n-1');
       expect(restored.style.left).toBe('328px');
       expect(restored.style.top).toBe('80px');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps answer scores -1, 1 and 3 after save and reopen', async () => {
+    const user = userEvent.setup();
+    let savedBody = '';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        const target = String(url);
+        if (init?.method === 'POST' && target.includes('save-verpleegkunde')) {
+          savedBody = String(init.body ?? '');
+          return new Response(
+            JSON.stringify({ ok: true, file: 'resources/scenarios/verpleegkunde.json' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (target.includes('verpleegkunde-media')) {
+          return new Response(JSON.stringify({ ok: true, items: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (target.includes('verpleegkunde.json') && savedBody) {
+          return new Response(savedBody, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('missing', { status: 404 });
+      }),
+    );
+    try {
+      const first = render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('editor-module-nursing'));
+      expect(screen.getByTestId('nursing-option-score-n-1-high')).toHaveValue('1');
+      expect(screen.getByTestId('nursing-option-score-n-1-partial')).toHaveValue('1');
+      expect(screen.getByTestId('nursing-option-score-n-1-inappropriate')).toHaveValue('1');
+      fireEvent.change(screen.getByTestId('nursing-option-score-n-1-high'), {
+        target: { value: '-1' },
+      });
+      fireEvent.change(screen.getByTestId('nursing-option-score-n-1-partial'), {
+        target: { value: '1' },
+      });
+      fireEvent.change(screen.getByTestId('nursing-option-score-n-1-inappropriate'), {
+        target: { value: '3' },
+      });
+      fillNursingTexts('Scorevraag');
+      await user.click(screen.getByTestId('btn-save-json'));
+      expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
+        'Opgeslagen in deze kopie',
+      );
+      const saved = JSON.parse(savedBody) as {
+        steps: Array<{ options: Array<{ answerScore?: number }> }>;
+      };
+      expect(saved.steps[0]?.options.map((option) => option.answerScore)).toEqual([-1, 1, 3]);
+
+      first.unmount();
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('nursing-question')).toHaveValue('Scorevraag');
+      });
+      expect(screen.getByTestId('nursing-option-score-n-1-high')).toHaveValue('-1');
+      expect(screen.getByTestId('nursing-option-score-n-1-partial')).toHaveValue('1');
+      expect(screen.getByTestId('nursing-option-score-n-1-inappropriate')).toHaveValue('3');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -661,7 +761,9 @@ describe('EditorApp', () => {
       const first = render(<EditorApp />);
       await user.click(await screen.findByTestId('editor-module-nursing'));
       await waitFor(() => {
-        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('verpleegkunde.json');
+        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+          'Geladen: Posities blijven',
+        );
       });
       await user.click(screen.getByTestId('btn-nodes'));
       const second = await screen.findByTestId('node-question-n-extra-1');
@@ -707,7 +809,9 @@ describe('EditorApp', () => {
       render(<EditorApp />);
       await user.click(await screen.findByTestId('editor-module-nursing'));
       await waitFor(() => {
-        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('verpleegkunde.json');
+        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+          'Geladen: Posities blijven',
+        );
       });
       await user.click(screen.getByTestId('btn-nodes'));
       await screen.findByTestId('node-question-n-extra-1');
@@ -794,16 +898,14 @@ describe('EditorApp', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     });
     fillNursingTexts('Vraag opgeslagen in deze kopie.');
     await user.click(screen.getByTestId('btn-save-json'));
     expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
       'Opgeslagen in deze kopie',
     );
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Geladen: verpleegkunde.json',
-    );
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     const post = fetchMock.mock.calls.find((call) =>
       String(call[0]).includes('save-verpleegkunde'),
     );
@@ -844,7 +946,7 @@ describe('EditorApp', () => {
     });
     expect(screen.getByTestId('nursing-title')).toHaveValue('Slechtnieuwsgesprek oefenen');
     expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Geladen: verpleegkunde.json',
+      'Geladen: Slechtnieuwsgesprek oefenen',
     );
     expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
     expect(screen.queryByTestId('editor-load-notice')).not.toBeInTheDocument();
@@ -863,7 +965,7 @@ describe('EditorApp', () => {
     });
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
     expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     first.unmount();
 
     vi.stubGlobal(
@@ -877,7 +979,7 @@ describe('EditorApp', () => {
       );
     });
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
   });
 
   it('restores the gesprek case after opening a listed case', async () => {
@@ -942,7 +1044,7 @@ describe('EditorApp', () => {
         'Eerste zin van de gesprekscasus.',
       );
       expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-        'Geladen: verpleegkunde.json',
+        'Geladen: Slechtnieuwsgesprek oefenen',
       );
       expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
       expect(screen.queryByTestId('editor-open-error')).not.toBeInTheDocument();
@@ -995,21 +1097,20 @@ describe('EditorApp', () => {
       await waitFor(() => {
         expect(screen.getByTestId('nursing-title')).toHaveValue(title);
       });
-      expect(
-        screen.getByRole('heading', { name: 'Gesprekstechnieken-scenariobewerker' }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId('editor-banner')).toBeInTheDocument();
       expect(screen.getByTestId('editor-module-nursing')).toHaveClass('is-active');
       expect(screen.queryByTestId('editor-module-logopedie')).not.toBeInTheDocument();
       expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
       expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
       expect(screen.getByTestId('nursing-question')).toHaveValue(question);
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-        'Geladen: verpleegkunde.json',
-      );
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(`Geladen: ${title}`);
 
       fireEvent.change(screen.getByTestId('nursing-title'), {
         target: { value: 'Tijdelijk gewijzigd' },
       });
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+        'Geladen: Tijdelijk gewijzigd',
+      );
       await user.click(screen.getByTestId('btn-reset-seed'));
       await waitFor(() => {
         expect(screen.getByTestId('nursing-title')).toHaveValue(title);
@@ -1041,9 +1142,7 @@ describe('EditorApp', () => {
       expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
     });
     await user.click(screen.getByTestId('editor-module-nursing'));
-    expect(
-      screen.getByRole('heading', { name: 'Gesprekstechnieken-scenariobewerker' }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('editor-banner')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-question')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
     expect(
@@ -1079,7 +1178,7 @@ describe('EditorApp', () => {
       'Aangepaste verpleegkundevraag in de editor.',
     );
 
-    await user.click(screen.getByTestId('btn-download-json'));
+    fireEvent.click(screen.getByTestId('btn-download-json'));
     expect(captured).toBeInstanceOf(Blob);
     const json = JSON.parse(await (captured as Blob).text()) as {
       schemaVersion: number;
@@ -1210,7 +1309,7 @@ describe('EditorApp', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     });
     fillNursingTexts('Tijdelijke vraag');
     fireEvent.change(screen.getByTestId('nursing-question'), { target: { value: '' } });
@@ -1279,113 +1378,119 @@ describe('EditorApp', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('exports the current gesprek draft to this copy', async () => {
+  it('imports a Phosaner zip without a password field and asks before replacing', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'POST' && String(url).includes('export-package')) {
+      if (init?.method === 'POST' && String(url).includes('import-holobox')) {
+        const headers = init.headers as { 'X-Holobox-Replace'?: string } | undefined;
+        if (headers?.['X-Holobox-Replace'] !== '1') {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              exists: true,
+              error: 'Er bestaat al een casus met deze naam.',
+            }),
+            { status: 409 },
+          );
+        }
         return new Response(
-          JSON.stringify({
-            ok: true,
-            folder: 'exports/gesprek-test',
-            zip: 'exports/gesprek-test.zip',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
+          JSON.stringify({ ok: true, caseFile: 'verpleegkunde-tijdelijk.json' }),
+          { status: 200 },
         );
-      }
-      if (init?.method === 'POST') {
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
-      }
-      return new Response('missing', { status: 404 });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(<EditorApp />);
-    await waitFor(() => {
-      expect(screen.getByTestId('btn-export-package')).toBeInTheDocument();
-    });
-    fireEvent.change(screen.getByTestId('nursing-question'), {
-      target: { value: 'Tekst voor export-pakket.' },
-    });
-    await user.click(screen.getByTestId('btn-export-package'));
-    expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
-      'exports/gesprek-test.zip',
-    );
-    const post = fetchMock.mock.calls.find((call) => String(call[0]).includes('export-package'));
-    const body = JSON.parse(String(post?.[1]?.body)) as {
-      module: string;
-      envelopeText: string;
-    };
-    expect(body.module).toBe('verpleegkunde');
-    expect(body.envelopeText).toContain('Tekst voor export-pakket.');
-    expect(screen.getByTestId('btn-download-json')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-open-json')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-save-json')).toBeInTheDocument();
-  });
-
-  it('imports a valid gesprek package and blocks logopedie and incomplete ones', async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'POST') {
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
       }
       return new Response('missing', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
     const draft = emptyNursingScenario();
+    draft.meta.title = 'Tijdelijke importcasus';
     draft.patient.name = 'Testpatiënt';
     draft.steps[0]!.stepName = 'Vraag.1';
     draft.steps[0]!.phaseLabel = 'Situatie';
     draft.steps[0]!.question = 'Tekst uit geïmporteerd pakket.';
+    draft.steps[0]!.stepVideoPlaceholder = 'Placeholder uit pakket';
+    draft.steps[0]!.questionFolder = 'gesprekstechnieken/Tijdelijke importcasus-Vraag1';
     draft.steps[0]!.options[0]!.text = 'Goed antwoord';
     draft.steps[0]!.options[1]!.text = 'Deels goed antwoord';
     draft.steps[0]!.options[2]!.text = 'Verkeerd antwoord';
-    const zip = buildEditorPackageZip('verpleegkunde', nursingEnvelopeJson(draft), [
-      {
-        relativePath: 'gesprekstechnieken/Startvideos/import-startvideo.mp4',
-        data: new Uint8Array([1, 2]),
-      },
-    ]);
-    const file = new File([Uint8Array.from(zip)], 'gesprek-pakket.zip', {
+    const zip = await encryptHoloboxPackage(
+      openCasePackageFiles(draft, 'verpleegkunde-tijdelijk.json', nursingEnvelopeJson(draft), [
+        {
+          relativePath: 'gesprekstechnieken/Tijdelijke importcasus-Vraag1/Videos/antwoord-goed.mp4',
+          data: new TextEncoder().encode('video-uit-pakket'),
+        },
+      ]),
+      HOLOBOX_PACKAGE_KEY,
+      { iterations: 1000 },
+    );
+    const exportZipName = 'Export 11-10-2026 17-16.zip';
+    const file = new File([Uint8Array.from(zip)], exportZipName, {
       type: 'application/zip',
     });
-    const logopedieZip = buildEditorPackageZip('logopedie', envelopeJson(cloneScenario()), []);
 
     render(<EditorApp />);
     await waitFor(() => {
       expect(screen.getByTestId('input-import-package')).toBeInTheDocument();
     });
+    await user.upload(screen.getByTestId('input-import-package'), file);
+    expect(await screen.findByTestId('editor-open-error')).toHaveTextContent(
+      'De casus kon niet worden geopend.',
+    );
+    expect(screen.queryByTestId('holobox-package-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('case-password')).not.toBeInTheDocument();
+    expect(screen.queryByText('Het editorwachtwoord klopt niet.')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('import-holobox'))).toBe(
+      false,
+    );
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
+
+    const record = await createEditorLock('editor-test-wachtwoord', 'ABCD-EFGH-IJKL-MNOP');
+    writeEditorLock(record);
+    holdEditorPassword('editor-test-wachtwoord');
     await user.upload(
       screen.getByTestId('input-import-package'),
-      new File([Uint8Array.from(logopedieZip)], 'logopedie-pakket.zip', {
-        type: 'application/zip',
-      }),
+      new File([Uint8Array.from([1, 2, 3, 4])], 'kapot.zip', { type: 'application/zip' }),
     );
     expect(await screen.findByTestId('editor-open-error')).toHaveTextContent(
-      'Logopedie-pakketten worden niet meer geopend.',
+      'De casus kon niet worden geopend.',
     );
-    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('holobox-package-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dialog-import-replace')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
 
     await user.upload(screen.getByTestId('input-import-package'), file);
-    expect(await screen.findByTestId('nursing-question')).toHaveValue(
-      'Tekst uit geïmporteerd pakket.',
+    expect(await screen.findByTestId('dialog-import-replace')).toHaveTextContent(
+      'Tijdelijke importcasus',
     );
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Geladen: gesprek-pakket.zip',
-    );
-    expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
-    const mediaPost = fetchMock.mock.calls.find((call) => String(call[0]).includes('import-media'));
-    expect(mediaPost).toBeTruthy();
+    expect(screen.getByTestId('dialog-import-replace')).not.toHaveTextContent(exportZipName);
+    expect(screen.queryByTestId('holobox-package-password')).not.toBeInTheDocument();
+    expect(screen.queryByText('Het editorwachtwoord klopt niet.')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-import-replace-no'));
+    expect(screen.queryByTestId('dialog-import-replace')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nursing-question')).toHaveValue('');
+    expect(
+      fetchMock.mock.calls.filter((call) => {
+        const headers = call[1]?.headers as { 'X-Holobox-Replace'?: string } | undefined;
+        return headers?.['X-Holobox-Replace'] === '1';
+      }),
+    ).toHaveLength(0);
 
-    const broken = emptyNursingScenario();
-    broken.steps[0]!.question = '';
-    const brokenZip = buildEditorPackageZip('verpleegkunde', nursingEnvelopeJson(broken), []);
-    await user.upload(
-      screen.getByTestId('input-import-package'),
-      new File([Uint8Array.from(brokenZip)], 'kapot.zip', { type: 'application/zip' }),
+    await user.upload(screen.getByTestId('input-import-package'), file);
+    expect(await screen.findByTestId('dialog-import-replace')).toBeInTheDocument();
+    await user.click(screen.getByTestId('btn-import-replace-yes'));
+    await waitFor(() => {
+      expect(screen.getByTestId('nursing-question')).toHaveValue('Tekst uit geïmporteerd pakket.');
+    });
+    expect(screen.getByTestId('nursing-title')).toHaveValue('Tijdelijke importcasus');
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+      'Geladen: Tijdelijke importcasus',
     );
-    expect(await screen.findByTestId('dialog-save-blocked')).toHaveTextContent(
-      'Importeren geblokkeerd',
-    );
-    expect(screen.getByTestId('nursing-question')).toHaveValue('Tekst uit geïmporteerd pakket.');
+    expect(screen.queryByTestId('holobox-package-password')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some((call) => {
+        const headers = call[1]?.headers as { 'X-Holobox-Replace'?: string } | undefined;
+        return String(call[0]).includes('import-holobox') && headers?.['X-Holobox-Replace'] === '1';
+      }),
+    ).toBe(true);
   });
 
   it('opens a new empty gesprek scenario without writing the current case', async () => {
@@ -1396,23 +1501,23 @@ describe('EditorApp', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     });
     await user.click(screen.getByTestId('btn-new-scenario'));
     expect(screen.getByTestId('nursing-title')).toHaveValue('');
     expect(screen.getByTestId('nursing-question')).toHaveValue('');
     expect(screen.queryByTestId('prompt-text')).not.toBeInTheDocument();
     expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Nieuw scenario (niet opgeslagen)',
-    );
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false);
     await user.click(screen.getByTestId('btn-save-json'));
     expect(screen.getByTestId('dialog-save-blocked')).toBeInTheDocument();
     expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false);
     expect(screen.getByTestId('btn-download-json')).toBeInTheDocument();
     expect(screen.getByTestId('btn-open-json')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-export-package')).toBeInTheDocument();
+    expect(screen.queryByTestId('btn-export-package')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Exporteren' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('btn-holobox-package')).toHaveTextContent('Casus exporteren');
     expect(screen.getByTestId('btn-import-package')).toBeInTheDocument();
   });
 
@@ -1620,7 +1725,6 @@ describe('EditorApp', () => {
   });
 
   it('saves as a new case without posting to the overlay save API', async () => {
-    const user = userEvent.setup();
     const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST' && String(url).includes('save-as-case')) {
         return new Response(
@@ -1636,16 +1740,15 @@ describe('EditorApp', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<EditorApp />);
     await waitFor(() => {
-      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: startkopie');
+      expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     });
     fillNursingTexts('Casus om apart op te slaan.');
-    await user.click(screen.getByTestId('btn-save-as-case'));
+    expect(screen.getByTestId('btn-save-as-case')).not.toBeVisible();
+    fireEvent.click(screen.getByTestId('btn-save-as-case'));
     expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
       'Opgeslagen als nieuwe casus',
     );
-    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
-      'Geladen: verpleegkunde-casus-test.json',
-    );
+    expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('save-as-case'))).toBe(
       true,
     );
@@ -2100,16 +2203,25 @@ describe('EditorApp', () => {
     });
     await user.click(screen.getByTestId('btn-node-wizard-next'));
     expect(screen.getByText('Bij goed antwoord play video')).toBeInTheDocument();
+    expect(screen.getByTestId(`nursing-option-score-${stepId}-high`)).toHaveValue('1');
+    fireEvent.change(screen.getByTestId(`nursing-option-score-${stepId}-high`), {
+      target: { value: '-1' },
+    });
     fireEvent.change(screen.getByTestId(`nursing-option-text-${stepId}-high`), {
       target: { value: 'Eerst meten' },
     });
     await user.click(screen.getByTestId('btn-node-wizard-next'));
     expect(screen.getByText('Bij deels goed antwoord play video')).toBeInTheDocument();
+    expect(screen.getByTestId(`nursing-option-score-${stepId}-partial`)).toHaveValue('1');
     fireEvent.change(screen.getByTestId(`nursing-option-text-${stepId}-partial`), {
       target: { value: 'Alleen kijken' },
     });
     await user.click(screen.getByTestId('btn-node-wizard-next'));
     expect(screen.getByText('Bij verkeerd antwoord play video')).toBeInTheDocument();
+    expect(screen.getByTestId(`nursing-option-score-${stepId}-inappropriate`)).toHaveValue('1');
+    fireEvent.change(screen.getByTestId(`nursing-option-score-${stepId}-inappropriate`), {
+      target: { value: '3' },
+    });
     fireEvent.change(screen.getByTestId(`nursing-option-text-${stepId}-inappropriate`), {
       target: { value: 'Niets doen' },
     });
@@ -2139,6 +2251,9 @@ describe('EditorApp', () => {
     expect(screen.getByTestId(`nursing-option-text-${stepId}-inappropriate`)).toHaveValue(
       'Niets doen',
     );
+    expect(screen.getByTestId(`nursing-option-score-${stepId}-high`)).toHaveValue('-1');
+    expect(screen.getByTestId(`nursing-option-score-${stepId}-partial`)).toHaveValue('1');
+    expect(screen.getByTestId(`nursing-option-score-${stepId}-inappropriate`)).toHaveValue('3');
     expect(screen.getByTestId('nursing-step-tab-n-1')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-step-tab-n-extra-1')).toBeInTheDocument();
     expect(screen.getByTestId('nursing-step-tab-n-extra-2')).toBeInTheDocument();
@@ -2735,18 +2850,30 @@ const packagePassword = 'editor-geheim-voor-pakket';
 const packageMarker = 'PAKKET-MARKER-ZIN-7f3a';
 const packageVideo = 'ftypVIDEO-MARKER-91c2';
 
-async function packageBody(body: BodyInit | null | undefined): Promise<Uint8Array> {
-  if (body instanceof Blob) {
-    return new Uint8Array(await body.arrayBuffer());
-  }
-  throw new Error('Het pakketverzoek heeft geen zip.');
-}
-
 function containsPackageText(bytes: Uint8Array, text: string): boolean {
   return new TextDecoder().decode(bytes).includes(text);
 }
 
-describe('Pakket voor HoloBox', () => {
+function installSavePicker(written: Uint8Array[], cancel = false) {
+  const picker = vi.fn(async (options?: { suggestedName?: string }) => {
+    if (cancel) {
+      throw new DOMException('Abort', 'AbortError');
+    }
+    return {
+      name: options?.suggestedName ?? 'casus.zip',
+      createWritable: async () => ({
+        write: async (data: Blob) => {
+          written.push(new Uint8Array(await data.arrayBuffer()));
+        },
+        close: async () => undefined,
+      }),
+    };
+  });
+  window.showSaveFilePicker = picker as unknown as typeof window.showSaveFilePicker;
+  return picker;
+}
+
+describe('Casus exporteren', () => {
   it('encrypts the open case for Phosaner and keeps Afsluiten', async () => {
     const user = userEvent.setup();
     const record = await createEditorLock(packagePassword, 'WACHT-CODE-BUIT-APPX');
@@ -2776,10 +2903,12 @@ describe('Pakket voor HoloBox', () => {
         );
       }
       if (init?.method === 'POST' && target.includes('holobox-package')) {
+        const headers = init.headers as Record<string, string>;
+        const exportName = decodeURIComponent(headers['X-Holobox-Name'] ?? '');
         return new Response(
           JSON.stringify({
             ok: true,
-            zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+            zip: `pakketten/${exportName}.zip`,
             replaced: false,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -2791,10 +2920,12 @@ describe('Pakket voor HoloBox', () => {
       return new Response('missing', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
+    const written: Uint8Array[] = [];
+    const picker = installSavePicker(written);
     try {
       render(<EditorApp />);
       await waitFor(() => {
-        expect(screen.getByTestId('btn-holobox-package')).toHaveTextContent('Pakket voor HoloBox');
+        expect(screen.getByTestId('btn-holobox-package')).toHaveTextContent('Casus exporteren');
       });
       expect(screen.getByTestId('btn-editor-quit')).toHaveTextContent('Afsluiten');
       fireEvent.change(screen.getByTestId('nursing-title'), {
@@ -2805,17 +2936,24 @@ describe('Pakket voor HoloBox', () => {
       });
       await user.click(screen.getByTestId('btn-holobox-package'));
       expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
-        'pakketten/Slechtnieuwsgesprek oefenen.zip',
+        /Casus geëxporteerd naar Export \d{2}-\d{2}-\d{4} \d{2}-\d{2}\.zip/,
       );
-      const post = fetchMock.mock.calls.find(
-        (call) =>
-          String(call[0]).includes('/editor-api/holobox-package') &&
-          !String(call[0]).includes('holobox-package-files') &&
-          call[1]?.method === 'POST',
+      expect(screen.getByTestId('editor-save-ok')).not.toHaveTextContent(
+        'Slechtnieuwsgesprek oefenen.zip',
       );
-      const headers = post?.[1]?.headers as Record<string, string>;
-      expect(headers['X-Holobox-Replace']).toBe('0');
-      const zip = await packageBody(post?.[1]?.body);
+      const suggested = picker.mock.calls[0]?.[0]?.suggestedName ?? '';
+      expect(suggested).toMatch(/^Export \d{2}-\d{2}-\d{4} \d{2}-\d{2}\.zip$/);
+      expect(suggested).not.toContain(':');
+      expect(suggested).not.toBe('Slechtnieuwsgesprek oefenen.zip');
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            String(call[0]).includes('/editor-api/holobox-package') &&
+            !String(call[0]).includes('holobox-package-files'),
+        ),
+      ).toBe(false);
+      const zip = written[0];
+      expect(zip).toBeInstanceOf(Uint8Array);
       expect(containsPackageText(zip, packageMarker)).toBe(false);
       expect(containsPackageText(zip, packageVideo)).toBe(false);
       expect(containsPackageText(zip, packagePassword)).toBe(false);
@@ -2837,11 +2975,12 @@ describe('Pakket voor HoloBox', () => {
       }
       expect(window.localStorage.getItem(EDITOR_LOCK_STORAGE_KEY)).not.toContain(packagePassword);
     } finally {
+      delete window.showSaveFilePicker;
       vi.unstubAllGlobals();
     }
   });
 
-  it('asks to replace an existing package and leaves it when the answer is no', async () => {
+  it('writes nothing when the save window is cancelled', async () => {
     const user = userEvent.setup();
     const record = await createEditorLock(packagePassword, 'WACHT-CODE-BUIT-APPX');
     writeEditorLock(record);
@@ -2877,15 +3016,19 @@ describe('Pakket voor HoloBox', () => {
       return new Response('missing', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
+    const written: Uint8Array[] = [];
+    installSavePicker(written, true);
     try {
       render(<EditorApp />);
       fireEvent.change(screen.getByTestId('nursing-title'), {
         target: { value: 'Slechtnieuwsgesprek oefenen' },
       });
       await user.click(screen.getByTestId('btn-holobox-package'));
-      expect(await screen.findByTestId('dialog-holobox-replace')).toHaveTextContent('Vervangen');
-      await user.click(screen.getByTestId('btn-holobox-replace-no'));
-      expect(screen.queryByTestId('dialog-holobox-replace')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(window.showSaveFilePicker).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('editor-save-ok')).not.toBeInTheDocument();
+      expect(written).toHaveLength(0);
       expect(
         fetchMock.mock.calls.some(
           (call) =>
@@ -2894,17 +3037,8 @@ describe('Pakket voor HoloBox', () => {
             !String(call[0]).includes('holobox-package-files'),
         ),
       ).toBe(false);
-      await user.click(screen.getByTestId('btn-holobox-package'));
-      await user.click(await screen.findByTestId('btn-holobox-replace-yes'));
-      expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent('pakketten/vorige/');
-      const post = fetchMock.mock.calls.find(
-        (call) =>
-          call[1]?.method === 'POST' &&
-          String(call[0]).includes('/editor-api/holobox-package') &&
-          !String(call[0]).includes('holobox-package-files'),
-      );
-      expect((post?.[1]?.headers as Record<string, string>)['X-Holobox-Replace']).toBe('1');
     } finally {
+      delete window.showSaveFilePicker;
       vi.unstubAllGlobals();
     }
   });
@@ -2931,10 +3065,12 @@ describe('Pakket voor HoloBox', () => {
         );
       }
       if (init?.method === 'POST' && target.includes('holobox-package')) {
+        const headers = init.headers as Record<string, string>;
+        const exportName = decodeURIComponent(headers['X-Holobox-Name'] ?? '');
         return new Response(
           JSON.stringify({
             ok: true,
-            zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+            zip: `pakketten/${exportName}.zip`,
             replaced: false,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -2943,6 +3079,8 @@ describe('Pakket voor HoloBox', () => {
       return new Response('missing', { status: 404 });
     });
     vi.stubGlobal('fetch', fetchMock);
+    const written: Uint8Array[] = [];
+    installSavePicker(written);
     try {
       render(<EditorApp />);
       fireEvent.change(screen.getByTestId('nursing-title'), {
@@ -2967,10 +3105,15 @@ describe('Pakket voor HoloBox', () => {
       await user.type(screen.getByTestId('holobox-package-password'), packagePassword);
       await user.click(screen.getByTestId('btn-holobox-package-confirm'));
       expect(await screen.findByTestId('editor-save-ok')).toHaveTextContent(
-        'pakketten/Slechtnieuwsgesprek oefenen.zip',
+        /Casus geëxporteerd naar Export \d{2}-\d{2}-\d{4} \d{2}-\d{2}\.zip/,
+      );
+      expect(written).toHaveLength(1);
+      expect(screen.getByTestId('editor-save-ok')).not.toHaveTextContent(
+        'Slechtnieuwsgesprek oefenen.zip',
       );
       expect(window.localStorage.getItem(EDITOR_LOCK_STORAGE_KEY)).toBe(JSON.stringify(record));
     } finally {
+      delete window.showSaveFilePicker;
       vi.unstubAllGlobals();
     }
   });

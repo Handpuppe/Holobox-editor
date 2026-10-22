@@ -9,9 +9,11 @@ import {
   resolvedQuestionFolder,
   startVideoRelative,
 } from './questionFolder';
+import { selectHoloboxImportFiles, type HoloboxImportFile } from './holoboxImportPaths';
 import { unzipStore, zipStore, type ZipEntry } from './zipStore';
 
 export {
+  holoboxExportFileName,
   holoboxZipRelative,
   isHoloboxVideoPath,
   safeHoloboxPackageTitle,
@@ -23,6 +25,7 @@ export const HOLOBOX_PACKAGE_META = 'phosaner-holobox.json';
 export const HOLOBOX_PACKAGE_PAYLOAD = 'inhoud.bin';
 export const HOLOBOX_PACKAGE_PATH = '/editor-api/holobox-package';
 export const HOLOBOX_PACKAGE_FILES_PATH = '/editor-api/holobox-package-files';
+export const HOLOBOX_IMPORT_PATH = '/editor-api/import-holobox';
 export const HOLOBOX_KDF_ITERATIONS = 210_000;
 /** Sleutel die de student-app zelf gebruikt. Studenten typen hem niet. */
 export const HOLOBOX_PACKAGE_KEY = 'b4e9c1a7f03d48e6a2c5d8f17b90e3a6c4d1f8a27e5b0c93';
@@ -286,6 +289,49 @@ export async function decryptHoloboxPackage(
     return { ok: true, files };
   } catch {
     return { ok: false, error: 'Het wachtwoord klopt niet of het pakket is beschadigd.' };
+  }
+}
+
+export async function storeHoloboxImport(
+  files: HoloboxImportFile[],
+  replace: boolean,
+): Promise<{ ok: true; caseFile: string } | { ok: false; error: string; exists?: boolean }> {
+  const planned = selectHoloboxImportFiles(files);
+  if (!planned.ok) {
+    return planned;
+  }
+  try {
+    const zip = zipStore(planned.files.map((file) => ({ name: file.name, data: file.data })));
+    const response = await fetch(withBaseUrl(HOLOBOX_IMPORT_PATH), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/zip',
+        'X-Holobox-Replace': replace ? '1' : '0',
+      },
+      body: new Blob([copyBytes(zip)]),
+    });
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      exists?: boolean;
+      caseFile?: string;
+    };
+    if (response.status === 409 || payload.exists) {
+      return {
+        ok: false,
+        exists: true,
+        error: payload.error ?? 'Er bestaat al een casus met deze naam.',
+      };
+    }
+    if (!response.ok || !payload.ok || !payload.caseFile) {
+      return { ok: false, error: payload.error ?? 'De casus kon niet worden geïmporteerd.' };
+    }
+    return { ok: true, caseFile: payload.caseFile };
+  } catch {
+    return {
+      ok: false,
+      error: 'Importeren is niet beschikbaar. Start de bewerker via Editor.exe of npm run dev.',
+    };
   }
 }
 

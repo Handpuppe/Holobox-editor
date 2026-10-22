@@ -8,7 +8,7 @@ import {
   openCasePackageFiles,
 } from '../editor/holoboxPackage';
 import { parseVerpleegkundeEnvelope } from '../editor/nursingEnvelope';
-import { openHoloboxPackageBytes } from './openHoloboxCase';
+import { fetchHoloboxPackages, openHoloboxCase, openHoloboxPackageBytes } from './openHoloboxCase';
 
 const caseFile = join('resources', 'scenarios', 'verpleegkunde.json');
 const realZip = join('pakketten', 'Slechtnieuwsgesprek oefenen.zip');
@@ -89,4 +89,50 @@ describe('open holobox case', () => {
       }
     },
   );
+
+  it('reads the case name from the zip and opens the export filename', async () => {
+    const zip = await encryptedCase(1000);
+    const file = 'Export 11-10-2026 17-16';
+    const broken = 'Export 11-10-2026 17-17';
+    const calls: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes('/app-api/holobox-packages')) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            packages: [
+              { file, zip: `pakketten/${file}.zip`, title: file },
+              {
+                title: 'Slechtnieuwsgesprek oefenen',
+                zip: 'pakketten/Slechtnieuwsgesprek oefenen.zip',
+              },
+              { file: broken, zip: `pakketten/${broken}.zip` },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.includes(encodeURIComponent(file))) {
+        const body = new ArrayBuffer(zip.byteLength);
+        new Uint8Array(body).set(zip);
+        return new Response(body, { status: 200 });
+      }
+      return new Response('kapot', { status: 200 });
+    };
+    const listings = await fetchHoloboxPackages(fetchImpl);
+    expect(listings).toEqual([
+      { file, title: 'Slechtnieuwsgesprek oefenen', zip: `pakketten/${file}.zip` },
+    ]);
+    const again = await fetchHoloboxPackages(fetchImpl);
+    expect(again).toEqual(listings);
+    expect(calls.filter((url) => url.includes(encodeURIComponent(file))).length).toBeGreaterThan(1);
+    const opened = await openHoloboxCase(file, fetchImpl);
+    expect(opened.ok).toBe(true);
+    if (opened.ok) {
+      expect(opened.scenario.meta.title).toBe('Slechtnieuwsgesprek oefenen');
+    }
+    expect(calls.some((url) => url.includes('Slechtnieuwsgesprek'))).toBe(false);
+  });
 });

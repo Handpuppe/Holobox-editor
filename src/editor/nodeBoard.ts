@@ -18,6 +18,13 @@ export const NODE_PORT_COLOR: Record<OptionQuality, string> = {
   inappropriate: '#e56a93',
 };
 
+/** Balk van de antwoordkaart, gemeten op kleuren-nodes.png. */
+export const NODE_ANSWER_HEAD_COLOR: Record<OptionQuality, string> = {
+  high: '#347C00',
+  partial: '#BA8200',
+  inappropriate: '#D80000',
+};
+
 /** Ruimte tussen gestapelde vraagnodes, groter dan de oude 40px. */
 export const NODE_ROW_GAP = 104;
 /** Ruimte tussen antwoordnodes onder elkaar, groter dan de oude 18px. */

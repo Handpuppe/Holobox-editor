@@ -13,6 +13,7 @@ import {
   NODE_ANSWER_FALLBACK_HEIGHT,
   NODE_ANSWER_GAP,
   NODE_ANSWER_WIDTH,
+  NODE_ANSWER_HEAD_COLOR,
   NODE_PORT_COLOR,
   NODE_QUESTION_FALLBACK_HEIGHT,
   NODE_QUESTION_WIDTH,
@@ -394,7 +395,10 @@ function AnswerCard({
         <span className="node-port-word node-port-word-in">In</span>
       </span>
       <OutputPort port={answer.outPort} color={color} onPointerDown={onOutputPointerDown} />
-      <header className="node-card-head">
+      <header
+        className="node-card-head"
+        style={{ background: NODE_ANSWER_HEAD_COLOR[answer.quality] }}
+      >
         <span className="node-card-title">{answer.title}</span>
         <button
           type="button"
@@ -858,7 +862,6 @@ export function NodeOverview({
           '--node-row-gap': `${NODE_ROW_GAP}px`,
           '--node-answer-gap': `${NODE_ANSWER_GAP}px`,
           '--node-question-head': '#243044',
-          '--node-answer-head': '#6b5200',
           '--node-board-bg': '#141414',
         } as CSSProperties
       }

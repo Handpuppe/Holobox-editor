@@ -43,6 +43,7 @@ function emptyOption(
     competencyAwards: awards,
     delayedFeedback: '',
     educationalRationale: '',
+    answerScore: 1,
     nextStepId,
   };
 }

@@ -12,12 +12,8 @@ import { resolveNursingScenario } from '../data/loadNursingScenario';
 import { APP_VERSION } from '../domain/types';
 import { canSaveToThisCopy } from '../editor/editorHost';
 import { withBaseUrl } from '../media/baseUrl';
+import type { NursingScenario } from '../nursing/types';
 import { useAppState } from '../state/AppState';
-
-interface PublicQuestion {
-  name: string;
-  question: string;
-}
 
 export function HubScreen() {
   const navigate = useNavigate();
@@ -26,8 +22,7 @@ export function HubScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [opening, setOpening] = useState(false);
-  const [publicTitle, setPublicTitle] = useState('');
-  const [publicQuestions, setPublicQuestions] = useState<PublicQuestion[] | null>(null);
+  const [publicCase, setPublicCase] = useState<NursingScenario | null>(null);
   const [publicChecked, setPublicChecked] = useState(() => canSaveToThisCopy());
 
   useEffect(() => {
@@ -57,18 +52,8 @@ export function HubScreen() {
       if (cancelled) {
         return;
       }
-      if (loaded.source === 'json') {
-        const questions = loaded.scenario.steps.flatMap((step) => {
-          const name = step.stepName?.trim() ?? '';
-          if (name === '') {
-            return [];
-          }
-          return [{ name, question: step.question }];
-        });
-        if (questions.length > 0) {
-          setPublicTitle(loaded.scenario.meta.title);
-          setPublicQuestions(questions);
-        }
+      if (loaded.source === 'json' && loaded.scenario.meta.title.trim() !== '') {
+        setPublicCase(loaded.scenario);
       }
       setPublicChecked(true);
     });
@@ -76,6 +61,14 @@ export function HubScreen() {
       cancelled = true;
     };
   }, []);
+
+  function openPublicCase() {
+    if (!publicCase || opening) {
+      return;
+    }
+    selectNursingScenario(publicCase);
+    void navigate('/verpleegkunde/home');
+  }
 
   async function openPackage(file: string) {
     if (opening) {
@@ -158,16 +151,17 @@ export function HubScreen() {
             {loadError}
           </p>
         ) : null}
-        {packages.length === 0 && publicQuestions && publicQuestions.length > 0 ? (
-          <div data-testid="public-gesprekscasus">
-            <p className="scenario-tile-title">{publicTitle}</p>
-            <ol data-testid="public-question-list">
-              {publicQuestions.map((step) => (
-                <li key={step.name}>
-                  <strong>{step.name}</strong> {step.question}
-                </li>
-              ))}
-            </ol>
+        {packages.length === 0 && publicCase ? (
+          <div className="scenario-tile-list">
+            <button
+              type="button"
+              className="scenario-tile"
+              data-testid="btn-scenario-tile-public"
+              onClick={openPublicCase}
+            >
+              <span className="scenario-tile-module">Gesprekstechnieken</span>
+              <span className="scenario-tile-title">{publicCase.meta.title}</span>
+            </button>
           </div>
         ) : packages.length === 0 && publicChecked ? (
           <p data-testid="gesprek-menu-empty">Er is nog geen gesprekscasus.</p>

@@ -59,7 +59,7 @@ const MAX_EDITOR_MEDIA_BYTES = 16_000_000;
 const MAX_EDITOR_PACKAGE_BYTES = 64_000_000;
 const MAX_HOLOBOX_PACKAGE_BYTES = 512_000_000;
 
-const APP_BASE = '/Holobox-editor/';
+const APP_BASE = '/Phosaner/';
 const LEGACY_LOCAL_BASE = '/HoloboxVPKenLogo';
 
 function rewriteLegacyBase(req: IncomingMessage): void {

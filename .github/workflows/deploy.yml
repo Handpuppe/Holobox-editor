@@ -59,7 +59,7 @@ jobs:
                   if (host !== '127.0.0.1' && host !== 'localhost') return;
                   var left = 40;
                   function ping() {
-                    fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(
+                    fetch('/Phosaner/editor-api/editor-alive', { method: 'POST' }).catch(
                       function () {},
                     );
                   }
@@ -111,7 +111,7 @@ jobs:
                   if (host !== '127.0.0.1' && host !== 'localhost') return;
                   var left = 40;
                   function ping() {
-                    fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(function () {});
+                    fetch('/Phosaner/editor-api/editor-alive', { method: 'POST' }).catch(function () {});
                   }
                   ping();
                   var timer = setInterval(function () {
@@ -149,13 +149,13 @@ jobs:
             echo "FOUT: gebouwde HTML wijst nog naar bronbestanden."
             exit 1
           fi
-          grep -q '/Holobox-editor/assets/main-' dist/index.html
+          grep -q '/Phosaner/assets/main-' dist/index.html
           if grep -q 'class="editor-page"' dist/index.html; then
             echo "FOUT: de root is de editor."
             exit 1
           fi
           grep -q 'class="editor-page"' dist/editor.html
-          grep -q '/Holobox-editor/assets/editor-' dist/editor.html
+          grep -q '/Phosaner/assets/editor-' dist/editor.html
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

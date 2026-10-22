@@ -1,6 +1,6 @@
 name: Deploy GitHub Pages
 
-# Publiceert ALLEEN dist/ (gebouwde editor). Nooit de bron-index.html met /src/*.tsx.
+# Publiceert dist/: / is de app, /editor.html is de editor. Nooit bron-HTML met /src/*.tsx.
 # Settings → Pages → Source moet "GitHub Actions" zijn, niet "Deploy from a branch".
 
 on:
@@ -133,19 +133,29 @@ jobs:
           npm ci
           node node_modules/esbuild/install.js
           npm run build
-      - name: Use built editor as the site
-        run: node scripts/prepare-pages.mjs
+      - name: Keep the app at / and the editor at /editor.html
+        run: |
+          cp dist/index.html dist/404.html
+          : > dist/.nojekyll
       - name: Show published HTML (must be assets/*.js, never /src/*.tsx)
         run: |
           echo "=== dist/index.html ==="
           cat dist/index.html
+          echo "=== dist/editor.html ==="
+          cat dist/editor.html
           echo "=== dist/assets ==="
           ls -1 dist/assets
           if grep -E '/src/|\.tsx' dist/index.html dist/editor.html dist/404.html; then
             echo "FOUT: gebouwde HTML wijst nog naar bronbestanden."
             exit 1
           fi
-          grep -q '/Holobox-editor/assets/' dist/index.html
+          grep -q '/Holobox-editor/assets/main-' dist/index.html
+          if grep -q 'class="editor-page"' dist/index.html; then
+            echo "FOUT: de root is de editor."
+            exit 1
+          fi
+          grep -q 'class="editor-page"' dist/editor.html
+          grep -q '/Holobox-editor/assets/editor-' dist/editor.html
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

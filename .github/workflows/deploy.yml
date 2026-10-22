@@ -21,13 +21,118 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '24.20.0'
           cache: npm
+      # De root-HTML op deze branch is de al gepubliceerde site. Vite heeft de bronpagina's nodig.
+      - name: Restore Vite entry HTML
+        run: |
+          cat > index.html << 'ENDHTML'
+          <!doctype html>
+          <html lang="nl">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <meta name="color-scheme" content="light only" />
+              <meta name="theme-color" content="#FFFFFF" />
+              <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+              <meta name="description" content="Phosaner: gesprekstechnieken met fictieve cliënten." />
+              <title>Phosaner — Scenario-gedreven holografisch onderwijs.</title>
+              <style>
+                html,
+                body,
+                #root {
+                  background: #ffffff;
+                  margin: 0;
+                  width: 100%;
+                  height: 100%;
+                }
+              </style>
+            </head>
+            <body>
+              <div id="root"></div>
+              <script>
+                (function () {
+                  var host = location.hostname;
+                  if (host !== '127.0.0.1' && host !== 'localhost') return;
+                  var left = 40;
+                  function ping() {
+                    fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(
+                      function () {},
+                    );
+                  }
+                  ping();
+                  var timer = setInterval(function () {
+                    left -= 1;
+                    if (left <= 0) {
+                      clearInterval(timer);
+                      return;
+                    }
+                    ping();
+                  }, 400);
+                })();
+              </script>
+              <script type="module" src="/src/main.tsx"></script>
+            </body>
+          </html>
+          ENDHTML
+          cat > editor.html << 'ENDHTML'
+          <!doctype html>
+          <html lang="nl" class="editor-page">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <meta name="color-scheme" content="light only" />
+              <meta name="theme-color" content="#FFFFFF" />
+              <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+              <meta
+                name="description"
+                content="Holobox scenariobewerker voor Logopedie en Verpleegkunde. Bewerkt fictieve trainingsinhoud, niet de studentensimulatie."
+              />
+              <title>Phosaner Casus Editor</title>
+              <style>
+                html,
+                body,
+                #root {
+                  background: #ffffff;
+                  margin: 0;
+                  width: 100%;
+                  min-height: 100%;
+                }
+              </style>
+            </head>
+            <body>
+              <div id="root"></div>
+              <script>
+                (function () {
+                  var host = location.hostname;
+                  if (host !== '127.0.0.1' && host !== 'localhost') return;
+                  var left = 40;
+                  function ping() {
+                    fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(function () {});
+                  }
+                  ping();
+                  var timer = setInterval(function () {
+                    left -= 1;
+                    if (left <= 0) {
+                      clearInterval(timer);
+                      return;
+                    }
+                    ping();
+                  }, 400);
+                })();
+              </script>
+              <script type="module" src="/src/editor/main.tsx"></script>
+            </body>
+          </html>
+          ENDHTML
       - name: Install and build
-        run: npm ci && npm run build
+        run: |
+          npm ci
+          node node_modules/esbuild/install.js
+          npm run build
       - name: Use built editor as the site
         run: node scripts/prepare-pages.mjs
       - name: Show published HTML (must be assets/*.js, never /src/*.tsx)
@@ -41,8 +146,8 @@ jobs:
             exit 1
           fi
           grep -q '/Holobox-editor/assets/' dist/index.html
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 
@@ -54,4 +159,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

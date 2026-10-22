@@ -58,13 +58,17 @@ export function HubScreen() {
         return;
       }
       if (loaded.source === 'json') {
-        setPublicTitle(loaded.scenario.meta.title);
-        setPublicQuestions(
-          loaded.scenario.steps.map((step) => ({
-            name: step.stepName,
-            question: step.question,
-          })),
-        );
+        const questions = loaded.scenario.steps.flatMap((step) => {
+          const name = step.stepName?.trim() ?? '';
+          if (name === '') {
+            return [];
+          }
+          return [{ name, question: step.question }];
+        });
+        if (questions.length > 0) {
+          setPublicTitle(loaded.scenario.meta.title);
+          setPublicQuestions(questions);
+        }
       }
       setPublicChecked(true);
     });

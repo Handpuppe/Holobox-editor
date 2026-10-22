@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <link rel="icon" href="/Holobox-editor/favicon.svg" type="image/svg+xml" />
+    <meta name="description" content="Phosaner: gesprekstechnieken met fictieve cliënten." />
+    <title>Phosaner — Scenario-gedreven holografisch onderwijs.</title>
+    <style>
+      html,
+      body,
+      #root {
+        background: #ffffff;
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+    <script type="module" crossorigin src="/Holobox-editor/assets/main-DMU6iOOp.js"></script>
+    <link rel="modulepreload" crossorigin href="/Holobox-editor/assets/simulationReducer-DReqGgDb.js">
+    <link rel="stylesheet" crossorigin href="/Holobox-editor/assets/simulationReducer-BMUl4S8W.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (function () {
+        var host = location.hostname;
+        if (host !== '127.0.0.1' && host !== 'localhost') return;
+        var left = 40;
+        function ping() {
+          fetch('/Holobox-editor/editor-api/editor-alive', { method: 'POST' }).catch(
+            function () {},
+          );
+        }
+        ping();
+        var timer = setInterval(function () {
+          left -= 1;
+          if (left <= 0) {
+            clearInterval(timer);
+            return;
+          }
+          ping();
+        }, 400);
+      })();
+    </script>
+  </body>
+</html>

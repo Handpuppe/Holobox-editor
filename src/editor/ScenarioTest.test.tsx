@@ -416,4 +416,33 @@ describe('ScenarioTest', () => {
     expect(screen.queryByTestId('score-value')).not.toBeInTheDocument();
     expect(screen.queryByText('Competentie scores')).not.toBeInTheDocument();
   });
+
+  it('puts chosen answer feedback in the Feedback column and leaves a blank field empty', async () => {
+    const user = userEvent.setup();
+    const nursing = nursingWithLines();
+    const first = nursing.steps[0];
+    if (!first) {
+      throw new Error('lege stap ontbreekt');
+    }
+    first.options = first.options.map((option) =>
+      option.quality === 'high' ? { ...option, answerFeedback: 'Let op de ademhaling.' } : option,
+    ) as NursingStep['options'];
+    render(
+      <ScenarioTest
+        module="verpleegkunde"
+        scenario={cloneScenario()}
+        nursing={nursing}
+        onClose={() => undefined}
+      />,
+    );
+    await user.click(screen.getByTestId('test-option-high'));
+    await user.click(screen.getByTestId('btn-test-continue'));
+    await user.click(screen.getByTestId('test-option-partial'));
+    await user.click(screen.getByTestId('btn-test-continue'));
+    expect(screen.getByRole('columnheader', { name: 'Feedback' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Opmerking' })).not.toBeInTheDocument();
+    const cells = screen.getAllByTestId('test-report-feedback');
+    expect(cells[0]).toHaveTextContent('Let op de ademhaling.');
+    expect(cells[1]?.textContent).toBe('');
+  });
 });

@@ -98,6 +98,8 @@ export interface StudentOption {
   fatigueDelta: number;
   delayedFeedback: string;
   educationalRationale: string;
+  /** Tekst in het eindrapport bij dit gekozen antwoord. Leeg mag. Oude scenario's laten dit weg. */
+  answerFeedback?: string;
   flags?: Partial<SessionFlags>;
 }
 

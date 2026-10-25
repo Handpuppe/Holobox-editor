@@ -155,13 +155,29 @@ function TestControls({
   );
 }
 
+interface TestReportRow {
+  key: string;
+  question: string;
+  answer: string;
+  feedback: string;
+}
+
+function reportFeedback(value: string | undefined): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    return '';
+  }
+  return value;
+}
+
 function TestResults({
+  rows,
   durationMs,
   criticalErrors,
   canStepBack,
   onStepBack,
   onClose,
 }: {
+  rows: TestReportRow[];
   durationMs: number;
   criticalErrors: string[];
   canStepBack: boolean;
@@ -175,6 +191,24 @@ function TestResults({
         <p className="muted">
           {copy.durationLabel}: {formatDuration(durationMs)}
         </p>
+        <table className="test-report" data-testid="test-report">
+          <thead>
+            <tr>
+              <th scope="col">Vraag</th>
+              <th scope="col">Gekozen antwoord</th>
+              <th scope="col">Feedback</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} data-testid="test-report-row">
+                <td>{row.question}</td>
+                <td>{row.answer}</td>
+                <td data-testid="test-report-feedback">{row.feedback}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
         {criticalErrors.length > 0 ? (
           <ul className="list" data-testid="critical-errors">
             {criticalErrors.map((item) => (
@@ -227,9 +261,20 @@ function NursingScenarioTest({
     setReplay(previous.replay);
   };
   const canStepBack = pendingId !== null || history.length > 0;
+  const reportRows = session.history.map((event, index) => {
+    const answered = scenario.steps.find((item) => item.id === event.stepId);
+    const option = answered?.options.find((item) => item.id === event.optionId);
+    return {
+      key: `${event.id}-${String(index)}`,
+      question: answered?.question ?? '',
+      answer: option?.text ?? '',
+      feedback: reportFeedback(option?.answerFeedback),
+    };
+  });
   if (session.status === 'completed') {
     return (
       <TestResults
+        rows={reportRows}
         durationMs={session.accumulatedActiveMs}
         criticalErrors={session.criticalErrors}
         canStepBack={canStepBack}
@@ -362,9 +407,20 @@ function LogopedieScenarioTest({ scenario, onClose }: { scenario: Scenario; onCl
     setReplay(previous.replay);
   };
   const canStepBack = pendingId !== null || history.length > 0;
+  const reportRows = session.history.map((event, index) => {
+    const answered = scenario.nodes.find((item) => item.id === event.nodeId);
+    const option = answered?.options.find((item) => item.id === event.optionId);
+    return {
+      key: `${event.id}-${String(index)}`,
+      question: answered?.prompt.text ?? '',
+      answer: option?.text ?? '',
+      feedback: reportFeedback(option?.answerFeedback),
+    };
+  });
   if (session.status === 'awaiting_conclusion' || session.status === 'completed') {
     return (
       <TestResults
+        rows={reportRows}
         durationMs={session.accumulatedActiveMs}
         criticalErrors={[]}
         canStepBack={canStepBack}

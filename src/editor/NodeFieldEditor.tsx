@@ -2,7 +2,12 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { OptionQuality, Scenario, StudentOption } from '../domain/types';
 import type { NursingOption, NursingScenario, NursingStep } from '../nursing/types';
 import { EDITOR_FACES } from './faces';
-import { AnswerColumnMedia } from './NursingEditor';
+import {
+  AnswerColumnMedia,
+  AnswerFeedbackField,
+  answerFeedbackValue,
+  withAnswerFeedback,
+} from './NursingEditor';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
 import type { NodeEditTarget } from './NodeOverview';
 import {
@@ -259,6 +264,23 @@ function NursingNodeEdit({
           }
         />
       </div>
+      <AnswerFeedbackField
+        optionId={option.id}
+        rows={3}
+        value={answerFeedbackValue(option.answerFeedback)}
+        onChange={(answerFeedback) =>
+          setLocal(
+            replaceStep(
+              local,
+              replaceNursingOption(
+                step,
+                optionIndex,
+                withAnswerFeedback(option, answerFeedback),
+              ),
+            ),
+          )
+        }
+      />
       <AnswerColumnMedia
         draft={local}
         step={step}
@@ -375,6 +397,20 @@ function LogopedieNodeEdit({ target, scenario, onSave, onClose }: LogopedieNodeE
           }
         />
       </div>
+      <AnswerFeedbackField
+        optionId={option.id}
+        rows={3}
+        value={answerFeedbackValue(option.answerFeedback)}
+        onChange={(answerFeedback) =>
+          updateNode(
+            replaceLogopedieOption(
+              node,
+              optionIndex,
+              withAnswerFeedback(option, answerFeedback),
+            ),
+          )
+        }
+      />
       <div className={fieldClass(option.clientResponse.text)}>
         <label htmlFor={`client-response-${option.id}`}>Reactie van de cliënt</label>
         <textarea

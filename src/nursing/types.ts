@@ -54,6 +54,8 @@ export interface NursingOption {
   answerCardSlotId?: string;
   /** Score van dit antwoord: -1, 0, 1, 2 of 3. Standaard 1. */
   answerScore?: AnswerScore;
+  /** Tekst in het eindrapport bij dit gekozen antwoord. Leeg mag. Oude scenario's laten dit weg. */
+  answerFeedback?: string;
   nextStepId: string;
 }
 

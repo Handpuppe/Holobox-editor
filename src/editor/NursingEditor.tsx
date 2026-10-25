@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { publicResourceUrl } from '../media/logopedie/resolveAvatar';
-import { mediaItemFromRelativePath } from '../media/matching';
+import { createPortal } from 'react-dom';
 import type { OptionQuality } from '../domain/types';
 import {
   ANSWER_SCORES,
@@ -11,7 +10,6 @@ import {
   type NursingStep,
 } from '../nursing/types';
 import { appendNursingStep } from './nursingSteps';
-import { nursingSaveIssues } from './saveChecks';
 import { NursingAnswerVideos } from './NursingAnswerVideos';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
 import {
@@ -39,6 +37,7 @@ interface NursingEditorProps {
   onSelectStep: (id: string) => void;
   previewOptionIndex: number;
   onPreviewOption: (index: number) => void;
+  stepHost?: HTMLElement | null;
 }
 
 function replaceStep(
@@ -63,14 +62,53 @@ function nursingStepTitle(step: NursingStep, index: number): string {
   return name || `Vraag ${index + 1}`;
 }
 
-export function previewQuestionHeading(step: NursingStep | undefined, index: number): string {
-  const named = step?.stepName?.trim().match(/^Vraag\.(\d+)$/);
-  const number = named?.[1] ?? String(index + 1);
-  return `Voorbeeld - Vraag.${number}`;
-}
-
 function fieldClass(value: string, required: boolean): string {
   return required && !value.trim() ? 'field is-empty' : 'field';
+}
+
+export function answerFeedbackValue(value: string | undefined): string {
+  return typeof value === 'string' ? value : '';
+}
+
+export function withAnswerFeedback<T extends { answerFeedback?: string }>(
+  option: T,
+  value: string,
+): T {
+  if (value.length === 0) {
+    if (option.answerFeedback == null) {
+      return option;
+    }
+    const next = { ...option };
+    delete next.answerFeedback;
+    return next;
+  }
+  return { ...option, answerFeedback: value };
+}
+
+export function AnswerFeedbackField({
+  optionId,
+  value,
+  rows,
+  onChange,
+}: {
+  optionId: string;
+  value: string;
+  rows: number;
+  onChange: (value: string) => void;
+}) {
+  const id = `nursing-option-feedback-${optionId}`;
+  return (
+    <div className="field">
+      <label htmlFor={id}>Feedback bij dit gekozen antwoord</label>
+      <textarea
+        id={id}
+        data-testid={id}
+        rows={rows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
 }
 
 export function AnswerScoreField({
@@ -155,108 +193,6 @@ export function AnswerColumnMedia({
   );
 }
 
-function slotMediaPath(
-  draft: NursingScenario,
-  slotId: string | undefined,
-  staged: StagedNursingMediaOp[],
-): { path: string | null; previewUrl: string | null } {
-  if (!slotId) {
-    return { path: null, previewUrl: null };
-  }
-  const slot = draft.mediaSlots.find((item) => item.slotId === slotId);
-  const path = slot?.primaryMedia ?? null;
-  if (!path) {
-    return { path: null, previewUrl: null };
-  }
-  const stagedOp = staged.find((item) => item.relativePath === path);
-  if (stagedOp && stagedOp.type !== 'delete') {
-    return { path, previewUrl: stagedOp.previewUrl };
-  }
-  if (stagedOp?.type === 'delete') {
-    return { path: null, previewUrl: null };
-  }
-  return { path, previewUrl: publicResourceUrl(path) };
-}
-
-export function NursingPreviewAside({
-  draft,
-  stagedMedia,
-  selectedStepId,
-  previewOptionIndex,
-}: {
-  draft: NursingScenario;
-  stagedMedia: StagedNursingMediaOp[];
-  selectedStepId: string;
-  previewOptionIndex: number;
-}) {
-  const step = draft.steps.find((item) => item.id === selectedStepId) ?? draft.steps[0];
-  const stepIndex = step ? draft.steps.findIndex((item) => item.id === step.id) : 0;
-  const previewOption = step?.options[previewOptionIndex] ?? step?.options[0];
-  const previewSlotId =
-    previewOption?.answerCardSlotId ?? previewOption?.mediaSlotId ?? step?.mediaSlotId;
-  const previewMedia = slotMediaPath(draft, previewSlotId, stagedMedia);
-  const previewPlaceholder =
-    (previewOption?.answerCardMode === 'placeholder'
-      ? previewOption.answerCardPlaceholder
-      : step?.stepVideoMode === 'placeholder'
-        ? step.stepVideoPlaceholder
-        : ''
-    )?.trim() ?? '';
-  return (
-    <aside className="editor-preview editor-header-preview editor-card">
-      <h2 data-testid="preview-nursing-title">
-        {previewQuestionHeading(step, stepIndex < 0 ? 0 : stepIndex)}
-      </h2>
-      <p className="muted" data-testid="preview-nursing-phase">
-        {step?.phaseLabel}
-      </p>
-      <p data-testid="preview-nursing-question">{step?.question}</p>
-      <p className="muted" data-testid="preview-nursing-option">
-        {previewOption?.text}
-      </p>
-      <div className="editor-preview-stage" data-testid="editor-nursing-preview-stage">
-        {previewMedia.previewUrl ? (
-          /\.(mp4|webm|mov|m4v)$/i.test(previewMedia.path ?? '') ? (
-            <video
-              src={previewMedia.previewUrl}
-              className="editor-preview-video"
-              data-testid="editor-nursing-preview-video"
-              controls
-              playsInline
-              preload="metadata"
-            >
-              <track
-                kind="captions"
-                srcLang="nl"
-                label="Nederlands"
-                src="data:text/vtt,WEBVTT%0A%0A00:00.000%20--%3E%2000:59.000%0AVoorbeeldvideo"
-              />
-            </video>
-          ) : (
-            <img
-              src={previewMedia.previewUrl}
-              alt=""
-              className="editor-media-preview-img"
-              data-testid="editor-nursing-preview-image"
-            />
-          )
-        ) : previewPlaceholder ? (
-          <div className="video-placeholder-stage" data-testid="editor-nursing-placeholder-preview">
-            <p>{previewPlaceholder}</p>
-          </div>
-        ) : (
-          <p className="muted">Geen video voor dit antwoord.</p>
-        )}
-      </div>
-      {previewMedia.path ? (
-        <p className="muted">
-          {mediaItemFromRelativePath(previewMedia.path, 'verpleegkunde').relativePath}
-        </p>
-      ) : null}
-    </aside>
-  );
-}
-
 export function NursingEditor({
   draft,
   onChange,
@@ -267,8 +203,8 @@ export function NursingEditor({
   onSelectStep,
   previewOptionIndex,
   onPreviewOption,
+  stepHost = null,
 }: NursingEditorProps) {
-  const issues = useMemo(() => nursingSaveIssues(draft, stagedMedia), [draft, stagedMedia]);
   const mediaPathOptions = useMemo(() => {
     const seed = new Map<string, NursingMediaItem>();
     for (const slot of draft.mediaSlots) {
@@ -296,26 +232,7 @@ export function NursingEditor({
     onPreviewOption(0);
   }
 
-  return (
-    <>
-      <section
-        className={`editor-issues${issues.length > 0 ? ' has-issues' : ''}`}
-        data-testid="editor-nursing-issues"
-        aria-live="polite"
-      >
-        <h2>Controle</h2>
-        {issues.length === 0 ? (
-          <p data-testid="editor-nursing-issues-ok">Geen validatiefouten.</p>
-        ) : (
-          <ul data-testid="editor-nursing-issues-list">
-            {issues.map((issue) => (
-              <li key={issue}>{issue}</li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <div className="editor-layout">
+  const steps = (
         <nav className="editor-nodes" aria-label="Stappen">
           <h2>Stappen</h2>
           <ol>
@@ -389,8 +306,12 @@ export function NursingEditor({
             Precies drie antwoorden per stap. Extra antwoorden kan het model niet.
           </p>
         </nav>
+  );
 
-        {step ? (
+  return (
+    <>
+      {stepHost ? createPortal(steps, stepHost) : steps}
+      {step ? (
           <main className="editor-main" id="inhoud">
             <section className="editor-card">
               <h2>Patiënt en scenario</h2>
@@ -580,6 +501,20 @@ export function NursingEditor({
                             }
                           />
                         </div>
+                        <AnswerFeedbackField
+                          optionId={option.id}
+                          rows={2}
+                          value={answerFeedbackValue(option.answerFeedback)}
+                          onChange={(answerFeedback) =>
+                            updateSelected(
+                              replaceOption(
+                                step,
+                                optionIndex,
+                                withAnswerFeedback(option, answerFeedback),
+                              ),
+                            )
+                          }
+                        />
                         {columnQuality ? (
                           <AnswerColumnMedia
                             draft={draft}
@@ -599,7 +534,6 @@ export function NursingEditor({
             </section>
           </main>
         ) : null}
-      </div>
     </>
   );
 }

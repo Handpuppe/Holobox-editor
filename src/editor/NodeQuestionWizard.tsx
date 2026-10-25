@@ -1,7 +1,13 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { OptionQuality } from '../domain/types';
 import type { NursingOption, NursingScenario, NursingStep } from '../nursing/types';
-import { AnswerColumnMedia, AnswerScoreField } from './NursingEditor';
+import {
+  AnswerColumnMedia,
+  AnswerFeedbackField,
+  AnswerScoreField,
+  answerFeedbackValue,
+  withAnswerFeedback,
+} from './NursingEditor';
 import { NursingStepVideoCard } from './NursingStepVideoCard';
 import {
   applyStagedNursingMedia,
@@ -359,6 +365,19 @@ function AnswerStep({
           }
         />
       </div>
+      <AnswerFeedbackField
+        optionId={option.id}
+        rows={3}
+        value={answerFeedbackValue(option.answerFeedback)}
+        onChange={(answerFeedback) =>
+          onChange(
+            replaceStep(
+              draft,
+              replaceOption(step, optionIndex, withAnswerFeedback(option, answerFeedback)),
+            ),
+          )
+        }
+      />
       <AnswerColumnMedia
         draft={draft}
         step={step}

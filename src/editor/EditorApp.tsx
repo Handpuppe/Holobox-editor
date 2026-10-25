@@ -30,7 +30,7 @@ import {
 import { newCaseFileName, overlayScenarioFileName } from './newCaseFile';
 import { saveEnvelopeAsNewCase } from './saveAsCase';
 import { saveLogopedieMediaOp, type StagedMediaOp } from './logopedieMedia';
-import { NursingEditor, NursingPreviewAside } from './NursingEditor';
+import { NursingEditor } from './NursingEditor';
 import {
   clearHeldEditorPassword,
   heldEditorPassword,
@@ -159,6 +159,9 @@ export function EditorApp() {
   const [editorModule, setEditorModule] = useState<EditorModule>('verpleegkunde');
   const [scenario, setScenario] = useState<Scenario>(() => cloneScenario());
   const [nursingDraft, setNursingDraft] = useState<NursingScenario>(() => emptyNursingScenario());
+  const nursingDraftRef = useRef(nursingDraft);
+  const [stepHost, setStepHost] = useState<HTMLDivElement | null>(null);
+  const saveChain = useRef(Promise.resolve());
   const [draftNodeIds, setDraftNodeIds] = useState<string[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState(scenario.startNodeId);
   const [selectedStepId, setSelectedStepId] = useState(nursingDraft.meta.startStepId);
@@ -199,6 +202,10 @@ export function EditorApp() {
   const holoboxExportName = useRef<string | null>(null);
   const pendingImportRef = useRef<PendingHoloboxImport | null>(null);
   const saveOnThisPc = canSaveToThisCopy();
+
+  useEffect(() => {
+    nursingDraftRef.current = nursingDraft;
+  }, [nursingDraft]);
 
   useEffect(() => {
     document.title = 'Phosaner Casus Editor';
@@ -398,10 +405,12 @@ export function EditorApp() {
     const added = appendNursingStep(nursingDraft);
     markNursingDirty();
     rememberQuestionFolders(nursingDraft, added.scenario);
+    nursingDraftRef.current = added.scenario;
     setNursingDraft(added.scenario);
     setDraftNodeIds((ids) => [...ids, added.step.id]);
     setSelectedStepId(added.step.id);
     setNursingPreviewOptionIndex(0);
+    saveInBackground(added.scenario);
   }
 
   function deleteNodeQuestion(stepId: string) {
@@ -757,40 +766,84 @@ export function EditorApp() {
     void saveAsNewCase();
   }
 
+  async function persistNursingDraft(
+    draft: NursingScenario,
+    media: StagedNursingMediaOp[],
+    quiet: boolean,
+  ) {
+    if (!quiet) {
+      setSaving(true);
+      setSaveError(null);
+      setSaveMessage(null);
+      setSaveBlockIssues(null);
+    }
+    const result = await saveNursingEnvelopeToCopy(draft);
+    if (!result.ok) {
+      if (!quiet) {
+        setSaving(false);
+      }
+      setSaveError(result.error);
+      return;
+    }
+    try {
+      for (const op of media) {
+        await saveNursingMediaOp(op);
+      }
+      setNursingStagedMedia((current) =>
+        current.filter((item) => !media.some((op) => op.relativePath === item.relativePath)),
+      );
+      try {
+        setNursingDiskMedia(await listNursingMedia());
+      } catch {
+        // catalog refresh is optional; JSON and files are already written
+      }
+      setNursingCaseFile(overlayScenarioFileName('verpleegkunde'));
+      setNursingLoadNotice(null);
+      if (quiet) {
+        setSaveError(null);
+      } else {
+        setSaveMessage(
+          'Opgeslagen in deze kopie. Start de simulator opnieuw om de wijziging te zien.',
+        );
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Media opslaan is mislukt.');
+    } finally {
+      if (!quiet) {
+        setSaving(false);
+      }
+    }
+  }
+
+  function saveInBackground(draft: NursingScenario) {
+    if (!saveOnThisPc || editorModule !== 'verpleegkunde') {
+      return;
+    }
+    if (nursingSaveIssues(draft, nursingStagedMedia).length > 0) {
+      return;
+    }
+    const media = nursingStagedMedia;
+    saveChain.current = saveChain.current
+      .then(() => persistNursingDraft(draft, media, true))
+      .catch(() => undefined);
+  }
+
+  function selectNursingStep(stepId: string) {
+    if (stepId !== selectedStepId) {
+      saveInBackground(nursingDraftRef.current);
+    }
+    setSelectedStepId(stepId);
+  }
+
   async function saveToCopy() {
+    if (editorModule === 'verpleegkunde') {
+      await persistNursingDraft(nursingDraft, nursingStagedMedia, false);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     setSaveMessage(null);
     setSaveBlockIssues(null);
-    if (editorModule === 'verpleegkunde') {
-      const result = await saveNursingEnvelopeToCopy(nursingDraft);
-      if (!result.ok) {
-        setSaving(false);
-        setSaveError(result.error);
-        return;
-      }
-      try {
-        for (const op of nursingStagedMedia) {
-          await saveNursingMediaOp(op);
-        }
-        setNursingStagedMedia([]);
-        try {
-          setNursingDiskMedia(await listNursingMedia());
-        } catch {
-          // catalog refresh is optional; JSON and files are already written
-        }
-        setNursingCaseFile(overlayScenarioFileName('verpleegkunde'));
-        setNursingLoadNotice(null);
-        setSaveMessage(
-          'Opgeslagen in deze kopie. Start de simulator opnieuw om de wijziging te zien.',
-        );
-      } catch (error) {
-        setSaveError(error instanceof Error ? error.message : 'Media opslaan is mislukt.');
-      } finally {
-        setSaving(false);
-      }
-      return;
-    }
     const result = await saveEnvelopeToCopy(scenario);
     if (!result.ok) {
       setSaving(false);
@@ -1442,18 +1495,49 @@ export function EditorApp() {
     );
   }
 
+  const nursingIssues = nursingSaveIssues(nursingDraft, nursingStagedMedia);
   return (
     <div className="scenario-editor" data-testid="screen-scenario-editor" lang="nl">
-      <header className="editor-header">
-        <div>
-          <img
-            className="editor-banner"
-            data-testid="editor-banner"
-            src={editorBanner}
-            alt="Phosaner Casus Editor"
-          />
-        </div>
-        <div className="editor-header-side">
+      <img
+        className="editor-banner"
+        data-testid="editor-banner"
+        src={editorBanner}
+        alt="Phosaner Casus Editor"
+      />
+      <section
+        className={`editor-issues editor-control${nursingIssues.length > 0 ? ' has-issues' : ''}`}
+        data-testid="editor-nursing-issues"
+        aria-live="polite"
+      >
+        <h2>Controle</h2>
+        <nav className="editor-module-tabs" aria-label="Module">
+          <button
+            type="button"
+            className="is-active"
+            data-testid="editor-module-nursing"
+            onClick={() => selectEditorModule('verpleegkunde')}
+          >
+            Gesprekstechnieken
+          </button>
+        </nav>
+        <p className="editor-loaded" data-testid="editor-loaded-source">
+          {activeLoadedLabel}
+        </p>
+        <p className="editor-notice" data-testid="editor-credit">
+          {APP_VERSION} Made by Rutger van Horssen
+        </p>
+        {nursingIssues.length === 0 ? (
+          <p data-testid="editor-nursing-issues-ok">Geen validatiefouten.</p>
+        ) : (
+          <ul data-testid="editor-nursing-issues-list">
+            {nursingIssues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <div className="editor-workspace">
+        <aside className="editor-side">
           <div className="editor-actions">
             <button
               type="button"
@@ -1588,33 +1672,9 @@ export function EditorApp() {
               </p>
             ) : null}
           </div>
-          <NursingPreviewAside
-            draft={nursingDraft}
-            stagedMedia={nursingStagedMedia}
-            selectedStepId={selectedStepId}
-            previewOptionIndex={nursingPreviewOptionIndex}
-          />
-        </div>
-      </header>
-
-      <nav className="editor-module-tabs" aria-label="Module">
-        <button
-          type="button"
-          className="is-active"
-          data-testid="editor-module-nursing"
-          onClick={() => selectEditorModule('verpleegkunde')}
-        >
-          Gesprekstechnieken
-        </button>
-      </nav>
-
-      <p className="editor-loaded" data-testid="editor-loaded-source">
-        {activeLoadedLabel}
-      </p>
-      <p className="editor-notice" data-testid="editor-credit">
-        {APP_VERSION} Made by Rutger van Horssen
-      </p>
-
+          <div ref={setStepHost} data-testid="editor-step-host" />
+        </aside>
+        <div className="editor-work">
       {activeLoadNotice ? (
         <p className="editor-load-notice" data-testid="editor-load-notice" role="status">
           {activeLoadNotice}
@@ -1987,6 +2047,7 @@ export function EditorApp() {
         <NursingEditor
           draft={nursingDraft}
           onChange={(next) => {
+            nursingDraftRef.current = next;
             markNursingDirty();
             rememberQuestionFolders(nursingDraft, next);
             setNursingDraft(next);
@@ -2002,9 +2063,10 @@ export function EditorApp() {
           }}
           diskMedia={nursingDiskMedia}
           selectedStepId={selectedStepId}
-          onSelectStep={setSelectedStepId}
+          onSelectStep={selectNursingStep}
           previewOptionIndex={nursingPreviewOptionIndex}
           onPreviewOption={setNursingPreviewOptionIndex}
+          stepHost={stepHost}
         />
         <NursingMediaPanel
           staged={nursingStagedMedia}
@@ -2027,6 +2089,8 @@ export function EditorApp() {
           }}
         />
       </>
+        </div>
+      </div>
     </div>
   );
 }

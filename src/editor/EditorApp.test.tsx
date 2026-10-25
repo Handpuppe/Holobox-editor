@@ -118,9 +118,7 @@ describe('EditorApp', () => {
     expect(screen.queryByText('Wat zegt de student?')).not.toBeInTheDocument();
     expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
     expect(screen.getByTestId('editor-nursing-media')).toBeInTheDocument();
-    expect(screen.getByTestId('editor-nursing-preview-stage')).not.toHaveStyle({
-      transform: 'scale(1.5)',
-    });
+    expect(screen.queryByTestId('editor-nursing-preview-stage')).not.toBeInTheDocument();
     expect(screen.getByTestId('btn-open-json')).toHaveTextContent('Casus openen');
     expect(screen.getByTestId('btn-download-json')).toBeVisible();
     expect(screen.getByTestId('btn-start-test')).toHaveTextContent('Test modus');
@@ -157,12 +155,13 @@ describe('EditorApp', () => {
       expect(button).toHaveClass('btn-secondary');
     }
     const actions = screen.getByTestId('btn-nodes').closest('.editor-actions');
-    const preview = screen.getByTestId('editor-nursing-preview-stage').closest('.editor-preview');
-    expect(preview).toHaveClass('editor-card');
-    expect(actions?.parentElement).toBe(preview?.parentElement);
-    expect(actions?.parentElement).toHaveClass('editor-header-side');
-    expect(document.querySelector('.editor-layout .editor-preview')).toBeNull();
+    expect(actions?.parentElement).toHaveClass('editor-side');
+    expect(screen.getByTestId('nursing-step-sheet').closest('.editor-work')).toBeTruthy();
+    expect(screen.getByTestId('nursing-step-sheet').closest('.editor-side')).toBeNull();
+    expect(document.querySelector('.editor-header-preview')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Printlijst' })).not.toBeInTheDocument();
+    const answers = screen.getByTestId('nursing-step-sheet').querySelector('.nursing-step-answers');
+    expect(answers?.children.length).toBe(3);
 
     fireEvent.change(screen.getByTestId('nursing-question'), {
       target: { value: 'Aangepaste gesprekstechniekvraag in de editor.' },
@@ -170,7 +169,7 @@ describe('EditorApp', () => {
     fireEvent.change(screen.getByTestId('nursing-option-text-n-1-high'), {
       target: { value: 'Aangepast goed antwoord in de editor.' },
     });
-    expect(screen.getByTestId('preview-nursing-question')).toHaveTextContent(
+    expect(screen.getByTestId('nursing-question')).toHaveValue(
       'Aangepaste gesprekstechniekvraag in de editor.',
     );
 
@@ -926,6 +925,254 @@ describe('EditorApp', () => {
     );
   });
 
+  it('saves in the background when the editor switches questions', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
+      });
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes('save-verpleegkunde')),
+      ).toBe(false);
+      fillNursingTexts('Vraag een, nog niet gewisseld.');
+      await user.click(screen.getByTestId('btn-add-nursing-step'));
+      await waitFor(() => {
+        expect(
+          fetchMock.mock.calls.some((call) => String(call[0]).includes('save-verpleegkunde')),
+        ).toBe(true);
+      });
+      fireEvent.change(screen.getByTestId('nursing-step-name-n-1'), {
+        target: { value: 'Stapnaam' },
+      });
+      await user.click(screen.getByTestId('nursing-step-tab-n-1'));
+      fireEvent.change(screen.getByTestId('nursing-question'), {
+        target: { value: 'Vraag een na wisselen.' },
+      });
+      await user.click(screen.getByTestId('nursing-step-tab-n-extra-1'));
+      await waitFor(() => {
+        const posts = fetchMock.mock.calls.filter((call) =>
+          String(call[0]).includes('save-verpleegkunde'),
+        );
+        const last = JSON.parse(String(posts.at(-1)?.[1]?.body)) as {
+          steps: Array<{ question: string }>;
+        };
+        expect(last.steps[0]?.question).toBe('Vraag een na wisselen.');
+      });
+      expect(screen.queryByTestId('editor-save-ok')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('editor-save-error')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('dialog-save-blocked')).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('stays quiet when a question switch has nothing to save yet', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
+      });
+      await user.click(screen.getByTestId('btn-add-nursing-step'));
+      expect(screen.getByTestId('nursing-step-name')).toHaveValue('Vraag.2');
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes('save-verpleegkunde')),
+      ).toBe(false);
+      expect(screen.queryByTestId('editor-save-error')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('dialog-save-blocked')).not.toBeInTheDocument();
+      await user.click(screen.getByTestId('btn-save-json'));
+      expect(screen.getByTestId('dialog-save-blocked')).toBeInTheDocument();
+      expect(
+        fetchMock.mock.calls.some((call) => String(call[0]).includes('save-verpleegkunde')),
+      ).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('saves in the background when Node Editor creates a question', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent('Geladen: nieuwe casus');
+      });
+      fillNursingTexts('Vraag voor een nieuwe node.');
+      await user.click(screen.getByTestId('btn-nodes'));
+      await user.click(screen.getByTestId('btn-node-new-question'));
+      await waitFor(() => {
+        const posts = fetchMock.mock.calls.filter((call) =>
+          String(call[0]).includes('save-verpleegkunde'),
+        );
+        expect(posts.length).toBeGreaterThan(0);
+        const body = JSON.parse(String(posts.at(-1)?.[1]?.body)) as {
+          steps: Array<{ id: string; question: string }>;
+        };
+        expect(body.steps.some((step) => step.id === 'n-extra-1')).toBe(true);
+        expect(body.steps[0]?.question).toBe('Vraag voor een nieuwe node.');
+      });
+      expect(screen.queryByTestId('editor-save-ok')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('editor-save-error')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('dialog-save-blocked')).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps answer feedback after save and shows it in the test report', async () => {
+    const user = userEvent.setup();
+    let saved = '';
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (init?.method === 'POST' && target.includes('save-verpleegkunde')) {
+        saved = String(init.body ?? '');
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (saved && target.includes('verpleegkunde.json')) {
+        return new Response(saved, {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('missing', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const view = render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-loaded-source')).toHaveTextContent(
+          'Geladen: nieuwe casus',
+        );
+      });
+      for (const quality of ['high', 'partial', 'inappropriate']) {
+        const choice = screen.getByTestId(
+          `nursing-option-text-n-1-${quality}`,
+        ) as HTMLTextAreaElement;
+        const feedback = screen.getByTestId(
+          `nursing-option-feedback-n-1-${quality}`,
+        ) as HTMLTextAreaElement;
+        expect(choice.parentElement?.nextElementSibling).toContainElement(feedback);
+        expect(feedback.rows).toBe(choice.rows);
+        expect(feedback).toHaveValue('');
+        expect(feedback.closest('.field')).not.toHaveClass('is-empty');
+      }
+      expect(screen.getAllByText('Feedback bij dit gekozen antwoord')).toHaveLength(3);
+      fillNursingTexts('Vraag met feedback.');
+      fireEvent.change(screen.getByTestId('nursing-option-feedback-n-1-high'), {
+        target: { value: 'Dit antwoord telt mee.' },
+      });
+      await user.click(screen.getByTestId('btn-save-json'));
+      expect(await screen.findByTestId('editor-save-ok')).toBeInTheDocument();
+      const stored = JSON.parse(saved) as {
+        steps: Array<{ options: Array<{ answerFeedback?: string; quality: string }> }>;
+      };
+      expect(stored.steps[0]?.options.find((option) => option.quality === 'high')?.answerFeedback).toBe(
+        'Dit antwoord telt mee.',
+      );
+      expect(
+        stored.steps[0]?.options.find((option) => option.quality === 'partial')?.answerFeedback,
+      ).toBeUndefined();
+
+      view.unmount();
+      render(<EditorApp />);
+      await waitFor(() => {
+        expect(screen.getByTestId('nursing-option-feedback-n-1-high')).toHaveValue(
+          'Dit antwoord telt mee.',
+        );
+      });
+      expect(screen.getByTestId('nursing-option-feedback-n-1-partial')).toHaveValue('');
+      expect(screen.getByTestId('nursing-question')).toHaveValue('Vraag met feedback.');
+
+      await user.click(screen.getByTestId('btn-start-test'));
+      await user.click(screen.getByTestId('test-option-high'));
+      await user.click(screen.getByTestId('btn-test-continue'));
+      expect(screen.getByTestId('screen-scenario-test-results')).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Opmerking' })).not.toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Feedback' })).toBeInTheDocument();
+      expect(screen.getByTestId('test-report-feedback')).toHaveTextContent('Dit antwoord telt mee.');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('stores answer feedback from the node editor and from a new question', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('btn-nodes'));
+    await user.click(screen.getByTestId('btn-node-edit-n-1-high'));
+    const editedChoice = screen.getByTestId('nursing-option-text-n-1-high') as HTMLTextAreaElement;
+    const editedFeedback = screen.getByTestId(
+      'nursing-option-feedback-n-1-high',
+    ) as HTMLTextAreaElement;
+    expect(editedChoice.parentElement?.nextElementSibling).toContainElement(editedFeedback);
+    expect(editedFeedback.rows).toBe(editedChoice.rows);
+    fireEvent.change(editedFeedback, { target: { value: 'Feedback uit de node-editor.' } });
+    await user.click(screen.getByTestId('btn-node-edit-save'));
+    await user.click(screen.getByTestId('btn-node-new-question'));
+    const emptyButton = screen.getByRole('button', { name: 'Leeg' });
+    const stepId = emptyButton.getAttribute('data-testid')?.replace('btn-node-empty-', '') ?? '';
+    await user.click(emptyButton);
+    await user.click(screen.getByTestId('btn-node-wizard-next'));
+    await user.click(screen.getByTestId('btn-node-wizard-next'));
+    await user.click(screen.getByTestId('btn-node-wizard-next'));
+    const createdChoice = screen.getByTestId(
+      `nursing-option-text-${stepId}-high`,
+    ) as HTMLTextAreaElement;
+    const createdFeedback = screen.getByTestId(
+      `nursing-option-feedback-${stepId}-high`,
+    ) as HTMLTextAreaElement;
+    expect(createdChoice.parentElement?.nextElementSibling).toContainElement(createdFeedback);
+    expect(createdFeedback.rows).toBe(createdChoice.rows);
+    fireEvent.change(createdFeedback, { target: { value: 'Feedback bij een nieuwe vraag.' } });
+    await user.click(screen.getByTestId('btn-node-wizard-next'));
+    await user.click(screen.getByTestId('btn-node-wizard-next'));
+    await user.click(screen.getByTestId('btn-node-wizard-next'));
+    await user.click(screen.getByTestId('btn-node-wizard-save'));
+    await user.click(screen.getByTestId('btn-nodes-back'));
+    await user.click(screen.getByTestId('nursing-step-tab-n-1'));
+    expect(screen.getByTestId('nursing-option-feedback-n-1-high')).toHaveValue(
+      'Feedback uit de node-editor.',
+    );
+    await user.click(screen.getByTestId(`nursing-step-tab-${stepId}`));
+    expect(screen.getByTestId(`nursing-option-feedback-${stepId}-high`)).toHaveValue(
+      'Feedback bij een nieuwe vraag.',
+    );
+  });
+
   it('loads saved verpleegkunde.json on startup without Open JSON', async () => {
     const draft = emptyNursingScenario();
     draft.meta.title = 'Slechtnieuwsgesprek oefenen';
@@ -1169,16 +1416,14 @@ describe('EditorApp', () => {
     expect(screen.queryByText('Kritieke fout (optioneel)')).not.toBeInTheDocument();
     expect(screen.queryByTestId('nursing-sbar-field')).not.toBeInTheDocument();
     expect(screen.queryByTestId('nursing-feedback-n-1-high')).not.toBeInTheDocument();
-    expect(screen.getByTestId('editor-nursing-preview-stage')).not.toHaveStyle({
-      transform: 'scale(1.5)',
-    });
+    expect(screen.queryByTestId('editor-nursing-preview-stage')).not.toBeInTheDocument();
     expect(screen.queryByTestId('editor-media')).not.toBeInTheDocument();
     expect(screen.getByTestId('editor-nursing-media')).toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId('nursing-question'), {
       target: { value: 'Aangepaste verpleegkundevraag in de editor.' },
     });
-    expect(screen.getByTestId('preview-nursing-question')).toHaveTextContent(
+    expect(screen.getByTestId('nursing-question')).toHaveValue(
       'Aangepaste verpleegkundevraag in de editor.',
     );
 
@@ -1270,9 +1515,7 @@ describe('EditorApp', () => {
       'src',
       'blob:nursing-replace',
     );
-    expect(screen.getByTestId('editor-nursing-preview-stage')).not.toHaveStyle({
-      transform: 'scale(1.5)',
-    });
+    expect(screen.queryByTestId('editor-nursing-preview-stage')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('btn-save-json'));
     expect(await screen.findByTestId('editor-save-ok')).toBeInTheDocument();
     const mediaPosts = fetchMock.mock.calls.filter(
@@ -1778,9 +2021,7 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('nursing-step-video')).toBeInTheDocument();
     expect(screen.getByLabelText('Vraag voor de student')).toBeInTheDocument();
     expect(screen.queryByTestId('logopedie-avatar')).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId('editor-nursing-preview-stage').closest('.editor-preview'),
-    ).toHaveClass('editor-card');
+    expect(screen.queryByTestId('editor-nursing-preview-stage')).not.toBeInTheDocument();
 
     const sheet = screen.getByTestId('nursing-step-sheet');
     const name = screen.getByTestId('nursing-step-name');
@@ -2295,6 +2536,109 @@ describe('EditorApp', () => {
     expect(screen.getByTestId('test-option-high')).toHaveTextContent('Eerst meten');
   });
 
+  it('deletes a question made with Nieuwe vraag and leaves the other cards in place', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('btn-nodes'));
+    const point = (id: string) => {
+      const card = screen.getByTestId(id);
+      return `${card.style.left},${card.style.top}`;
+    };
+    const before = [
+      point('node-question-n-1'),
+      point('node-answer-n-1-high'),
+      point('node-answer-n-1-partial'),
+      point('node-answer-n-1-inappropriate'),
+    ];
+    await user.click(screen.getByTestId('btn-node-new-question'));
+    const emptyButton = screen.getByRole('button', { name: 'Leeg' });
+    const stepId = emptyButton.getAttribute('data-testid')?.replace('btn-node-empty-', '') ?? '';
+    expect(screen.getByTestId(`node-question-${stepId}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`node-answer-${stepId}-high`)).not.toBeInTheDocument();
+    await user.click(screen.getByTestId(`btn-node-menu-${stepId}`));
+    const remove = screen.getByTestId(`btn-node-delete-${stepId}`);
+    expect(remove).toBeEnabled();
+    await user.click(remove);
+    expect(screen.queryByTestId(`node-question-${stepId}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`node-answer-${stepId}-high`)).not.toBeInTheDocument();
+    expect(point('node-question-n-1')).toBe(before[0]);
+    expect(point('node-answer-n-1-high')).toBe(before[1]);
+    expect(point('node-answer-n-1-partial')).toBe(before[2]);
+    expect(point('node-answer-n-1-inappropriate')).toBe(before[3]);
+    await user.click(screen.getByTestId('btn-node-undo'));
+    expect(screen.getByTestId(`node-question-${stepId}`)).toBeInTheDocument();
+    expect(point('node-question-n-1')).toBe(before[0]);
+    expect(point('node-answer-n-1-high')).toBe(before[1]);
+  });
+
+  it('deletes a filled node question with its answers and line, then undo restores them', async () => {
+    const user = userEvent.setup();
+    render(<EditorApp />);
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-module-nursing')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('btn-nodes'));
+    const point = (id: string) => {
+      const card = screen.getByTestId(id);
+      return `${card.style.left},${card.style.top}`;
+    };
+    await user.click(screen.getByTestId('btn-node-new-question'));
+    const emptyButton = screen.getByRole('button', { name: 'Leeg' });
+    const stepId = emptyButton.getAttribute('data-testid')?.replace('btn-node-empty-', '') ?? '';
+    await user.click(emptyButton);
+    for (let step = 0; step < 6; step += 1) {
+      await user.click(screen.getByTestId('btn-node-wizard-next'));
+    }
+    await user.click(screen.getByTestId('btn-node-wizard-save'));
+    expect(screen.getByTestId(`node-answer-${stepId}-high`)).toBeInTheDocument();
+    const kept = [
+      point('node-question-n-1'),
+      point('node-answer-n-1-high'),
+      point('node-answer-n-1-partial'),
+      point('node-answer-n-1-inappropriate'),
+    ];
+    const previous = document.elementFromPoint;
+    document.elementFromPoint = () =>
+      document.querySelector(`[data-port="q-in-${stepId}"]`) as Element;
+    try {
+      const from = document.querySelector('[data-port="a-out-n-1-high"]');
+      if (!(from instanceof HTMLElement)) {
+        throw new Error('Uitgang ontbreekt.');
+      }
+      act(() => {
+        fireEvent.pointerDown(from, { clientX: 3, clientY: 3, button: 0 });
+        window.dispatchEvent(
+          new PointerEvent('pointerup', { clientX: 18, clientY: 18, bubbles: true }),
+        );
+      });
+    } finally {
+      document.elementFromPoint = previous;
+    }
+    expect(screen.getByTestId(`node-wire-a-out-n-1-high-to-q-in-${stepId}`)).toBeInTheDocument();
+    await user.click(screen.getByTestId(`btn-node-menu-${stepId}`));
+    await user.click(screen.getByTestId(`btn-node-delete-${stepId}`));
+    expect(screen.queryByTestId(`node-question-${stepId}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`node-answer-${stepId}-high`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`node-answer-${stepId}-partial`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`node-answer-${stepId}-inappropriate`)).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`node-wire-a-out-n-1-high-to-q-in-${stepId}`),
+    ).not.toBeInTheDocument();
+    expect(point('node-question-n-1')).toBe(kept[0]);
+    expect(point('node-answer-n-1-high')).toBe(kept[1]);
+    expect(point('node-answer-n-1-partial')).toBe(kept[2]);
+    expect(point('node-answer-n-1-inappropriate')).toBe(kept[3]);
+    await user.click(screen.getByTestId('btn-node-undo'));
+    expect(screen.getByTestId(`node-question-${stepId}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`node-answer-${stepId}-high`)).toBeInTheDocument();
+    expect(screen.getByTestId(`node-wire-a-out-n-1-high-to-q-in-${stepId}`)).toBeInTheDocument();
+    expect(point('node-question-n-1')).toBe(kept[0]);
+    expect(point('node-answer-n-1-high')).toBe(kept[1]);
+  });
+
   it('deletes one node question and keeps the other question and its line', async () => {
     const user = userEvent.setup();
     render(<EditorApp />);
@@ -2668,7 +3012,8 @@ describe('EditorApp', () => {
       await waitFor(() => {
         expect(screen.getByTestId('nursing-title')).toHaveValue('Slechtnieuwsgesprek oefenen');
       });
-      expect(screen.getByRole('heading', { name: 'Voorbeeld - Vraag.1' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Voorbeeld - Vraag.1' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('nursing-step-title')).toHaveTextContent('Vraag.1');
       expect(screen.getByRole('heading', { name: 'Beschikbare media' })).toBeInTheDocument();
 
       await user.click(screen.getByTestId('btn-open-json'));
@@ -2678,7 +3023,8 @@ describe('EditorApp', () => {
       expect(screen.getByTestId('nursing-title')).toHaveValue('Slechtnieuwsgesprek oefenen');
 
       await user.click(screen.getByTestId('nursing-step-tab-n-extra-2'));
-      expect(screen.getByRole('heading', { name: 'Voorbeeld - Vraag.3' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Voorbeeld - Vraag.3' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('nursing-step-title')).toHaveTextContent('Vraag.3');
       await user.click(screen.getByTestId('nursing-answer-mode-video-high'));
       expect(screen.getByTestId('nursing-answer-upload-target-high')).toHaveTextContent(
         'resources/gesprekstechnieken/Slechtnieuwsgesprek oefenen-Vraag3/Videos/antwoord-goed.mp4',
